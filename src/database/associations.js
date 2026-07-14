@@ -29,7 +29,15 @@ const withAuditAssociationsNoDelete = (TargetModel) => {
   TargetModel.belongsTo(User, { as: 'actualizadoPor', foreignKey: 'updatedBy' });
 };
 
+let associationsReady = false;
+
 export const setupAssociations = () => {
+  // Idempotente: en entornos serverless (Vercel) un mismo contenedor
+  // "caliente" puede invocar esta función más de una vez entre requests;
+  // Sequelize no permite redefinir la misma asociación/alias dos veces.
+  if (associationsReady) return;
+  associationsReady = true;
+
   // Usuarios <-> Roles (N:M)
   User.belongsToMany(Role, {
     through: UsuarioRol,
