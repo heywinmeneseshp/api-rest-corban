@@ -7,7 +7,7 @@ const mode = process.env.DB_MODE === 'bridge' ? 'bridge' : 'direct';
 const commonDefine = {
   underscored: true,
   timestamps: true,
-};
+};   
 
 const directConfig = {
   username: process.env.DB_USER || 'root',
