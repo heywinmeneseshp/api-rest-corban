@@ -1,0 +1,79 @@
+import express from 'express';
+import helmet from 'helmet';
+import cors from 'cors';
+import morgan from 'morgan';
+import compression from 'compression';
+import swaggerUi from 'swagger-ui-express';
+
+import { env } from './config/env.config.js';
+import { corsConfig } from './config/cors.config.js';
+import { logger } from './utils/logger.js';
+import { globalRateLimiter } from './middlewares/rateLimiter.middleware.js';
+import { notFound } from './middlewares/notFound.middleware.js';
+import { errorHandler } from './middlewares/error.middleware.js';
+import { swaggerSpec } from './docs/swagger.js';
+
+import authRoutes from './routes/seguridad/auth.routes.js';
+import userRoutes from './routes/seguridad/user.routes.js';
+import roleRoutes from './routes/seguridad/role.routes.js';
+import permisoRoutes from './routes/seguridad/permiso.routes.js';
+import menuRoutes from './routes/seguridad/menuItem.routes.js';
+
+import fincaRoutes from './routes/agricola/finca.routes.js';
+import loteRoutes from './routes/agricola/lote.routes.js';
+import plantaRoutes from './routes/agricola/planta.routes.js';
+import categoriaPlantaRoutes from './routes/agricola/categoriaPlanta.routes.js';
+import tipoEvaluacionRoutes from './routes/agricola/tipoEvaluacion.routes.js';
+import semanaRoutes from './routes/agricola/semana.routes.js';
+import evaluacionRoutes from './routes/agricola/evaluacion.routes.js';
+import infeccionRoutes from './routes/agricola/infeccion.routes.js';
+import conteoHojasRoutes from './routes/agricola/conteoHojas.routes.js';
+import sumaBrutaRoutes from './routes/agricola/sumaBruta.routes.js';
+
+export const app = express();
+
+app.disable('x-powered-by');
+app.use(helmet());
+app.use(cors(corsConfig));
+app.use(compression());
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true }));
+app.use(
+  morgan('combined', {
+    stream: { write: (message) => logger.info(message.trim()) },
+  }),
+);
+app.use(globalRateLimiter);
+
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.get('/api-docs.json', (_req, res) => res.json(swaggerSpec));
+
+const router = express.Router();
+router.use('/auth', authRoutes);
+router.use('/users', userRoutes);
+router.use('/roles', roleRoutes);
+router.use('/permisos', permisoRoutes);
+router.use('/menu', menuRoutes);
+
+router.use('/fincas', fincaRoutes);
+router.use('/lotes', loteRoutes);
+router.use('/plantas', plantaRoutes);
+router.use('/categorias-planta', categoriaPlantaRoutes);
+router.use('/tipos-evaluacion', tipoEvaluacionRoutes);
+router.use('/semanas', semanaRoutes);
+// Los tres routers siguientes comparten el prefijo '/evaluaciones':
+// evaluacionRoutes maneja '/', '/:uuid'; los otros anidan '/:uuid/infeccion',
+// '/:uuid/conteo-hojas' y '/:uuid/suma-bruta' respectivamente.
+router.use('/evaluaciones', evaluacionRoutes);
+router.use('/evaluaciones', infeccionRoutes);
+router.use('/evaluaciones', conteoHojasRoutes);
+router.use('/evaluaciones', sumaBrutaRoutes);
+
+app.use(env.apiPrefix, router);
+
+app.get('/health', (_req, res) => res.json({ success: true, message: 'OK', data: null }));
+
+app.use(notFound);
+app.use(errorHandler);
+
+export default app;

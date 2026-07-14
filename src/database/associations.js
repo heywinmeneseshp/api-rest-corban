@@ -1,0 +1,160 @@
+import { User } from './models/user.model.js';
+import { Role } from './models/role.model.js';
+import { Permiso } from './models/permiso.model.js';
+import { MenuItem } from './models/menuItem.model.js';
+import { RefreshToken } from './models/refreshToken.model.js';
+import { UsuarioRol, RolPermiso } from './models/pivotModels.js';
+
+import { Finca } from './models/finca.model.js';
+import { Lote } from './models/lote.model.js';
+import { Planta } from './models/planta.model.js';
+import { CategoriaPlanta } from './models/categoriaPlanta.model.js';
+import { TipoEvaluacion } from './models/tipoEvaluacion.model.js';
+import { Semana } from './models/semana.model.js';
+import { Evaluacion } from './models/evaluacion.model.js';
+import { Infeccion } from './models/infeccion.model.js';
+import { HojaInfectada } from './models/hojaInfectada.model.js';
+import { ConteoHojas } from './models/conteoHojas.model.js';
+import { SumaBruta } from './models/sumaBruta.model.js';
+import { EstadioHoja } from './models/estadioHoja.model.js';
+
+const withAuditAssociations = (TargetModel) => {
+  TargetModel.belongsTo(User, { as: 'creadoPor', foreignKey: 'createdBy' });
+  TargetModel.belongsTo(User, { as: 'actualizadoPor', foreignKey: 'updatedBy' });
+  TargetModel.belongsTo(User, { as: 'eliminadoPor', foreignKey: 'deletedBy' });
+};
+
+const withAuditAssociationsNoDelete = (TargetModel) => {
+  TargetModel.belongsTo(User, { as: 'creadoPor', foreignKey: 'createdBy' });
+  TargetModel.belongsTo(User, { as: 'actualizadoPor', foreignKey: 'updatedBy' });
+};
+
+export const setupAssociations = () => {
+  // Usuarios <-> Roles (N:M)
+  User.belongsToMany(Role, {
+    through: UsuarioRol,
+    foreignKey: 'userId',
+    otherKey: 'roleId',
+    as: 'roles',
+  });
+  Role.belongsToMany(User, {
+    through: UsuarioRol,
+    foreignKey: 'roleId',
+    otherKey: 'userId',
+    as: 'usuarios',
+  });
+  UsuarioRol.belongsTo(User, { foreignKey: 'userId', as: 'usuario' });
+  UsuarioRol.belongsTo(Role, { foreignKey: 'roleId', as: 'rol' });
+
+  // Roles <-> Permisos (N:M)
+  Role.belongsToMany(Permiso, {
+    through: RolPermiso,
+    foreignKey: 'roleId',
+    otherKey: 'permisoId',
+    as: 'permisos',
+  });
+  Permiso.belongsToMany(Role, {
+    through: RolPermiso,
+    foreignKey: 'permisoId',
+    otherKey: 'roleId',
+    as: 'roles',
+  });
+  RolPermiso.belongsTo(Role, { foreignKey: 'roleId', as: 'rol' });
+  RolPermiso.belongsTo(Permiso, { foreignKey: 'permisoId', as: 'permiso' });
+
+  // Menu (árbol) + permiso asociado
+  MenuItem.belongsTo(MenuItem, { foreignKey: 'parentId', as: 'padre' });
+  MenuItem.hasMany(MenuItem, { foreignKey: 'parentId', as: 'hijos' });
+  MenuItem.belongsTo(Permiso, { foreignKey: 'permisoId', as: 'permiso' });
+
+  // Refresh tokens
+  User.hasMany(RefreshToken, { foreignKey: 'userId', as: 'refreshTokens' });
+  RefreshToken.belongsTo(User, { foreignKey: 'userId', as: 'usuario' });
+
+  // Auditoría (created_by / updated_by / deleted_by -> users.id) — Fase 1
+  withAuditAssociations(Role);
+  withAuditAssociations(Permiso);
+  withAuditAssociations(MenuItem);
+  withAuditAssociations(User);
+
+  // Ubicación agrícola: Fincas -> Lotes -> Plantas
+  Finca.hasMany(Lote, { foreignKey: 'fincaId', as: 'lotes' });
+  Lote.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+
+  Lote.hasMany(Planta, { foreignKey: 'loteId', as: 'plantas' });
+  Planta.belongsTo(Lote, { foreignKey: 'loteId', as: 'lote' });
+
+  CategoriaPlanta.hasMany(Planta, { foreignKey: 'categoriaPlantaId', as: 'plantas' });
+  Planta.belongsTo(CategoriaPlanta, { foreignKey: 'categoriaPlantaId', as: 'categoriaPlanta' });
+
+  // Evaluaciones
+  Planta.hasMany(Evaluacion, { foreignKey: 'plantaId', as: 'evaluaciones' });
+  Evaluacion.belongsTo(Planta, { foreignKey: 'plantaId', as: 'planta' });
+
+  User.hasMany(Evaluacion, { foreignKey: 'usuarioId', as: 'evaluaciones' });
+  Evaluacion.belongsTo(User, { foreignKey: 'usuarioId', as: 'usuario' });
+
+  TipoEvaluacion.hasMany(Evaluacion, { foreignKey: 'tipoEvaluacionId', as: 'evaluaciones' });
+  Evaluacion.belongsTo(TipoEvaluacion, { foreignKey: 'tipoEvaluacionId', as: 'tipoEvaluacion' });
+
+  Semana.hasMany(Evaluacion, { foreignKey: 'semanaId', as: 'evaluaciones' });
+  Evaluacion.belongsTo(Semana, { foreignKey: 'semanaId', as: 'semana' });
+
+  // Infección (1:1 con evaluación) + hojas infectadas (1:N con infección)
+  Evaluacion.hasOne(Infeccion, { foreignKey: 'evaluacionId', as: 'infeccion' });
+  Infeccion.belongsTo(Evaluacion, { foreignKey: 'evaluacionId', as: 'evaluacion' });
+
+  Infeccion.hasMany(HojaInfectada, { foreignKey: 'infeccionId', as: 'hojas' });
+  HojaInfectada.belongsTo(Infeccion, { foreignKey: 'infeccionId', as: 'infeccion' });
+
+  // Conteo de hojas (1:1 con evaluación, referencia semana de embolse)
+  Evaluacion.hasOne(ConteoHojas, { foreignKey: 'evaluacionId', as: 'conteoHojas' });
+  ConteoHojas.belongsTo(Evaluacion, { foreignKey: 'evaluacionId', as: 'evaluacion' });
+  Semana.hasMany(ConteoHojas, { foreignKey: 'semanaEmbolseId', as: 'conteosEmbolse' });
+  ConteoHojas.belongsTo(Semana, { foreignKey: 'semanaEmbolseId', as: 'semanaEmbolse' });
+
+  // Suma bruta (1:1 con evaluación) + estadios por hoja (1:N con suma bruta)
+  Evaluacion.hasOne(SumaBruta, { foreignKey: 'evaluacionId', as: 'sumaBruta' });
+  SumaBruta.belongsTo(Evaluacion, { foreignKey: 'evaluacionId', as: 'evaluacion' });
+
+  SumaBruta.hasMany(EstadioHoja, { foreignKey: 'sumaBrutaId', as: 'estadios' });
+  EstadioHoja.belongsTo(SumaBruta, { foreignKey: 'sumaBrutaId', as: 'sumaBruta' });
+
+  // Auditoría — Fase 2 (maestras con deleted_by, transaccionales sin deleted_by)
+  withAuditAssociations(Finca);
+  withAuditAssociations(Lote);
+  withAuditAssociations(Planta);
+  withAuditAssociations(CategoriaPlanta);
+  withAuditAssociations(TipoEvaluacion);
+  withAuditAssociations(Semana);
+  withAuditAssociationsNoDelete(Evaluacion);
+  withAuditAssociationsNoDelete(Infeccion);
+  withAuditAssociationsNoDelete(HojaInfectada);
+  withAuditAssociationsNoDelete(ConteoHojas);
+  withAuditAssociationsNoDelete(SumaBruta);
+  withAuditAssociationsNoDelete(EstadioHoja);
+};
+
+export {
+  User,
+  Role,
+  Permiso,
+  MenuItem,
+  RefreshToken,
+  UsuarioRol,
+  RolPermiso,
+  Finca,
+  Lote,
+  Planta,
+  CategoriaPlanta,
+  TipoEvaluacion,
+  Semana,
+  Evaluacion,
+  Infeccion,
+  HojaInfectada,
+  ConteoHojas,
+  SumaBruta,
+  EstadioHoja,
+};
+
+export default setupAssociations;

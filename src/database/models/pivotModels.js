@@ -1,0 +1,74 @@
+import { DataTypes, Model } from 'sequelize';
+import { sequelize } from '../connection.js';
+
+export class UsuarioRol extends Model {}
+
+UsuarioRol.init(
+  {
+    id: {
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
+      primaryKey: true,
+    },
+    userId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      field: 'user_id',
+    },
+    roleId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      field: 'role_id',
+    },
+    createdBy: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: 'created_by',
+    },
+  },
+  {
+    sequelize,
+    modelName: 'UsuarioRol',
+    tableName: 'usuarios_roles',
+    underscored: true,
+    timestamps: true,
+    updatedAt: false,
+  },
+);
+
+export class RolPermiso extends Model {}
+
+RolPermiso.init(
+  {
+    id: {
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
+      primaryKey: true,
+    },
+    roleId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      field: 'role_id',
+    },
+    permisoId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      field: 'permiso_id',
+    },
+    createdBy: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: 'created_by',
+    },
+  },
+  {
+    sequelize,
+    modelName: 'RolPermiso',
+    tableName: 'rol_permisos',
+    underscored: true,
+    timestamps: true,
+    updatedAt: false,
+  },
+);
+
+export default { UsuarioRol, RolPermiso };
