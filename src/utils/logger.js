@@ -18,21 +18,28 @@ const consoleFormat = combine(
   }),
 );
 
+// En Vercel el filesystem es de solo lectura (salvo /tmp): no se pueden
+// escribir logs a archivo ahí, así que en ese entorno solo se usa consola
+// (Vercel captura stdout/stderr y los muestra en su propio dashboard).
+const isServerless = Boolean(process.env.VERCEL);
+
 export const logger = winston.createLogger({
   level: env.isProduction ? 'info' : 'debug',
   format: combine(timestamp(), errors({ stack: true }), json()),
-  transports: [
-    new winston.transports.File({
-      filename: path.join(logsDir, 'error.log'),
-      level: 'error',
-    }),
-    new winston.transports.File({
-      filename: path.join(logsDir, 'combined.log'),
-    }),
-  ],
+  transports: isServerless
+    ? []
+    : [
+        new winston.transports.File({
+          filename: path.join(logsDir, 'error.log'),
+          level: 'error',
+        }),
+        new winston.transports.File({
+          filename: path.join(logsDir, 'combined.log'),
+        }),
+      ],
 });
 
-if (!env.isProduction) {
+if (!env.isProduction || isServerless) {
   logger.add(
     new winston.transports.Console({
       format: consoleFormat,
