@@ -17,6 +17,7 @@
 const https = require('https');
 const http = require('http');
 const crypto = require('crypto');
+const zlib = require('zlib');
 const { EventEmitter } = require('events');
 
 // ─── HTTP Agent con keep-alive (reusa sockets TCP/TLS) ───
@@ -101,15 +102,26 @@ function httpPost(urlObj, body, apiKey, timeoutMs = 30000) {
         };
 
         const req = mod.request(options, (res) => {
-            let chunks = '';
-            res.on('data', (chunk) => { chunks += chunk; });
+            const buffers = [];
+            res.on('data', (chunk) => { buffers.push(chunk); });
             res.on('end', () => {
+                const raw = Buffer.concat(buffers);
+                // El servidor puede responder comprimido (gzip/deflate/br) porque
+                // mandamos Accept-Encoding; hay que descomprimir antes de parsear JSON.
+                const encoding = (res.headers['content-encoding'] || '').toLowerCase();
+                let decompress;
+                if (encoding === 'gzip') decompress = zlib.gunzipSync;
+                else if (encoding === 'br') decompress = zlib.brotliDecompressSync;
+                else if (encoding === 'deflate') decompress = zlib.inflateSync;
+
+                let text;
                 try {
-                    resolve({ status: res.statusCode, body: JSON.parse(chunks) });
+                    text = (decompress ? decompress(raw) : raw).toString('utf8');
+                    resolve({ status: res.statusCode, body: JSON.parse(text) });
                 } catch (e) {
                     reject(Object.assign(
                         new Error(`Bridge non-JSON (HTTP ${res.statusCode})`),
-                        { statusCode: res.statusCode, raw: chunks.slice(0, 500) }
+                        { statusCode: res.statusCode, raw: (text || raw.toString('utf8')).slice(0, 500) }
                     ));
                 }
             });
