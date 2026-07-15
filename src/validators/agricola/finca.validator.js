@@ -46,3 +46,11 @@ export const updateFincaSchema = Joi.object({
   params: Joi.object({ uuid: uuidParam }),
   query: Joi.object({}),
 });
+
+export const syncBanaricaSchema = Joi.object({
+  body: Joi.object({
+    consecutivos: Joi.array().items(Joi.string()).min(1).required(),
+  }),
+  params: Joi.object({}),
+  query: Joi.object({}),
+});

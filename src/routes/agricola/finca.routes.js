@@ -10,6 +10,7 @@ import {
   createFincaSchema,
   updateFincaSchema,
   listFincaLotesSchema,
+  syncBanaricaSchema,
 } from '../../validators/agricola/finca.validator.js';
 
 const router = Router();
@@ -37,6 +38,23 @@ router.post(
   permission(PERMISSIONS.FINCA_CREAR),
   validate(createFincaSchema),
   fincaController.create,
+);
+
+/**
+ * @openapi
+ * /fincas/banarica-almacenes:
+ *   get:
+ *     tags: [Fincas]
+ *     summary: Lista los almacenes activos de api-rest-banarica (vista previa, no escribe nada)
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.get(
+  '/banarica-almacenes',
+  auth,
+  permission(PERMISSIONS.FINCA_CREAR),
+  fincaController.previewBanarica,
 );
 
 /**
@@ -115,6 +133,7 @@ router.post(
   '/sync-banarica',
   auth,
   permission(PERMISSIONS.FINCA_CREAR),
+  validate(syncBanaricaSchema),
   fincaController.syncBanarica,
 );
 

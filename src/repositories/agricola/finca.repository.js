@@ -27,6 +27,18 @@ export const fincaRepository = {
     return Finca.findOne({ where: { codigo } });
   },
 
+  // Incluye fincas eliminadas lógicamente (paranoid: false). El UNIQUE de
+  // `codigo` en la BD no distingue registros con soft-delete, así que hay
+  // que revisar esto antes de crear para no chocar con la restricción.
+  findByCodigoIncludingDeleted(codigo) {
+    return Finca.findOne({ where: { codigo }, paranoid: false });
+  },
+
+  async restore(finca, { transaction } = {}) {
+    await finca.restore({ transaction });
+    return finca;
+  },
+
   create(data, { transaction } = {}) {
     return Finca.create(data, { transaction });
   },

@@ -38,8 +38,16 @@ export const fincaController = {
     ApiResponse.send(res, { message: 'Lotes de la finca obtenidos correctamente', data: { items, meta } });
   }),
 
+  previewBanarica: asyncHandler(async (req, res) => {
+    const resultado = await fincaService.previewBanaricaAlmacenes();
+    ApiResponse.send(res, {
+      message: 'Almacenes activos de banarica obtenidos correctamente',
+      data: resultado,
+    });
+  }),
+
   syncBanarica: asyncHandler(async (req, res) => {
-    const resultado = await fincaService.syncFromBanarica(req.user?.id);
+    const resultado = await fincaService.syncFromBanarica(req.user?.id, req.body.consecutivos);
     ApiResponse.send(res, {
       message: 'Sincronización con banarica completada',
       data: resultado,

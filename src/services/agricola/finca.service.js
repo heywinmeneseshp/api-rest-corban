@@ -58,12 +58,11 @@ export const fincaService = {
     return { items: rows, meta: buildPaginationMeta({ page, limit, total: count }) };
   },
 
-  // Sincroniza los almacenes activos de api-rest-banarica como fincas de
-  // corbana. banarica no tiene un campo `estado`/`activo`: usa `isBlock`
-  // (bloqueado) como bandera inversa, así que "activo" = !isBlock. El
-  // `consecutivo` de banarica (identificador único del almacén) se usa
-  // como `codigo` de la finca para poder emparejar registros en re-sincronizaciones.
-  async syncFromBanarica(actorId) {
+  // Consulta los almacenes ACTIVOS de api-rest-banarica (sin escribir nada),
+  // para que el usuario elija cuáles sincronizar. banarica no tiene un campo
+  // `estado`/`activo`: usa `isBlock` (bloqueado) como bandera inversa, así
+  // que "activo" = !isBlock.
+  async fetchActiveBanaricaAlmacenes() {
     const baseUrl = await configuracionService.getBanaricaApiUrl();
     const url = `${baseUrl.replace(/\/$/, '')}/api/v1/almacenes/`;
     let almacenes;
@@ -82,17 +81,60 @@ export const fincaService = {
       throw ApiError.internal('Respuesta inesperada del API de banarica al listar almacenes');
     }
 
-    const activos = almacenes.filter((a) => !a.isBlock);
+    return almacenes.filter((a) => !a.isBlock);
+  },
+
+  // Vista previa: lista los almacenes activos de banarica indicando si cada
+  // uno ya existe como finca en corbana, para que el usuario elija cuáles
+  // sincronizar antes de escribir nada.
+  async previewBanaricaAlmacenes() {
+    const activos = await this.fetchActiveBanaricaAlmacenes();
+
+    const items = await Promise.all(
+      activos.map(async (almacen) => {
+        const codigo = String(almacen.consecutivo);
+        const existing = await fincaRepository.findByCodigo(codigo);
+        return {
+          consecutivo: codigo,
+          nombre: almacen.nombre || codigo,
+          yaSincronizado: Boolean(existing),
+        };
+      }),
+    );
+
+    return { items };
+  },
+
+  // Sincroniza como fincas de corbana solo los almacenes de banarica cuyos
+  // `consecutivo` vengan en `consecutivos` (elegidos por el usuario en el
+  // paso de vista previa). El `consecutivo` se usa como `codigo` de la
+  // finca para poder emparejar registros en re-sincronizaciones.
+  async syncFromBanarica(actorId, consecutivos) {
+    if (!Array.isArray(consecutivos) || consecutivos.length === 0) {
+      throw ApiError.badRequest('Debes indicar al menos un almacén a sincronizar');
+    }
+
+    const activos = await this.fetchActiveBanaricaAlmacenes();
+    const seleccionados = new Set(consecutivos.map(String));
+    const almacenesElegidos = activos.filter((a) => seleccionados.has(String(a.consecutivo)));
 
     let creados = 0;
     let actualizados = 0;
+    let restaurados = 0;
 
-    for (const almacen of activos) {
+    for (const almacen of almacenesElegidos) {
       const codigo = String(almacen.consecutivo);
       const nombre = almacen.nombre || codigo;
-      const existing = await fincaRepository.findByCodigo(codigo);
+      // Se busca incluyendo eliminados: el UNIQUE de `codigo` en la BD no
+      // distingue soft-deletes, así que si ya existe (aunque esté borrada)
+      // hay que restaurarla/actualizarla en vez de intentar crear otra.
+      const existing = await fincaRepository.findByCodigoIncludingDeleted(codigo);
 
-      if (existing) {
+      if (existing && existing.deletedAt) {
+        await fincaRepository.restore(existing);
+        await fincaRepository.update(existing, { nombre, estado: true, updatedBy: actorId });
+        restaurados += 1;
+      } else if (existing) {
         await fincaRepository.update(existing, { nombre, estado: true, updatedBy: actorId });
         actualizados += 1;
       } else {
@@ -102,9 +144,10 @@ export const fincaService = {
     }
 
     return {
-      totalAlmacenesActivos: activos.length,
+      totalSeleccionados: almacenesElegidos.length,
       fincasCreadas: creados,
       fincasActualizadas: actualizados,
+      fincasRestauradas: restaurados,
     };
   },
 };

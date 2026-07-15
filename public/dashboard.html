@@ -103,12 +103,23 @@
       <p id="fincasError" class="hidden text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3.5 py-2.5 mb-4"></p>
       <p id="syncMsg" class="hidden text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3.5 py-2.5 mb-4"></p>
 
+      <div id="bulkBar" class="hidden items-center justify-between bg-brand-50 border border-brand-100 rounded-xl px-4 py-2.5 mb-4">
+        <span id="bulkCount" class="text-sm text-brand-800 font-medium">0 finca(s) seleccionada(s)</span>
+        <button id="btnBulkDelete" class="flex items-center gap-1.5 text-sm font-medium text-red-600 hover:text-red-700">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6h16Z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Eliminar seleccionadas
+        </button>
+      </div>
+
       <!-- Tabla -->
       <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead>
               <tr class="text-left text-slate-500 border-b border-slate-100 bg-slate-50/60">
+                <th class="px-5 py-3 font-medium w-10">
+                  <input type="checkbox" id="selectAllFincas" class="rounded border-slate-300 text-brand-700 focus:ring-brand-700">
+                </th>
                 <th class="px-5 py-3 font-medium">Finca</th>
                 <th class="px-5 py-3 font-medium">Lote</th>
                 <th class="px-5 py-3 font-medium">Área (Ha)</th>
@@ -118,7 +129,7 @@
             </thead>
             <tbody id="tablaBody" class="divide-y divide-slate-100">
               <tr>
-                <td colspan="5" class="px-5 py-8 text-center text-slate-400">Cargando...</td>
+                <td colspan="6" class="px-5 py-8 text-center text-slate-400">Cargando...</td>
               </tr>
             </tbody>
           </table>
@@ -279,6 +290,35 @@
   </div>
 </div>
 
+<!-- Modal: elegir almacenes de banarica a sincronizar -->
+<div id="modalSync" class="hidden fixed inset-0 bg-slate-900/40 flex items-center justify-center p-4 z-50">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-lg font-bold text-slate-900">Elegir almacenes a sincronizar</h3>
+      <button id="closeModalSync" type="button" class="text-slate-400 hover:text-slate-600">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <p class="text-sm text-slate-500 mb-4">Selecciona qué almacenes activos de banarica quieres crear/actualizar como fincas.</p>
+
+    <div class="flex items-center gap-4 mb-3 text-sm">
+      <button id="btnSyncSelectAll" type="button" class="text-brand-700 font-medium hover:text-brand-800">Seleccionar todos</button>
+      <button id="btnSyncSelectNone" type="button" class="text-slate-500 font-medium hover:text-slate-700">Ninguno</button>
+    </div>
+
+    <div id="syncList" class="border border-slate-100 rounded-xl divide-y divide-slate-100 max-h-72 overflow-y-auto mb-4">
+      <p class="px-4 py-6 text-center text-sm text-slate-400">Cargando almacenes...</p>
+    </div>
+
+    <p id="syncModalError" class="hidden text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3.5 py-2.5 mb-4"></p>
+
+    <div class="flex gap-3">
+      <button id="cancelModalSync" type="button" class="flex-1 text-sm font-medium text-slate-600 border border-slate-200 rounded-xl py-2.5 hover:bg-slate-50 transition">Cancelar</button>
+      <button id="btnConfirmSync" type="button" class="flex-1 text-sm font-medium text-white bg-brand-700 hover:bg-brand-800 rounded-xl py-2.5 transition">Sincronizar seleccionados</button>
+    </div>
+  </div>
+</div>
+
 <script>
   // Navegación lateral: alterna secciones visibles
   const navLinks = document.querySelectorAll('.nav-link[data-section]');
@@ -343,6 +383,9 @@
     return `
       <tr class="hover:bg-slate-50/60" data-finca-uuid="${finca.uuid}" ${lote ? `data-lote-uuid="${lote.uuid}"` : ''}>
         <td class="px-5 py-4">
+          <input type="checkbox" class="finca-checkbox rounded border-slate-300 text-brand-700 focus:ring-brand-700" value="${finca.uuid}">
+        </td>
+        <td class="px-5 py-4">
           <p class="font-medium text-slate-800">${finca.nombre}</p>
           <p class="text-xs text-slate-400">Código: ${finca.codigo}</p>
         </td>
@@ -370,7 +413,10 @@
     const tbody = document.getElementById('tablaBody');
     const errorEl = document.getElementById('fincasError');
     errorEl.classList.add('hidden');
-    tbody.innerHTML = `<tr><td colspan="5" class="px-5 py-8 text-center text-slate-400">Cargando...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="px-5 py-8 text-center text-slate-400">Cargando...</td></tr>`;
+    document.getElementById('bulkBar').classList.add('hidden');
+    document.getElementById('bulkBar').classList.remove('flex');
+    document.getElementById('selectAllFincas').checked = false;
 
     try {
       const { items: fincas } = await apiFetch('/fincas?limit=100');
@@ -393,7 +439,7 @@
 
       tbody.innerHTML = rows.length
         ? rows.join('')
-        : `<tr><td colspan="5" class="px-5 py-8 text-center text-slate-400">No hay fincas registradas todavía.</td></tr>`;
+        : `<tr><td colspan="6" class="px-5 py-8 text-center text-slate-400">No hay fincas registradas todavía.</td></tr>`;
     } catch (err) {
       tbody.innerHTML = '';
       errorEl.textContent = err.message;
@@ -523,6 +569,61 @@
     }
   });
 
+  // ─── Selección múltiple de fincas (eliminar varias a la vez) ───
+  const bulkBar = document.getElementById('bulkBar');
+  const bulkCount = document.getElementById('bulkCount');
+  const selectAllFincas = document.getElementById('selectAllFincas');
+
+  function updateBulkBar() {
+    const checked = document.querySelectorAll('.finca-checkbox:checked');
+    const total = document.querySelectorAll('.finca-checkbox').length;
+    if (checked.length > 0) {
+      bulkBar.classList.remove('hidden');
+      bulkBar.classList.add('flex');
+      bulkCount.textContent = `${checked.length} finca(s) seleccionada(s)`;
+    } else {
+      bulkBar.classList.add('hidden');
+      bulkBar.classList.remove('flex');
+    }
+    selectAllFincas.checked = total > 0 && checked.length === total;
+  }
+
+  // Si una finca tiene varias filas (una por lote), marcar/desmarcar una
+  // fila debe reflejarse en todas las filas de esa misma finca.
+  document.getElementById('tablaBody').addEventListener('change', (e) => {
+    if (!e.target.classList.contains('finca-checkbox')) return;
+    const { checked, value } = e.target;
+    document
+      .querySelectorAll(`.finca-checkbox[value="${value}"]`)
+      .forEach((cb) => { cb.checked = checked; });
+    updateBulkBar();
+  });
+
+  selectAllFincas.addEventListener('change', () => {
+    document.querySelectorAll('.finca-checkbox').forEach((cb) => { cb.checked = selectAllFincas.checked; });
+    updateBulkBar();
+  });
+
+  document.getElementById('btnBulkDelete').addEventListener('click', async () => {
+    const uuids = Array.from(
+      new Set(Array.from(document.querySelectorAll('.finca-checkbox:checked')).map((cb) => cb.value)),
+    );
+    if (uuids.length === 0) return;
+    if (!confirm(`¿Eliminar ${uuids.length} finca(s) seleccionada(s)? Esta acción no se puede deshacer.`)) return;
+
+    const errorEl = document.getElementById('fincasError');
+    errorEl.classList.add('hidden');
+    try {
+      for (const uuid of uuids) {
+        await apiFetch(`/fincas/${uuid}`, { method: 'DELETE' });
+      }
+      loadFincasYLotes();
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.classList.remove('hidden');
+    }
+  });
+
   // ─── Configurar enlace del API de banarica ───
   const modalConfig = document.getElementById('modalConfig');
   const formConfig = document.getElementById('formConfig');
@@ -565,25 +666,83 @@
     }
   });
 
-  // ─── Sincronizar almacenes activos de banarica como fincas ───
-  document.getElementById('btnSyncBanarica').addEventListener('click', async (e) => {
+  // ─── Elegir y sincronizar almacenes activos de banarica como fincas ───
+  const modalSync = document.getElementById('modalSync');
+  const syncList = document.getElementById('syncList');
+  const syncModalError = document.getElementById('syncModalError');
+
+  function closeSyncModal() { modalSync.classList.add('hidden'); }
+  document.getElementById('closeModalSync').addEventListener('click', closeSyncModal);
+  document.getElementById('cancelModalSync').addEventListener('click', closeSyncModal);
+  modalSync.addEventListener('click', (e) => { if (e.target === modalSync) closeSyncModal(); });
+
+  document.getElementById('btnSyncBanarica').addEventListener('click', async () => {
+    syncModalError.classList.add('hidden');
+    syncList.innerHTML = `<p class="px-4 py-6 text-center text-sm text-slate-400">Cargando almacenes...</p>`;
+    modalSync.classList.remove('hidden');
+
+    try {
+      const { items } = await apiFetch('/fincas/banarica-almacenes');
+      if (items.length === 0) {
+        syncList.innerHTML = `<p class="px-4 py-6 text-center text-sm text-slate-400">No hay almacenes activos en banarica.</p>`;
+        return;
+      }
+      syncList.innerHTML = items
+        .map(
+          (a) => `
+        <label class="flex items-center gap-3 px-4 py-3 hover:bg-slate-50/60 cursor-pointer">
+          <input type="checkbox" class="sync-checkbox rounded border-slate-300 text-brand-700 focus:ring-brand-700" value="${a.consecutivo}" checked>
+          <span class="flex-1 text-sm text-slate-800">${a.nombre}</span>
+          <span class="text-xs text-slate-400">Cód. ${a.consecutivo}</span>
+          ${a.yaSincronizado ? '<span class="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">Ya existe</span>' : '<span class="text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">Nuevo</span>'}
+        </label>`,
+        )
+        .join('');
+    } catch (err) {
+      syncList.innerHTML = '';
+      syncModalError.textContent = err.message;
+      syncModalError.classList.remove('hidden');
+    }
+  });
+
+  document.getElementById('btnSyncSelectAll').addEventListener('click', () => {
+    document.querySelectorAll('.sync-checkbox').forEach((cb) => { cb.checked = true; });
+  });
+  document.getElementById('btnSyncSelectNone').addEventListener('click', () => {
+    document.querySelectorAll('.sync-checkbox').forEach((cb) => { cb.checked = false; });
+  });
+
+  document.getElementById('btnConfirmSync').addEventListener('click', async (e) => {
+    syncModalError.classList.add('hidden');
+    const consecutivos = Array.from(document.querySelectorAll('.sync-checkbox:checked')).map((cb) => cb.value);
+    if (consecutivos.length === 0) {
+      syncModalError.textContent = 'Selecciona al menos un almacén.';
+      syncModalError.classList.remove('hidden');
+      return;
+    }
+
     const btn = e.currentTarget;
-    const syncMsg = document.getElementById('syncMsg');
-    const errorEl = document.getElementById('fincasError');
-    errorEl.classList.add('hidden');
-    syncMsg.classList.add('hidden');
     btn.disabled = true;
     const originalText = btn.textContent;
     btn.textContent = 'Sincronizando...';
 
+    const syncMsg = document.getElementById('syncMsg');
+    const errorEl = document.getElementById('fincasError');
+    errorEl.classList.add('hidden');
+    syncMsg.classList.add('hidden');
+
     try {
-      const resultado = await apiFetch('/fincas/sync-banarica', { method: 'POST' });
-      syncMsg.textContent = `Sincronización completada: ${resultado.fincasCreadas} finca(s) creada(s), ${resultado.fincasActualizadas} actualizada(s), de ${resultado.totalAlmacenesActivos} almacén(es) activo(s) en banarica.`;
+      const resultado = await apiFetch('/fincas/sync-banarica', {
+        method: 'POST',
+        body: JSON.stringify({ consecutivos }),
+      });
+      syncMsg.textContent = `Sincronización completada: ${resultado.fincasCreadas} finca(s) creada(s), ${resultado.fincasActualizadas} actualizada(s), ${resultado.fincasRestauradas} restaurada(s), de ${resultado.totalSeleccionados} almacén(es) seleccionado(s).`;
       syncMsg.classList.remove('hidden');
+      closeSyncModal();
       loadFincasYLotes();
     } catch (err) {
-      errorEl.textContent = err.message;
-      errorEl.classList.remove('hidden');
+      syncModalError.textContent = err.message;
+      syncModalError.classList.remove('hidden');
     } finally {
       btn.disabled = false;
       btn.textContent = originalText;
