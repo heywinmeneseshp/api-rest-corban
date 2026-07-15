@@ -37,6 +37,14 @@ export const fincaController = {
     const { items, meta } = await fincaService.listLotes(req.params.uuid, req.query);
     ApiResponse.send(res, { message: 'Lotes de la finca obtenidos correctamente', data: { items, meta } });
   }),
+
+  syncBanarica: asyncHandler(async (req, res) => {
+    const resultado = await fincaService.syncFromBanarica(req.user?.id);
+    ApiResponse.send(res, {
+      message: 'Sincronización con banarica completada',
+      data: resultado,
+    });
+  }),
 };
 
 export default fincaController;

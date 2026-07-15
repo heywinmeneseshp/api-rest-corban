@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Corbana | Panel de administración</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          brand: { 50: '#f4fbf7', 100: '#dcf3e6', 700: '#15803d', 800: '#166534', 900: '#14532d' },
+        },
+        fontFamily: { sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'] },
+      },
+    },
+  };
+</script>
+<style>
+  .nav-link { transition: background-color .15s ease; }
+  .nav-link.active { background-color: rgba(255,255,255,0.12); }
+  .nav-link:not(.active):hover { background-color: rgba(255,255,255,0.06); }
+  .drop-zone { transition: border-color .15s ease, background-color .15s ease; }
+  .drop-zone.drag-over { border-color: #15803d; background-color: #f0fdf4; }
+</style>
+</head>
+<body class="font-sans bg-[#f4fbf7] text-slate-800">
+
+<div class="min-h-screen flex">
+
+  <!-- Sidebar -->
+  <aside class="w-64 shrink-0 bg-brand-900 text-white flex flex-col">
+    <div class="flex items-center gap-2 px-6 py-6">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+        <path d="M12 21C7 21 3 17.5 3 12.5C3 7 7.5 3 13 3C13 9 9.5 12.5 5 13.5C7.5 15.5 11 16 12 21Z"
+              stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+      </svg>
+      <span class="text-lg font-semibold tracking-tight">Corbana</span>
+    </div>
+
+    <nav class="flex-1 px-3 space-y-1 mt-2">
+      <a href="#" data-section="inicio" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-emerald-50/85">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 11.5L12 4l8 7.5M6 10v9h5v-5h2v5h5v-9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Inicio
+      </a>
+      <a href="#" data-section="fincas" class="nav-link active flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-white">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12h4l3 8 4-16 3 8h4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Fincas y Lotes
+      </a>
+      <a href="#" data-section="cargue" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-emerald-50/85">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 15V3m0 12l-4-4m4 4l4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Cargue Masivo
+      </a>
+      <a href="#" data-section="reportes" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-emerald-50/85">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 19h16M7 16v-4m5 4V8m5 8v-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Reportes
+      </a>
+    </nav>
+
+    <div class="px-3 pb-6">
+      <a href="#" id="logoutBtn" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-emerald-50/85">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Cerrar Sesión
+      </a>
+    </div>
+  </aside>
+
+  <!-- Contenido principal -->
+  <main class="flex-1 min-w-0">
+
+    <!-- ═══ Sección: Fincas y Lotes ═══ -->
+    <section id="section-fincas" class="p-8">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h1 class="text-2xl font-bold text-slate-900">Fincas y Lotes</h1>
+          <p class="text-sm text-slate-500 mt-1">Gestiona la infraestructura agrícola de Corbana.</p>
+        </div>
+      </div>
+
+      <!-- Filtros -->
+      <div class="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
+        <div class="flex-1 flex items-center gap-2.5 bg-white border border-slate-200 rounded-xl px-3.5 py-2.5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3" stroke-linecap="round"/></svg>
+          <input type="text" placeholder="Buscar por nombre de finca o código de lote..."
+                 class="w-full text-sm outline-none bg-transparent placeholder-slate-400">
+        </div>
+        <button id="btnNuevaFinca" class="flex items-center justify-center gap-1.5 bg-brand-700 hover:bg-brand-800 text-white text-sm font-medium rounded-xl px-4 py-2.5 shadow-sm shadow-brand-700/20 transition whitespace-nowrap">
+          <span class="text-lg leading-none">+</span> Nueva Finca
+        </button>
+        <button id="btnNuevoLote" class="flex items-center justify-center gap-1.5 bg-white border border-brand-700 text-brand-700 hover:bg-brand-50 text-sm font-medium rounded-xl px-4 py-2.5 transition whitespace-nowrap">
+          <span class="text-lg leading-none">+</span> Nuevo Lote
+        </button>
+        <button id="btnSyncBanarica" class="flex items-center justify-center gap-1.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-medium rounded-xl px-4 py-2.5 transition whitespace-nowrap">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4v5h5M20 20v-5h-5M4.6 15A8 8 0 0 0 19 16.5M19.4 9A8 8 0 0 0 5 7.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Sincronizar con banarica
+        </button>
+        <button id="btnConfigBanarica" title="Configurar enlace del API de banarica" class="flex items-center justify-center w-10 h-10 shrink-0 bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 rounded-xl transition">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+
+      <p id="fincasError" class="hidden text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3.5 py-2.5 mb-4"></p>
+      <p id="syncMsg" class="hidden text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3.5 py-2.5 mb-4"></p>
+
+      <!-- Tabla -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-slate-500 border-b border-slate-100 bg-slate-50/60">
+                <th class="px-5 py-3 font-medium">Finca</th>
+                <th class="px-5 py-3 font-medium">Lote</th>
+                <th class="px-5 py-3 font-medium">Área (Ha)</th>
+                <th class="px-5 py-3 font-medium">Estado</th>
+                <th class="px-5 py-3 font-medium text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tablaBody" class="divide-y divide-slate-100">
+              <tr>
+                <td colspan="5" class="px-5 py-8 text-center text-slate-400">Cargando...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ Sección: Cargue Masivo ═══ -->
+    <section id="section-cargue" class="p-8 hidden">
+      <div class="mb-6">
+        <h1 class="text-2xl font-bold text-slate-900">Cargue Masivo</h1>
+        <p class="text-sm text-slate-500 mt-1">Sube múltiples fincas y lotes a la vez mediante un archivo de datos.</p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 max-w-3xl">
+
+        <label for="fileInput"
+               class="drop-zone flex flex-col items-center justify-center text-center border-2 border-dashed border-brand-700/40 rounded-2xl py-14 px-6 cursor-pointer bg-brand-50/30">
+          <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="1.5" class="mb-3">
+            <path d="M7 18a4 4 0 0 1-.6-7.95A5.5 5.5 0 0 1 17 9.5a4 4 0 0 1 1 7.87" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M12 12v7m0-7 3 3m-3-3-3 3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <p class="text-slate-700 font-medium">Arrastra aquí tu archivo Excel o CSV, o haz clic para explorar</p>
+          <p class="text-xs text-slate-400 mt-2">Formatos soportados: .xlsx, .csv. Máximo 10MB</p>
+          <input id="fileInput" type="file" accept=".xlsx,.csv" class="hidden">
+        </label>
+
+        <div class="flex items-center justify-between mt-6">
+          <button id="btnSimularCargue" class="text-sm font-medium text-brand-700 hover:text-brand-800">
+            Simular subida de archivo →
+          </button>
+          <button class="flex items-center gap-2 text-sm font-medium text-slate-600 border border-slate-200 rounded-xl px-4 py-2.5 hover:bg-slate-50 transition">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Descargar Plantilla de Ejemplo (.xlsx)
+          </button>
+        </div>
+
+        <!-- Progreso simulado -->
+        <div id="progressWrap" class="mt-8 hidden">
+          <div class="flex items-center justify-between text-sm mb-2">
+            <span class="text-slate-700 font-medium" id="progressLabel">procesando_lotes_corbana.csv</span>
+            <span class="text-slate-500" id="progressPct">0%</span>
+          </div>
+          <div class="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+            <div id="progressBar" class="h-full bg-brand-700 rounded-full transition-all duration-300" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ Secciones placeholder ═══ -->
+    <section id="section-inicio" class="p-8 hidden">
+      <h1 class="text-2xl font-bold text-slate-900">Inicio</h1>
+      <p class="text-sm text-slate-500 mt-1">Resumen general — próximamente.</p>
+    </section>
+    <section id="section-reportes" class="p-8 hidden">
+      <h1 class="text-2xl font-bold text-slate-900">Reportes</h1>
+      <p class="text-sm text-slate-500 mt-1">Reportes de producción y logística — próximamente.</p>
+    </section>
+  </main>
+</div>
+
+<!-- Modal: Finca (crear/editar) -->
+<div id="modalFinca" class="hidden fixed inset-0 bg-slate-900/40 flex items-center justify-center p-4 z-50">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+    <div class="flex items-center justify-between mb-5">
+      <h3 id="modalFincaTitle" class="text-lg font-bold text-slate-900">Nueva Finca</h3>
+      <button id="closeModalFinca" type="button" class="text-slate-400 hover:text-slate-600">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <form id="formFinca" class="space-y-4">
+      <input type="hidden" id="fincaUuid">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Nombre de la finca</label>
+        <input id="fincaNombre" type="text" required placeholder="Ej: Finca La Esmeralda" class="w-full text-sm border border-slate-200 rounded-xl px-3.5 py-2.5 outline-none focus:border-brand-700">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Código</label>
+        <input id="fincaCodigo" type="text" required placeholder="Ej: F-03" class="w-full text-sm border border-slate-200 rounded-xl px-3.5 py-2.5 outline-none focus:border-brand-700">
+      </div>
+      <label class="flex items-center gap-2 text-sm text-slate-600">
+        <input id="fincaEstado" type="checkbox" checked class="rounded border-slate-300 text-brand-700 focus:ring-brand-700">
+        Activo
+      </label>
+      <p id="fincaModalError" class="hidden text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3.5 py-2.5"></p>
+      <div class="flex gap-3 pt-2">
+        <button id="cancelModalFinca" type="button" class="flex-1 text-sm font-medium text-slate-600 border border-slate-200 rounded-xl py-2.5 hover:bg-slate-50 transition">Cancelar</button>
+        <button type="submit" class="flex-1 text-sm font-medium text-white bg-brand-700 hover:bg-brand-800 rounded-xl py-2.5 transition">Guardar Finca</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: Lote (crear/editar) -->
+<div id="modalLote" class="hidden fixed inset-0 bg-slate-900/40 flex items-center justify-center p-4 z-50">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+    <div class="flex items-center justify-between mb-5">
+      <h3 id="modalLoteTitle" class="text-lg font-bold text-slate-900">Nuevo Lote</h3>
+      <button id="closeModalLote" type="button" class="text-slate-400 hover:text-slate-600">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <form id="formLote" class="space-y-4">
+      <input type="hidden" id="loteUuid">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Finca</label>
+        <select id="loteFincaUuid" required class="w-full text-sm border border-slate-200 rounded-xl px-3.5 py-2.5 outline-none focus:border-brand-700 bg-white"></select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Nombre del lote</label>
+        <input id="loteNombre" type="text" required placeholder="Ej: Lote Banano Premium 04" class="w-full text-sm border border-slate-200 rounded-xl px-3.5 py-2.5 outline-none focus:border-brand-700">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Código</label>
+        <input id="loteCodigo" type="text" required placeholder="Ej: L-104" class="w-full text-sm border border-slate-200 rounded-xl px-3.5 py-2.5 outline-none focus:border-brand-700">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Área (Ha)</label>
+        <input id="loteArea" type="number" step="0.01" min="0" placeholder="Ej: 12.5" class="w-full text-sm border border-slate-200 rounded-xl px-3.5 py-2.5 outline-none focus:border-brand-700">
+      </div>
+      <label class="flex items-center gap-2 text-sm text-slate-600">
+        <input id="loteEstado" type="checkbox" checked class="rounded border-slate-300 text-brand-700 focus:ring-brand-700">
+        Activo
+      </label>
+      <p id="loteModalError" class="hidden text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3.5 py-2.5"></p>
+      <div class="flex gap-3 pt-2">
+        <button id="cancelModalLote" type="button" class="flex-1 text-sm font-medium text-slate-600 border border-slate-200 rounded-xl py-2.5 hover:bg-slate-50 transition">Cancelar</button>
+        <button type="submit" class="flex-1 text-sm font-medium text-white bg-brand-700 hover:bg-brand-800 rounded-xl py-2.5 transition">Guardar Lote</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: Configurar enlace del API de banarica -->
+<div id="modalConfig" class="hidden fixed inset-0 bg-slate-900/40 flex items-center justify-center p-4 z-50">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+    <div class="flex items-center justify-between mb-5">
+      <h3 class="text-lg font-bold text-slate-900">Conexión con banarica</h3>
+      <button id="closeModalConfig" type="button" class="text-slate-400 hover:text-slate-600">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <form id="formConfig" class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Enlace del API de banarica</label>
+        <input id="configUrl" type="url" required placeholder="https://api-logistica-banarica.vercel.app"
+               class="w-full text-sm border border-slate-200 rounded-xl px-3.5 py-2.5 outline-none focus:border-brand-700">
+        <p class="text-xs text-slate-400 mt-1.5">Se usará para consultar <code>/api/v1/almacenes/</code> al sincronizar.</p>
+      </div>
+      <p id="configModalError" class="hidden text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3.5 py-2.5"></p>
+      <p id="configModalOk" class="hidden text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3.5 py-2.5"></p>
+      <div class="flex gap-3 pt-2">
+        <button id="cancelModalConfig" type="button" class="flex-1 text-sm font-medium text-slate-600 border border-slate-200 rounded-xl py-2.5 hover:bg-slate-50 transition">Cancelar</button>
+        <button type="submit" class="flex-1 text-sm font-medium text-white bg-brand-700 hover:bg-brand-800 rounded-xl py-2.5 transition">Guardar enlace</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  // Navegación lateral: alterna secciones visibles
+  const navLinks = document.querySelectorAll('.nav-link[data-section]');
+  const sections = {
+    inicio: document.getElementById('section-inicio'),
+    fincas: document.getElementById('section-fincas'),
+    cargue: document.getElementById('section-cargue'),
+    reportes: document.getElementById('section-reportes'),
+  };
+  navLinks.forEach((link) => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      navLinks.forEach((l) => l.classList.remove('active', 'font-medium', 'text-white'));
+      navLinks.forEach((l) => l.classList.add('text-emerald-50/85'));
+      link.classList.add('active', 'font-medium', 'text-white');
+      link.classList.remove('text-emerald-50/85');
+
+      Object.values(sections).forEach((s) => s.classList.add('hidden'));
+      sections[link.dataset.section].classList.remove('hidden');
+    });
+  });
+
+  // ═══════════════════════════════════════════════
+  //  Integración real con la API (fincas / lotes)
+  // ═══════════════════════════════════════════════
+  const API_BASE = '/api/v1';
+  const token = localStorage.getItem('corbana_access_token');
+  if (!token) window.location.href = '/login';
+
+  async function apiFetch(path, options = {}) {
+    const res = await fetch(API_BASE + path, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        ...(options.headers || {}),
+      },
+    });
+    if (res.status === 401) {
+      localStorage.removeItem('corbana_access_token');
+      localStorage.removeItem('corbana_refresh_token');
+      window.location.href = '/login';
+      return Promise.reject(new Error('Sesión expirada'));
+    }
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || 'Error en la petición');
+    }
+    return data.data;
+  }
+
+  let fincasCache = [];
+
+  function estadoBadge(estado) {
+    return estado
+      ? `<span class="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 text-xs font-medium px-2.5 py-1 rounded-full"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Activo</span>`
+      : `<span class="inline-flex items-center gap-1.5 bg-slate-100 text-slate-500 text-xs font-medium px-2.5 py-1 rounded-full"><span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span> Inactivo</span>`;
+  }
+
+  function rowHtml(finca, lote) {
+    const area = lote && lote.area != null ? `${Number(lote.area).toFixed(1)} Ha` : '—';
+    return `
+      <tr class="hover:bg-slate-50/60" data-finca-uuid="${finca.uuid}" ${lote ? `data-lote-uuid="${lote.uuid}"` : ''}>
+        <td class="px-5 py-4">
+          <p class="font-medium text-slate-800">${finca.nombre}</p>
+          <p class="text-xs text-slate-400">Código: ${finca.codigo}</p>
+        </td>
+        <td class="px-5 py-4">
+          ${lote
+            ? `<p class="text-slate-700">${lote.nombre}</p><p class="text-xs text-slate-400">Código: ${lote.codigo}</p>`
+            : `<p class="text-slate-400 italic">Sin lotes</p>`}
+        </td>
+        <td class="px-5 py-4 text-slate-700">${area}</td>
+        <td class="px-5 py-4">${lote ? estadoBadge(lote.estado) : estadoBadge(finca.estado)}</td>
+        <td class="px-5 py-4">
+          <div class="flex items-center justify-end gap-3 text-slate-400">
+            <button class="btn-editar hover:text-brand-700" title="Editar">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button class="btn-eliminar hover:text-red-600" title="Eliminar">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6h16Z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+        </td>
+      </tr>`;
+  }
+
+  async function loadFincasYLotes() {
+    const tbody = document.getElementById('tablaBody');
+    const errorEl = document.getElementById('fincasError');
+    errorEl.classList.add('hidden');
+    tbody.innerHTML = `<tr><td colspan="5" class="px-5 py-8 text-center text-slate-400">Cargando...</td></tr>`;
+
+    try {
+      const { items: fincas } = await apiFetch('/fincas?limit=100');
+      fincasCache = fincas;
+
+      const loteSelect = document.getElementById('loteFincaUuid');
+      loteSelect.innerHTML = fincas
+        .map((f) => `<option value="${f.uuid}">${f.nombre} (${f.codigo})</option>`)
+        .join('');
+
+      const rows = [];
+      for (const finca of fincas) {
+        const { items: lotes } = await apiFetch(`/fincas/${finca.uuid}/lotes?limit=100`);
+        if (lotes.length === 0) {
+          rows.push(rowHtml(finca, null));
+        } else {
+          lotes.forEach((lote) => rows.push(rowHtml(finca, lote)));
+        }
+      }
+
+      tbody.innerHTML = rows.length
+        ? rows.join('')
+        : `<tr><td colspan="5" class="px-5 py-8 text-center text-slate-400">No hay fincas registradas todavía.</td></tr>`;
+    } catch (err) {
+      tbody.innerHTML = '';
+      errorEl.textContent = err.message;
+      errorEl.classList.remove('hidden');
+    }
+  }
+
+  // ─── Modal Finca (crear/editar) ───
+  const modalFinca = document.getElementById('modalFinca');
+  const formFinca = document.getElementById('formFinca');
+  const fincaModalError = document.getElementById('fincaModalError');
+
+  function openFincaModal(finca = null) {
+    formFinca.reset();
+    fincaModalError.classList.add('hidden');
+    document.getElementById('fincaUuid').value = finca ? finca.uuid : '';
+    document.getElementById('fincaNombre').value = finca ? finca.nombre : '';
+    document.getElementById('fincaCodigo').value = finca ? finca.codigo : '';
+    document.getElementById('fincaEstado').checked = finca ? finca.estado : true;
+    document.getElementById('modalFincaTitle').textContent = finca ? 'Editar Finca' : 'Nueva Finca';
+    modalFinca.classList.remove('hidden');
+  }
+  function closeFincaModal() { modalFinca.classList.add('hidden'); }
+
+  document.getElementById('btnNuevaFinca').addEventListener('click', () => openFincaModal());
+  document.getElementById('closeModalFinca').addEventListener('click', closeFincaModal);
+  document.getElementById('cancelModalFinca').addEventListener('click', closeFincaModal);
+  modalFinca.addEventListener('click', (e) => { if (e.target === modalFinca) closeFincaModal(); });
+
+  formFinca.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    fincaModalError.classList.add('hidden');
+    const uuid = document.getElementById('fincaUuid').value;
+    const body = {
+      nombre: document.getElementById('fincaNombre').value.trim(),
+      codigo: document.getElementById('fincaCodigo').value.trim(),
+      estado: document.getElementById('fincaEstado').checked,
+    };
+    try {
+      await apiFetch(uuid ? `/fincas/${uuid}` : '/fincas', {
+        method: uuid ? 'PUT' : 'POST',
+        body: JSON.stringify(body),
+      });
+      closeFincaModal();
+      loadFincasYLotes();
+    } catch (err) {
+      fincaModalError.textContent = err.message;
+      fincaModalError.classList.remove('hidden');
+    }
+  });
+
+  // ─── Modal Lote (crear/editar) ───
+  const modalLote = document.getElementById('modalLote');
+  const formLote = document.getElementById('formLote');
+  const loteModalError = document.getElementById('loteModalError');
+
+  function openLoteModal(lote = null, fincaUuid = null) {
+    formLote.reset();
+    loteModalError.classList.add('hidden');
+    document.getElementById('loteUuid').value = lote ? lote.uuid : '';
+    document.getElementById('loteNombre').value = lote ? lote.nombre : '';
+    document.getElementById('loteCodigo').value = lote ? lote.codigo : '';
+    document.getElementById('loteArea').value = lote && lote.area != null ? lote.area : '';
+    document.getElementById('loteEstado').checked = lote ? lote.estado : true;
+    if (fincaUuid) document.getElementById('loteFincaUuid').value = fincaUuid;
+    document.getElementById('modalLoteTitle').textContent = lote ? 'Editar Lote' : 'Nuevo Lote';
+    modalLote.classList.remove('hidden');
+  }
+  function closeLoteModal() { modalLote.classList.add('hidden'); }
+
+  document.getElementById('btnNuevoLote').addEventListener('click', () => openLoteModal());
+  document.getElementById('closeModalLote').addEventListener('click', closeLoteModal);
+  document.getElementById('cancelModalLote').addEventListener('click', closeLoteModal);
+  modalLote.addEventListener('click', (e) => { if (e.target === modalLote) closeLoteModal(); });
+
+  formLote.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    loteModalError.classList.add('hidden');
+    const uuid = document.getElementById('loteUuid').value;
+    const areaVal = document.getElementById('loteArea').value;
+    const body = {
+      fincaUuid: document.getElementById('loteFincaUuid').value,
+      nombre: document.getElementById('loteNombre').value.trim(),
+      codigo: document.getElementById('loteCodigo').value.trim(),
+      estado: document.getElementById('loteEstado').checked,
+      ...(areaVal ? { area: Number(areaVal) } : {}),
+    };
+    try {
+      await apiFetch(uuid ? `/lotes/${uuid}` : '/lotes', {
+        method: uuid ? 'PUT' : 'POST',
+        body: JSON.stringify(body),
+      });
+      closeLoteModal();
+      loadFincasYLotes();
+    } catch (err) {
+      loteModalError.textContent = err.message;
+      loteModalError.classList.remove('hidden');
+    }
+  });
+
+  // ─── Editar / Eliminar por fila ───
+  document.getElementById('tablaBody').addEventListener('click', async (e) => {
+    const row = e.target.closest('tr');
+    if (!row) return;
+    const fincaUuid = row.dataset.fincaUuid;
+    const loteUuid = row.dataset.loteUuid;
+
+    if (e.target.closest('.btn-editar')) {
+      if (loteUuid) {
+        const lote = await apiFetch(`/lotes/${loteUuid}`);
+        openLoteModal(lote, fincaUuid);
+      } else {
+        const finca = fincasCache.find((f) => f.uuid === fincaUuid);
+        openFincaModal(finca);
+      }
+    }
+
+    if (e.target.closest('.btn-eliminar')) {
+      const confirmMsg = loteUuid ? '¿Eliminar este lote?' : '¿Eliminar esta finca?';
+      if (!confirm(confirmMsg)) return;
+      try {
+        await apiFetch(loteUuid ? `/lotes/${loteUuid}` : `/fincas/${fincaUuid}`, { method: 'DELETE' });
+        loadFincasYLotes();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+  });
+
+  // ─── Configurar enlace del API de banarica ───
+  const modalConfig = document.getElementById('modalConfig');
+  const formConfig = document.getElementById('formConfig');
+  const configModalError = document.getElementById('configModalError');
+  const configModalOk = document.getElementById('configModalOk');
+
+  async function openConfigModal() {
+    configModalError.classList.add('hidden');
+    configModalOk.classList.add('hidden');
+    modalConfig.classList.remove('hidden');
+    try {
+      const { url } = await apiFetch('/configuraciones/banarica-url');
+      document.getElementById('configUrl').value = url;
+    } catch (err) {
+      configModalError.textContent = err.message;
+      configModalError.classList.remove('hidden');
+    }
+  }
+  function closeConfigModal() { modalConfig.classList.add('hidden'); }
+
+  document.getElementById('btnConfigBanarica').addEventListener('click', openConfigModal);
+  document.getElementById('closeModalConfig').addEventListener('click', closeConfigModal);
+  document.getElementById('cancelModalConfig').addEventListener('click', closeConfigModal);
+  modalConfig.addEventListener('click', (e) => { if (e.target === modalConfig) closeConfigModal(); });
+
+  formConfig.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    configModalError.classList.add('hidden');
+    configModalOk.classList.add('hidden');
+    try {
+      await apiFetch('/configuraciones/banarica-url', {
+        method: 'PUT',
+        body: JSON.stringify({ url: document.getElementById('configUrl').value.trim() }),
+      });
+      configModalOk.textContent = 'Enlace guardado correctamente.';
+      configModalOk.classList.remove('hidden');
+    } catch (err) {
+      configModalError.textContent = err.message;
+      configModalError.classList.remove('hidden');
+    }
+  });
+
+  // ─── Sincronizar almacenes activos de banarica como fincas ───
+  document.getElementById('btnSyncBanarica').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const syncMsg = document.getElementById('syncMsg');
+    const errorEl = document.getElementById('fincasError');
+    errorEl.classList.add('hidden');
+    syncMsg.classList.add('hidden');
+    btn.disabled = true;
+    const originalText = btn.textContent;
+    btn.textContent = 'Sincronizando...';
+
+    try {
+      const resultado = await apiFetch('/fincas/sync-banarica', { method: 'POST' });
+      syncMsg.textContent = `Sincronización completada: ${resultado.fincasCreadas} finca(s) creada(s), ${resultado.fincasActualizadas} actualizada(s), de ${resultado.totalAlmacenesActivos} almacén(es) activo(s) en banarica.`;
+      syncMsg.classList.remove('hidden');
+      loadFincasYLotes();
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.classList.remove('hidden');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalText;
+    }
+  });
+
+  loadFincasYLotes();
+
+  // Drag & drop visual
+  const dropZone = document.querySelector('.drop-zone');
+  ['dragover', 'dragenter'].forEach((evt) =>
+    dropZone.addEventListener(evt, (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); })
+  );
+  ['dragleave', 'drop'].forEach((evt) =>
+    dropZone.addEventListener(evt, (e) => { e.preventDefault(); dropZone.classList.remove('drag-over'); })
+  );
+
+  // Barra de progreso simulada
+  document.getElementById('btnSimularCargue').addEventListener('click', () => {
+    const wrap = document.getElementById('progressWrap');
+    const bar = document.getElementById('progressBar');
+    const pct = document.getElementById('progressPct');
+    const label = document.getElementById('progressLabel');
+    wrap.classList.remove('hidden');
+    let value = 0;
+    label.textContent = 'procesando_lotes_corbana.csv';
+    const interval = setInterval(() => {
+      value += Math.random() * 15 + 5;
+      if (value >= 100) { value = 100; clearInterval(interval); label.textContent = 'procesando_lotes_corbana.csv - completado'; }
+      bar.style.width = value + '%';
+      pct.textContent = Math.floor(value) + '%';
+    }, 300);
+  });
+
+  // Cerrar sesión
+  document.getElementById('logoutBtn').addEventListener('click', (e) => {
+    e.preventDefault();
+    localStorage.removeItem('corbana_access_token');
+    localStorage.removeItem('corbana_refresh_token');
+    window.location.href = '/login';
+  });
+</script>
+</body>
+</html>

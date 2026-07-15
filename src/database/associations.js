@@ -17,6 +17,7 @@ import { HojaInfectada } from './models/hojaInfectada.model.js';
 import { ConteoHojas } from './models/conteoHojas.model.js';
 import { SumaBruta } from './models/sumaBruta.model.js';
 import { EstadioHoja } from './models/estadioHoja.model.js';
+import { Configuracion } from './models/configuracion.model.js';
 
 const withAuditAssociations = (TargetModel) => {
   TargetModel.belongsTo(User, { as: 'creadoPor', foreignKey: 'createdBy' });
@@ -163,6 +164,7 @@ export {
   ConteoHojas,
   SumaBruta,
   EstadioHoja,
+  Configuracion,
 };
 
 export default setupAssociations;

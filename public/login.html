@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Corbana | Inicia sesión</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          brand: {
+            50: '#f4fbf7',
+            100: '#dcf3e6',
+            700: '#15803d',
+            800: '#166534',
+            900: '#14532d',
+          },
+        },
+        fontFamily: {
+          sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+        },
+      },
+    },
+  };
+</script>
+<style>
+  .brand-bg {
+    background-image:
+      linear-gradient(160deg, rgba(20,83,45,0.92) 0%, rgba(21,128,61,0.88) 55%, rgba(20,83,45,0.95) 100%),
+      repeating-linear-gradient(115deg, rgba(255,255,255,0.04) 0px, rgba(255,255,255,0.04) 2px, transparent 2px, transparent 60px),
+      radial-gradient(circle at 20% 20%, rgba(255,255,255,0.07) 0, transparent 45%),
+      radial-gradient(circle at 80% 60%, rgba(255,255,255,0.06) 0, transparent 40%),
+      radial-gradient(circle at 40% 85%, rgba(255,255,255,0.05) 0, transparent 35%),
+      url('/images/banano-field.png');
+    background-size: auto, auto, auto, auto, auto, cover;
+    background-position: center, center, center, center, center, center;
+    background-repeat: repeat, repeat, no-repeat, no-repeat, no-repeat, no-repeat;
+  }
+  .input-field:focus-within {
+    box-shadow: 0 0 0 3px rgba(21,128,61,0.15);
+    border-color: #15803d;
+  }
+</style>
+</head>
+<body class="font-sans bg-white">
+
+<div class="min-h-screen flex">
+
+  <!-- Panel izquierdo: marca / features (oculto en mobile) -->
+  <div class="hidden lg:flex lg:w-1/2 relative brand-bg text-white flex-col justify-between p-12 xl:p-16">
+
+    <!-- Marca -->
+    <div class="flex items-center gap-2">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" class="text-white">
+        <path d="M12 21C7 21 3 17.5 3 12.5C3 7 7.5 3 13 3C13 9 9.5 12.5 5 13.5C7.5 15.5 11 16 12 21Z"
+              stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+      </svg>
+      <span class="text-xl font-semibold tracking-tight">Corbana</span>
+    </div>
+
+    <!-- Título + subtítulo + features -->
+    <div class="max-w-md">
+      <h1 class="text-4xl xl:text-5xl font-bold leading-tight mb-4">Bienvenido a Corbana</h1>
+      <p class="text-emerald-50/90 text-base mb-10">
+        Inicia sesión para gestionar y optimizar tu producción agrícola y logística con Corbana.
+      </p>
+
+      <div class="space-y-6">
+        <div class="flex items-start gap-4">
+          <div class="shrink-0 w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+              <path d="M3 12h4l3 8 4-16 3 8h4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div>
+            <p class="font-semibold text-sm mb-0.5">Monitoreo de Cultivos</p>
+            <p class="text-sm text-emerald-50/75 leading-snug">
+              Visualiza datos climáticos y de suelo en tiempo real para decisiones inteligentes.
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-start gap-4">
+          <div class="shrink-0 w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+              <path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"
+                    stroke-linecap="round"/>
+              <circle cx="12" cy="12" r="3.2"/>
+            </svg>
+          </div>
+          <div>
+            <p class="font-semibold text-sm mb-0.5">Optimización de Cosecha</p>
+            <p class="text-sm text-emerald-50/75 leading-snug">
+              Planifica y gestiona tus cosechas con inteligencia artificial para máxima eficiencia.
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-start gap-4">
+          <div class="shrink-0 w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+              <path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3Z" stroke-linejoin="round"/>
+              <path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div>
+            <p class="font-semibold text-sm mb-0.5">Logística Segura</p>
+            <p class="text-sm text-emerald-50/75 leading-snug">
+              Seguimiento y seguridad en cada paso, desde la finca hasta el mercado global.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="text-xs text-emerald-50/60">© 2026 Corbana. Innovación Agrícola y Tecnológica Global.</p>
+  </div>
+
+  <!-- Panel derecho: formulario -->
+  <div class="w-full lg:w-1/2 flex flex-col min-h-screen bg-white relative">
+
+    <!-- Selector de idioma -->
+    <div class="flex justify-end p-6">
+      <button type="button" class="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 transition">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+          <circle cx="12" cy="12" r="9"/>
+          <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" stroke-linecap="round"/>
+        </svg>
+        Español
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="flex-1 flex items-center justify-center px-6 sm:px-10">
+      <div class="w-full max-w-sm">
+
+        <!-- Marca en mobile -->
+        <div class="lg:hidden flex items-center gap-2 mb-8 text-brand-800">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+            <path d="M12 21C7 21 3 17.5 3 12.5C3 7 7.5 3 13 3C13 9 9.5 12.5 5 13.5C7.5 15.5 11 16 12 21Z"
+                  stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+          </svg>
+          <span class="text-lg font-semibold">Corbana</span>
+        </div>
+
+        <h2 class="text-3xl font-bold text-slate-900 mb-2">Inicia sesión</h2>
+        <p class="text-slate-500 text-sm mb-8">Ingresa tus credenciales para acceder a tu cuenta.</p>
+
+        <form id="loginForm" class="space-y-5">
+
+          <div>
+            <label for="usuario" class="block text-sm font-medium text-slate-700 mb-1.5">Usuario</label>
+            <div class="input-field flex items-center gap-2.5 border border-slate-200 rounded-xl px-3.5 py-2.5 transition">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.7" class="shrink-0">
+                <circle cx="12" cy="8" r="3.5"/>
+                <path d="M4.5 20c1.5-4 4.5-6 7.5-6s6 2 7.5 6" stroke-linecap="round"/>
+              </svg>
+              <input id="usuario" name="usuario" type="text" required autocomplete="username"
+                     placeholder="Introduce tu usuario"
+                     class="w-full text-sm text-slate-900 placeholder-slate-400 outline-none bg-transparent">
+            </div>
+          </div>
+
+          <div>
+            <label for="password" class="block text-sm font-medium text-slate-700 mb-1.5">Contraseña</label>
+            <div class="input-field flex items-center gap-2.5 border border-slate-200 rounded-xl px-3.5 py-2.5 transition">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.7" class="shrink-0">
+                <rect x="5" y="10.5" width="14" height="9" rx="2"/>
+                <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" stroke-linecap="round"/>
+              </svg>
+              <input id="password" name="password" type="password" required autocomplete="current-password"
+                     placeholder="••••••••"
+                     class="w-full text-sm text-slate-900 placeholder-slate-400 outline-none bg-transparent">
+              <button type="button" id="togglePassword" class="shrink-0 text-slate-400 hover:text-slate-600">
+                <svg id="eyeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                  <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" stroke-linejoin="round"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between text-sm">
+            <label class="flex items-center gap-2 text-slate-600 cursor-pointer select-none">
+              <input type="checkbox" id="remember" class="rounded border-slate-300 text-brand-700 focus:ring-brand-700">
+              Recordarme
+            </label>
+            <a href="#" class="text-brand-700 font-medium hover:text-brand-800">¿Olvidaste tu contraseña?</a>
+          </div>
+
+          <p id="errorMsg" class="hidden text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3.5 py-2.5"></p>
+
+          <button type="submit" id="submitBtn"
+                  class="w-full flex items-center justify-center gap-2 bg-brand-700 hover:bg-brand-800 text-white font-medium rounded-xl py-3 shadow-sm shadow-brand-700/20 transition">
+            <span id="submitLabel">Iniciar sesión</span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M13 5l7 7-7 7M5 12h15" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </form>
+
+        <p class="text-center text-sm text-slate-500 mt-8">
+          ¿No tienes una cuenta?
+          <a href="#" class="text-brand-700 font-semibold hover:text-brand-800">Regístrate</a>
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const toggleBtn = document.getElementById('togglePassword');
+  const passwordInput = document.getElementById('password');
+  const eyeIcon = document.getElementById('eyeIcon');
+  toggleBtn.addEventListener('click', () => {
+    const isHidden = passwordInput.type === 'password';
+    passwordInput.type = isHidden ? 'text' : 'password';
+    eyeIcon.innerHTML = isHidden
+      ? '<path d="M3 3l18 18" stroke-linecap="round"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" /><path d="M9.9 5.1A10.6 10.6 0 0 1 12 5c6.5 0 10 7 10 7a13.2 13.2 0 0 1-3.1 3.9M6.6 6.6C4 8.3 2 12 2 12s3.5 7 10 7a10.6 10.6 0 0 0 4-.8" stroke-linecap="round" stroke-linejoin="round"/>'
+      : '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" stroke-linejoin="round"/><circle cx="12" cy="12" r="3"/>';
+  });
+
+  const form = document.getElementById('loginForm');
+  const errorMsg = document.getElementById('errorMsg');
+  const submitBtn = document.getElementById('submitBtn');
+  const submitLabel = document.getElementById('submitLabel');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorMsg.classList.add('hidden');
+    submitBtn.disabled = true;
+    submitLabel.textContent = 'Ingresando...';
+
+    const usuario = document.getElementById('usuario').value.trim();
+    const password = passwordInput.value;
+
+    try {
+      const res = await fetch('/api/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usuario, password }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Credenciales inválidas');
+      }
+
+      localStorage.setItem('corbana_access_token', data.data.accessToken);
+      localStorage.setItem('corbana_refresh_token', data.data.refreshToken);
+      window.location.href = '/dashboard';
+    } catch (err) {
+      errorMsg.textContent = err.message;
+      errorMsg.classList.remove('hidden');
+    } finally {
+      submitBtn.disabled = false;
+      submitLabel.textContent = 'Iniciar sesión';
+    }
+  });
+</script>
+</body>
+</html>

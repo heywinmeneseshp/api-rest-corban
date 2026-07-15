@@ -4,6 +4,8 @@ import cors from 'cors';
 import morgan from 'morgan';
 import compression from 'compression';
 import swaggerUi from 'swagger-ui-express';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { env } from './config/env.config.js';
 import { corsConfig } from './config/cors.config.js';
@@ -30,14 +32,29 @@ import infeccionRoutes from './routes/agricola/infeccion.routes.js';
 import conteoHojasRoutes from './routes/agricola/conteoHojas.routes.js';
 import sumaBrutaRoutes from './routes/agricola/sumaBruta.routes.js';
 
+import configuracionRoutes from './routes/sistema/configuracion.routes.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 export const app = express();
 
 app.disable('x-powered-by');
-app.use(helmet());
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        'script-src': ["'self'", "'unsafe-inline'", 'https://cdn.tailwindcss.com'],
+        'style-src': ["'self'", "'unsafe-inline'"],
+      },
+    },
+  }),
+);
 app.use(cors(corsConfig));
 app.use(compression());
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, '../public')));
 app.use(
   morgan('combined', {
     stream: { write: (message) => logger.info(message.trim()) },
@@ -47,6 +64,14 @@ app.use(globalRateLimiter);
 
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.get('/api-docs.json', (_req, res) => res.json(swaggerSpec));
+
+app.get('/login', (_req, res) => {
+  res.sendFile(path.join(__dirname, '../public/login.html'));
+});
+
+app.get('/dashboard', (_req, res) => {
+  res.sendFile(path.join(__dirname, '../public/dashboard.html'));
+});
 
 const router = express.Router();
 router.use('/auth', authRoutes);
@@ -68,6 +93,8 @@ router.use('/evaluaciones', evaluacionRoutes);
 router.use('/evaluaciones', infeccionRoutes);
 router.use('/evaluaciones', conteoHojasRoutes);
 router.use('/evaluaciones', sumaBrutaRoutes);
+
+router.use('/configuraciones', configuracionRoutes);
 
 app.use(env.apiPrefix, router);
 

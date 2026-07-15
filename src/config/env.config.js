@@ -42,6 +42,12 @@ export const env = {
     origin: process.env.CORS_ORIGIN || '*',
   },
 
+  integrations: {
+    // API de api-rest-banarica: expone GET /api/v1/almacenes/ público (sin auth),
+    // usado para sincronizar almacenes activos como fincas de corbana.
+    banaricaBaseUrl: process.env.BANARICA_API_URL || 'https://api-logistica-banarica.vercel.app',
+  },
+
   rateLimit: {
     windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 900000),
     max: Number(process.env.RATE_LIMIT_MAX || 300),

@@ -101,4 +101,21 @@ router.get(
   fincaController.listLotes,
 );
 
+/**
+ * @openapi
+ * /fincas/sync-banarica:
+ *   post:
+ *     tags: [Fincas]
+ *     summary: Sincroniza los almacenes activos de api-rest-banarica como fincas
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.post(
+  '/sync-banarica',
+  auth,
+  permission(PERMISSIONS.FINCA_CREAR),
+  fincaController.syncBanarica,
+);
+
 export default router;
