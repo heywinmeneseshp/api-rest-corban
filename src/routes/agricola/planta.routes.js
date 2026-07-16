@@ -9,6 +9,7 @@ import {
   getPlantaSchema,
   createPlantaSchema,
   updatePlantaSchema,
+  getPlantaByCodeSchema,
   listPlantaEvaluacionesSchema,
 } from '../../validators/agricola/planta.validator.js';
 
@@ -43,6 +44,34 @@ router.post(
   permission(PERMISSIONS.PLANTA_CREAR),
   validate(createPlantaSchema),
   plantaController.create,
+);
+
+/**
+ * @openapi
+ * /plantas/by-code:
+ *   get:
+ *     tags: [Plantas]
+ *     summary: Buscar planta por lote y código
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: loteUuid
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: query
+ *         name: codigo
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: OK }
+ *       404: { description: No encontrada }
+ */
+router.get(
+  '/by-code',
+  auth,
+  permission(PERMISSIONS.PLANTA_VER),
+  validate(getPlantaByCodeSchema),
+  plantaController.getByCode,
 );
 
 /**

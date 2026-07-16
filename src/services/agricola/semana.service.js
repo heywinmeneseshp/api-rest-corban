@@ -1,3 +1,4 @@
+import { Semana } from '../../database/associations.js';
 import { semanaRepository } from '../../repositories/agricola/semana.repository.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
@@ -65,6 +66,52 @@ export const semanaService = {
   async deleteSemana(uuid, actorId) {
     const semana = await this.getSemanaByUuid(uuid);
     await semanaRepository.softDelete(semana, actorId);
+  },
+
+  async generarAnio(payload, actorId) {
+    const { anio, fechaInicioSemana1, totalSemanas } = payload;
+
+    const parseLocal = (s) => {
+      const [y, m, d] = s.split('-').map(Number);
+      return new Date(y, m - 1, d);
+    };
+
+    const toLocalStr = (d) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+
+    const startDate = parseLocal(fechaInicioSemana1);
+    if (startDate.getDay() !== 1) {
+      throw ApiError.badRequest('La fecha de inicio debe ser un lunes');
+    }
+
+    const pad = (n) => String(n).padStart(2, '0');
+
+    const weeks = Array.from({ length: totalSemanas }, (_, i) => {
+      const weekNum = i + 1;
+      const inicio = new Date(startDate);
+      inicio.setDate(inicio.getDate() + i * 7);
+      const fin = new Date(inicio);
+      fin.setDate(fin.getDate() + 6);
+
+      return {
+        codigo: `S${pad(weekNum)}-${anio}`,
+        numeroSemana: weekNum,
+        anio,
+        fechaInicio: toLocalStr(inicio),
+        fechaFin: toLocalStr(fin),
+        estado: true,
+        createdBy: actorId,
+      };
+    });
+
+    return Semana.sequelize.transaction(async (transaction) => {
+      await semanaRepository.forceDeleteByAnio(anio, { transaction });
+      return semanaRepository.bulkCreate(weeks, { transaction });
+    });
   },
 };
 

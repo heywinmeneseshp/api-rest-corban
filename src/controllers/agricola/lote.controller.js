@@ -37,6 +37,28 @@ export const loteController = {
     const { items, meta } = await loteService.listPlantas(req.params.uuid, req.query);
     ApiResponse.send(res, { message: 'Plantas del lote obtenidas correctamente', data: { items, meta } });
   }),
+
+  bulkUpload: asyncHandler(async (req, res) => {
+    const resultado = await loteService.bulkCreateLotes(req.file, req.user?.id);
+    ApiResponse.send(res, { message: 'Cargue masivo de lotes procesado', data: resultado });
+  }),
+
+  listAreaProduccion: asyncHandler(async (req, res) => {
+    const { items, meta } = await loteService.listAreaProduccion(req.params.uuid, req.query);
+    ApiResponse.send(res, {
+      message: 'Historial de área en producción obtenido correctamente',
+      data: { items, meta },
+    });
+  }),
+
+  registerAreaProduccion: asyncHandler(async (req, res) => {
+    const registro = await loteService.registerAreaProduccion(req.params.uuid, req.body, req.user?.id);
+    ApiResponse.send(res, {
+      statusCode: HTTP_STATUS.CREATED,
+      message: 'Área en producción registrada correctamente',
+      data: registro,
+    });
+  }),
 };
 
 export default loteController;

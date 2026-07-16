@@ -60,18 +60,23 @@ export const roleService = {
     return role.permisos || [];
   },
 
+  // Nota: se busca el rol SIN el include de permisos (más liviano) y no se
+  // vuelve a re-consultar el rol completo al final — el front-end solo
+  // necesita saber que la operación fue exitosa, no el rol entero de nuevo.
+  // Con el bridge remoto de por medio, cada consulta de más se siente en
+  // la latencia del checkbox.
   async assignPermiso(uuid, permisoUuid, actorId) {
-    const role = await this.getRoleByUuid(uuid);
+    const role = await roleRepository.findByUuid(uuid, { includePermisos: false });
+    if (!role) throw ApiError.notFound('Rol no encontrado');
     const permiso = await findPermisoByUuidOrFail(permisoUuid);
     await roleRepository.assignPermiso(role.id, permiso.id, actorId);
-    return this.getRoleByUuid(uuid);
   },
 
   async removePermiso(uuid, permisoUuid) {
-    const role = await this.getRoleByUuid(uuid);
+    const role = await roleRepository.findByUuid(uuid, { includePermisos: false });
+    if (!role) throw ApiError.notFound('Rol no encontrado');
     const permiso = await findPermisoByUuidOrFail(permisoUuid);
     await roleRepository.removePermiso(role.id, permiso.id);
-    return this.getRoleByUuid(uuid);
   },
 };
 

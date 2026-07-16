@@ -87,18 +87,21 @@ export const userService = {
     return user.roles || [];
   },
 
+  // Igual que en role.service.js: se evita el include de roles (más
+  // liviano) y no se re-consulta el usuario completo al final, para no
+  // sumar consultas de más contra el bridge remoto en cada clic.
   async assignRole(uuid, roleUuid, actorId) {
-    const user = await this.getUserByUuid(uuid);
+    const user = await userRepository.findByUuid(uuid, { includeRoles: false });
+    if (!user) throw ApiError.notFound('Usuario no encontrado');
     const role = await findRoleByUuidOrFail(roleUuid);
     await userRepository.assignRole(user.id, role.id, actorId);
-    return this.getUserByUuid(uuid);
   },
 
   async removeRole(uuid, roleUuid) {
-    const user = await this.getUserByUuid(uuid);
+    const user = await userRepository.findByUuid(uuid, { includeRoles: false });
+    if (!user) throw ApiError.notFound('Usuario no encontrado');
     const role = await findRoleByUuidOrFail(roleUuid);
     await userRepository.removeRole(user.id, role.id);
-    return this.getUserByUuid(uuid);
   },
 };
 

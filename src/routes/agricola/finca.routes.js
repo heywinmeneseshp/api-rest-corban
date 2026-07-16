@@ -3,6 +3,7 @@ import { fincaController } from '../../controllers/agricola/finca.controller.js'
 import { auth } from '../../middlewares/auth.middleware.js';
 import { permission } from '../../middlewares/permission.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
+import { uploadBulkFile } from '../../middlewares/upload.middleware.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import {
   listFincasSchema,
@@ -135,6 +136,24 @@ router.post(
   permission(PERMISSIONS.FINCA_CREAR),
   validate(syncBanaricaSchema),
   fincaController.syncBanarica,
+);
+
+/**
+ * @openapi
+ * /fincas/bulk-upload:
+ *   post:
+ *     tags: [Fincas]
+ *     summary: Cargue masivo de fincas desde un archivo .csv/.xlsx
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.post(
+  '/bulk-upload',
+  auth,
+  permission(PERMISSIONS.FINCA_CREAR),
+  uploadBulkFile,
+  fincaController.bulkUpload,
 );
 
 export default router;

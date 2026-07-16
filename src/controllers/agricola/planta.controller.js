@@ -33,6 +33,11 @@ export const plantaController = {
     ApiResponse.send(res, { message: 'Planta eliminada correctamente' });
   }),
 
+  getByCode: asyncHandler(async (req, res) => {
+    const planta = await plantaService.getPlantaByLoteAndCodigo(req.query.loteUuid, req.query.codigo);
+    ApiResponse.send(res, { message: 'Planta obtenida correctamente', data: planta });
+  }),
+
   listEvaluaciones: asyncHandler(async (req, res) => {
     const { items, meta } = await plantaService.listEvaluaciones(req.params.uuid, req.query);
     ApiResponse.send(res, {

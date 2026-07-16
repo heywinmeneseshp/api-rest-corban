@@ -31,6 +31,16 @@ export const createSemanaSchema = Joi.object({
   query: Joi.object({}),
 });
 
+export const generarAnioSchema = Joi.object({
+  body: Joi.object({
+    anio: Joi.number().integer().min(2000).max(2100).required(),
+    fechaInicioSemana1: Joi.date().iso().raw().required(),
+    totalSemanas: Joi.number().integer().min(1).max(53).required(),
+  }),
+  params: Joi.object({}),
+  query: Joi.object({}),
+});
+
 export const updateSemanaSchema = Joi.object({
   body: Joi.object({
     codigo: Joi.string().min(1).max(20),

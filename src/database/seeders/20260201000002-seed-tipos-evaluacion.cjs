@@ -9,9 +9,9 @@ module.exports = {
     await queryInterface.bulkInsert(
       'tipos_evaluacion',
       [
-        { nombre: 'Sigatoka Negra', descripcion: 'Evaluación de infección por Sigatoka Negra' },
-        { nombre: 'Emisión Foliar', descripcion: 'Evaluación de conteo y suma bruta de hojas' },
-        { nombre: 'Fitosanitaria General', descripcion: 'Inspección fitosanitaria general de la planta' },
+        { nombre: 'Índice de infección', descripcion: 'Evaluación de índice de infección de la planta' },
+        { nombre: 'Conteo de Hojas', descripcion: 'Evaluación de conteo de hojas funcionales' },
+        { nombre: 'Suma Bruta', descripcion: 'Evaluación de suma bruta de hojas' },
       ].map((t) => ({
         uuid: crypto.randomUUID(),
         nombre: t.nombre,

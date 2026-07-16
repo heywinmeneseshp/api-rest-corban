@@ -83,6 +83,13 @@ export const plantaService = {
     await plantaRepository.softDelete(planta, actorId);
   },
 
+  async getPlantaByLoteAndCodigo(loteUuid, codigo) {
+    const lote = await findLoteByUuidOrFail(loteUuid);
+    const planta = await plantaRepository.findByLoteAndCodigo(lote.id, codigo);
+    if (!planta) throw ApiError.notFound('Planta no encontrada para ese lote y código');
+    return planta;
+  },
+
   async listEvaluaciones(uuid, query) {
     const planta = await this.getPlantaByUuid(uuid);
     const { page, limit, offset } = getPagination(query);

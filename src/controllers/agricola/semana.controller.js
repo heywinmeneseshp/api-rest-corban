@@ -32,6 +32,15 @@ export const semanaController = {
     await semanaService.deleteSemana(req.params.uuid, req.user?.id);
     ApiResponse.send(res, { message: 'Semana eliminada correctamente' });
   }),
+
+  generarAnio: asyncHandler(async (req, res) => {
+    const semanas = await semanaService.generarAnio(req.body, req.user?.id);
+    ApiResponse.send(res, {
+      statusCode: HTTP_STATUS.CREATED,
+      message: `Año generado correctamente (${semanas.length} semanas)`,
+      data: semanas,
+    });
+  }),
 };
 
 export default semanaController;

@@ -3,6 +3,13 @@ import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { logger } from '../../utils/logger.js';
 import { configuracionService } from '../sistema/configuracion.service.js';
+import { parseBulkFile } from '../../utils/bulkFileParser.js';
+
+const parseEstado = (value) => {
+  if (value === undefined || value === '' || value === null) return true;
+  const v = String(value).trim().toLowerCase();
+  return !['false', '0', 'no', 'inactivo', 'inactive'].includes(v);
+};
 
 export const fincaService = {
   async listFincas(query) {
@@ -148,6 +155,59 @@ export const fincaService = {
       fincasCreadas: creados,
       fincasActualizadas: actualizados,
       fincasRestauradas: restaurados,
+    };
+  },
+
+  // Cargue masivo de fincas desde un archivo .csv/.xlsx. Columnas esperadas
+  // (encabezados, sin importar mayúsculas/acentos): codigo, nombre, estado
+  // (opcional; por defecto activo). Fila por fila: crea, actualiza o
+  // restaura (si el código coincide con una finca eliminada lógicamente).
+  async bulkCreateFincas(file, actorId) {
+    const rows = parseBulkFile(file);
+    if (rows.length === 0) throw ApiError.badRequest('El archivo no tiene filas para procesar');
+
+    let creados = 0;
+    let actualizados = 0;
+    let restaurados = 0;
+    const errores = [];
+
+    for (let i = 0; i < rows.length; i += 1) {
+      const fila = i + 2; // +2: fila 1 son encabezados, y es 1-indexed para el usuario
+      const row = rows[i];
+      const codigo = String(row.codigo || '').trim();
+      const nombre = String(row.nombre || '').trim();
+
+      if (!codigo || !nombre) {
+        errores.push({ fila, mensaje: 'Faltan las columnas requeridas: codigo y/o nombre' });
+        continue;
+      }
+
+      try {
+        const estado = parseEstado(row.estado);
+        const existing = await fincaRepository.findByCodigoIncludingDeleted(codigo);
+
+        if (existing && existing.deletedAt) {
+          await fincaRepository.restore(existing);
+          await fincaRepository.update(existing, { nombre, estado, updatedBy: actorId });
+          restaurados += 1;
+        } else if (existing) {
+          await fincaRepository.update(existing, { nombre, estado, updatedBy: actorId });
+          actualizados += 1;
+        } else {
+          await fincaRepository.create({ codigo, nombre, estado, createdBy: actorId });
+          creados += 1;
+        }
+      } catch (error) {
+        errores.push({ fila, mensaje: error.message || 'Error al procesar la fila' });
+      }
+    }
+
+    return {
+      totalFilas: rows.length,
+      fincasCreadas: creados,
+      fincasActualizadas: actualizados,
+      fincasRestauradas: restaurados,
+      errores,
     };
   },
 };

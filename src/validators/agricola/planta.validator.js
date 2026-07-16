@@ -20,6 +20,15 @@ export const getPlantaSchema = Joi.object({
   query: Joi.object({}),
 });
 
+export const getPlantaByCodeSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({}),
+  query: Joi.object({
+    loteUuid: uuidRef.required(),
+    codigo: Joi.string().min(1).max(30).required(),
+  }),
+});
+
 export const listPlantaEvaluacionesSchema = Joi.object({
   body: Joi.object({}),
   params: Joi.object({ uuid: uuidParam }),

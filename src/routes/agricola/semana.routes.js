@@ -9,6 +9,7 @@ import {
   getSemanaSchema,
   createSemanaSchema,
   updateSemanaSchema,
+  generarAnioSchema,
 } from '../../validators/agricola/semana.validator.js';
 
 const router = Router();
@@ -42,6 +43,24 @@ router.post(
   permission(PERMISSIONS.SEMANA_CREAR),
   validate(createSemanaSchema),
   semanaController.create,
+);
+
+/**
+ * @openapi
+ * /semanas/generar-anio:
+ *   post:
+ *     tags: [Semanas]
+ *     summary: Generar todas las semanas de un año
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       201: { description: Creado }
+ */
+router.post(
+  '/generar-anio',
+  auth,
+  permission(PERMISSIONS.SEMANA_CREAR),
+  validate(generarAnioSchema),
+  semanaController.generarAnio,
 );
 
 /**

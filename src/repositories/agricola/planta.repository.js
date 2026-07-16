@@ -1,5 +1,5 @@
 import { Op } from 'sequelize';
-import { Planta, Lote, CategoriaPlanta, Evaluacion } from '../../database/associations.js';
+import { Planta, Lote, CategoriaPlanta, Evaluacion, TipoEvaluacion, Semana } from '../../database/associations.js';
 
 export const plantaRepository = {
   async findAndCountAll({ limit, offset, search, loteId }) {
@@ -59,6 +59,10 @@ export const plantaRepository = {
       limit,
       offset,
       order: [['fecha', 'DESC']],
+      include: [
+        { model: TipoEvaluacion, as: 'tipoEvaluacion', attributes: ['id', 'uuid', 'nombre'] },
+        { model: Semana, as: 'semana', attributes: ['id', 'uuid', 'codigo'] },
+      ],
     });
   },
 };

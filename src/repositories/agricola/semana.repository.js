@@ -7,10 +7,7 @@ export const semanaRepository = {
       where,
       limit,
       offset,
-      order: [
-        ['anio', 'DESC'],
-        ['numeroSemana', 'DESC'],
-      ],
+      order: [['fecha_inicio', 'DESC']],
     });
   },
 
@@ -32,6 +29,14 @@ export const semanaRepository = {
 
   create(data, { transaction } = {}) {
     return Semana.create(data, { transaction });
+  },
+
+  bulkCreate(weeks, { transaction } = {}) {
+    return Semana.bulkCreate(weeks, { transaction });
+  },
+
+  async forceDeleteByAnio(anio, { transaction } = {}) {
+    await Semana.destroy({ where: { anio }, force: true, transaction });
   },
 
   async update(semana, data, { transaction } = {}) {

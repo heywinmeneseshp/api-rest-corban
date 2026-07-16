@@ -3,6 +3,7 @@ import { loteController } from '../../controllers/agricola/lote.controller.js';
 import { auth } from '../../middlewares/auth.middleware.js';
 import { permission } from '../../middlewares/permission.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
+import { uploadBulkFile } from '../../middlewares/upload.middleware.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import {
   listLotesSchema,
@@ -10,6 +11,8 @@ import {
   createLoteSchema,
   updateLoteSchema,
   listLotePlantasSchema,
+  listAreaProduccionSchema,
+  createAreaProduccionSchema,
 } from '../../validators/agricola/lote.validator.js';
 
 const router = Router();
@@ -99,6 +102,55 @@ router.get(
   permission(PERMISSIONS.PLANTA_VER),
   validate(listLotePlantasSchema),
   loteController.listPlantas,
+);
+
+/**
+ * @openapi
+ * /lotes/{uuid}/area-produccion:
+ *   get:
+ *     tags: [Lotes]
+ *     summary: Historial de área en producción de un lote
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ *   post:
+ *     tags: [Lotes]
+ *     summary: Registrar una nueva medición de área en producción
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       201: { description: Creado }
+ */
+router.get(
+  '/:uuid/area-produccion',
+  auth,
+  permission(PERMISSIONS.LOTE_VER),
+  validate(listAreaProduccionSchema),
+  loteController.listAreaProduccion,
+);
+router.post(
+  '/:uuid/area-produccion',
+  auth,
+  permission(PERMISSIONS.LOTE_EDITAR),
+  validate(createAreaProduccionSchema),
+  loteController.registerAreaProduccion,
+);
+
+/**
+ * @openapi
+ * /lotes/bulk-upload:
+ *   post:
+ *     tags: [Lotes]
+ *     summary: Cargue masivo de lotes desde un archivo .csv/.xlsx
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.post(
+  '/bulk-upload',
+  auth,
+  permission(PERMISSIONS.LOTE_CREAR),
+  uploadBulkFile,
+  loteController.bulkUpload,
 );
 
 export default router;

@@ -39,13 +39,13 @@ export const userController = {
   }),
 
   assignRole: asyncHandler(async (req, res) => {
-    const user = await userService.assignRole(req.params.uuid, req.body.roleUuid, req.user?.id);
-    ApiResponse.send(res, { message: 'Rol asignado correctamente', data: user });
+    await userService.assignRole(req.params.uuid, req.body.roleUuid, req.user?.id);
+    ApiResponse.send(res, { message: 'Rol asignado correctamente', data: null });
   }),
 
   removeRole: asyncHandler(async (req, res) => {
-    const user = await userService.removeRole(req.params.uuid, req.params.roleUuid);
-    ApiResponse.send(res, { message: 'Rol removido correctamente', data: user });
+    await userService.removeRole(req.params.uuid, req.params.roleUuid);
+    ApiResponse.send(res, { message: 'Rol removido correctamente', data: null });
   }),
 };
 

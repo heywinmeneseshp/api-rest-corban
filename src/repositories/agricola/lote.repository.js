@@ -30,6 +30,12 @@ export const loteRepository = {
     return Lote.findOne({ where: { fincaId, codigo } });
   },
 
+  // Cuenta TODOS los lotes de la finca, incluidos los eliminados
+  // lógicamente, para generar un consecutivo que nunca se repita.
+  countByFincaId(fincaId) {
+    return Lote.count({ where: { fincaId }, paranoid: false });
+  },
+
   create(data, { transaction } = {}) {
     return Lote.create(data, { transaction });
   },

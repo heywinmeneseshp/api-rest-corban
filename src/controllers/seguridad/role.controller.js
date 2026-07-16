@@ -39,13 +39,13 @@ export const roleController = {
   }),
 
   assignPermiso: asyncHandler(async (req, res) => {
-    const role = await roleService.assignPermiso(req.params.uuid, req.body.permisoUuid, req.user?.id);
-    ApiResponse.send(res, { message: 'Permiso asignado correctamente', data: role });
+    await roleService.assignPermiso(req.params.uuid, req.body.permisoUuid, req.user?.id);
+    ApiResponse.send(res, { message: 'Permiso asignado correctamente', data: null });
   }),
 
   removePermiso: asyncHandler(async (req, res) => {
-    const role = await roleService.removePermiso(req.params.uuid, req.params.permisoUuid);
-    ApiResponse.send(res, { message: 'Permiso removido correctamente', data: role });
+    await roleService.removePermiso(req.params.uuid, req.params.permisoUuid);
+    ApiResponse.send(res, { message: 'Permiso removido correctamente', data: null });
   }),
 };
 

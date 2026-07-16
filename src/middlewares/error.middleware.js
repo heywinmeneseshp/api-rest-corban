@@ -26,6 +26,16 @@ const mapSequelizeError = (err) => {
 export const errorHandler = (err, req, res, _next) => {
   let apiError = err instanceof ApiError ? err : mapSequelizeError(err);
 
+  if (!apiError && err.name === 'MulterError') {
+    apiError = ApiError.badRequest(
+      err.code === 'LIMIT_FILE_SIZE' ? 'El archivo supera el tamaño máximo permitido (10MB)' : err.message,
+    );
+  }
+
+  if (!apiError && err.statusCode) {
+    apiError = ApiError.badRequest(err.message);
+  }
+
   if (!apiError) {
     apiError = ApiError.internal(env.isProduction ? 'Error interno del servidor' : err.message);
   }

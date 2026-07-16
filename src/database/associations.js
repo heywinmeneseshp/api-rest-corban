@@ -18,6 +18,7 @@ import { ConteoHojas } from './models/conteoHojas.model.js';
 import { SumaBruta } from './models/sumaBruta.model.js';
 import { EstadioHoja } from './models/estadioHoja.model.js';
 import { Configuracion } from './models/configuracion.model.js';
+import { LoteAreaProduccion } from './models/loteAreaProduccion.model.js';
 
 const withAuditAssociations = (TargetModel) => {
   TargetModel.belongsTo(User, { as: 'creadoPor', foreignKey: 'createdBy' });
@@ -93,6 +94,11 @@ export const setupAssociations = () => {
   Lote.hasMany(Planta, { foreignKey: 'loteId', as: 'plantas' });
   Planta.belongsTo(Lote, { foreignKey: 'loteId', as: 'lote' });
 
+  // Historial de área en producción (append-only, sin updated_by)
+  Lote.hasMany(LoteAreaProduccion, { foreignKey: 'loteId', as: 'areaProduccionHistorial' });
+  LoteAreaProduccion.belongsTo(Lote, { foreignKey: 'loteId', as: 'lote' });
+  LoteAreaProduccion.belongsTo(User, { foreignKey: 'createdBy', as: 'creadoPor' });
+
   CategoriaPlanta.hasMany(Planta, { foreignKey: 'categoriaPlantaId', as: 'plantas' });
   Planta.belongsTo(CategoriaPlanta, { foreignKey: 'categoriaPlantaId', as: 'categoriaPlanta' });
 
@@ -165,6 +171,7 @@ export {
   SumaBruta,
   EstadioHoja,
   Configuracion,
+  LoteAreaProduccion,
 };
 
 export default setupAssociations;

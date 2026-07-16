@@ -9,9 +9,7 @@ module.exports = {
     await queryInterface.bulkInsert(
       'categorias_planta',
       [
-        { nombre: 'Madre', descripcion: 'Planta madre en producción' },
-        { nombre: 'Hija', descripcion: 'Planta hija de sucesión' },
-        { nombre: 'Nieta', descripcion: 'Planta nieta de sucesión' },
+        { nombre: 'Planta Pronta', descripcion: 'Planta lista para evaluación fitosanitaria' },
       ].map((c) => ({
         uuid: crypto.randomUUID(),
         nombre: c.nombre,
