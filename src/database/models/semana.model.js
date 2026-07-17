@@ -1,5 +1,6 @@
 import { DataTypes, Model } from 'sequelize';
 import { sequelize } from '../connection.js';
+import { calcularColorSemana } from '../../utils/semanaColor.js';
 
 export class Semana extends Model {}
 
@@ -13,6 +14,14 @@ Semana.init(
     fechaInicio: { type: DataTypes.DATEONLY, allowNull: false, field: 'fecha_inicio' },
     fechaFin: { type: DataTypes.DATEONLY, allowNull: false, field: 'fecha_fin' },
     estado: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+    // Color de la cinta de embolse de esa semana — no se guarda, se deriva
+    // de año + número de semana (ver src/utils/semanaColor.js).
+    color: {
+      type: DataTypes.VIRTUAL,
+      get() {
+        return calcularColorSemana(this.getDataValue('anio'), this.getDataValue('numeroSemana'));
+      },
+    },
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
     updatedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'updated_by' },
     deletedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'deleted_by' },

@@ -1,6 +1,26 @@
+import { Op } from 'sequelize';
 import { Semana } from '../../database/associations.js';
 
 export const semanaRepository = {
+  findByFecha(fecha) {
+    return Semana.findOne({
+      where: { fechaInicio: { [Op.lte]: fecha }, fechaFin: { [Op.gte]: fecha } },
+    });
+  },
+
+  // Últimas `n` semanas contando hacia atrás desde `semanaActualId` (incluida),
+  // ordenadas de más antigua a más reciente. Se usa para acotar el
+  // inventario de racimos a un rango razonable de cohortes de embolse.
+  async findUltimasN(semanaActualId, n) {
+    const actual = await Semana.findByPk(semanaActualId);
+    if (!actual) return [];
+    const anteriores = await Semana.findAll({
+      where: { fechaInicio: { [Op.lte]: actual.fechaInicio } },
+      order: [['fecha_inicio', 'DESC']],
+      limit: n,
+    });
+    return anteriores.reverse();
+  },
   async findAndCountAll({ limit, offset, anio }) {
     const where = anio ? { anio } : undefined;
     return Semana.findAndCountAll({

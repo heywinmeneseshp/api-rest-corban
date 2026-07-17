@@ -67,6 +67,21 @@ export const PERMISSIONS = {
   SUMA_BRUTA_VER: 'suma_bruta.ver',
   SUMA_BRUTA_CREAR: 'suma_bruta.crear',
   SUMA_BRUTA_EDITAR: 'suma_bruta.editar',
+
+  MOTIVO_REPIQUE_VER: 'motivo_repique.ver',
+  MOTIVO_REPIQUE_CREAR: 'motivo_repique.crear',
+  MOTIVO_REPIQUE_EDITAR: 'motivo_repique.editar',
+  MOTIVO_REPIQUE_ELIMINAR: 'motivo_repique.eliminar',
+
+  MOTIVO_RECUSE_VER: 'motivo_recuse.ver',
+  MOTIVO_RECUSE_CREAR: 'motivo_recuse.crear',
+  MOTIVO_RECUSE_EDITAR: 'motivo_recuse.editar',
+  MOTIVO_RECUSE_ELIMINAR: 'motivo_recuse.eliminar',
+
+  RACIMO_MOVIMIENTO_VER: 'racimo_movimiento.ver',
+  RACIMO_MOVIMIENTO_CREAR: 'racimo_movimiento.crear',
+  RACIMO_MOVIMIENTO_EDITAR: 'racimo_movimiento.editar',
+  RACIMO_MOVIMIENTO_ELIMINAR: 'racimo_movimiento.eliminar',
 };
 
 export const PERMISSIONS_SEED = [
@@ -138,4 +153,19 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.SUMA_BRUTA_VER, nombre: 'Ver suma bruta' },
   { codigo: PERMISSIONS.SUMA_BRUTA_CREAR, nombre: 'Crear suma bruta' },
   { codigo: PERMISSIONS.SUMA_BRUTA_EDITAR, nombre: 'Editar suma bruta' },
+
+  { codigo: PERMISSIONS.MOTIVO_REPIQUE_VER, nombre: 'Ver motivos de repique' },
+  { codigo: PERMISSIONS.MOTIVO_REPIQUE_CREAR, nombre: 'Crear motivos de repique' },
+  { codigo: PERMISSIONS.MOTIVO_REPIQUE_EDITAR, nombre: 'Editar motivos de repique' },
+  { codigo: PERMISSIONS.MOTIVO_REPIQUE_ELIMINAR, nombre: 'Eliminar motivos de repique' },
+
+  { codigo: PERMISSIONS.MOTIVO_RECUSE_VER, nombre: 'Ver motivos de recuse' },
+  { codigo: PERMISSIONS.MOTIVO_RECUSE_CREAR, nombre: 'Crear motivos de recuse' },
+  { codigo: PERMISSIONS.MOTIVO_RECUSE_EDITAR, nombre: 'Editar motivos de recuse' },
+  { codigo: PERMISSIONS.MOTIVO_RECUSE_ELIMINAR, nombre: 'Eliminar motivos de recuse' },
+
+  { codigo: PERMISSIONS.RACIMO_MOVIMIENTO_VER, nombre: 'Ver movimientos de racimos' },
+  { codigo: PERMISSIONS.RACIMO_MOVIMIENTO_CREAR, nombre: 'Crear movimientos de racimos' },
+  { codigo: PERMISSIONS.RACIMO_MOVIMIENTO_EDITAR, nombre: 'Editar movimientos de racimos' },
+  { codigo: PERMISSIONS.RACIMO_MOVIMIENTO_ELIMINAR, nombre: 'Eliminar movimientos de racimos' },
 ];

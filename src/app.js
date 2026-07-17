@@ -31,6 +31,9 @@ import evaluacionRoutes from './routes/agricola/evaluacion.routes.js';
 import infeccionRoutes from './routes/agricola/infeccion.routes.js';
 import conteoHojasRoutes from './routes/agricola/conteoHojas.routes.js';
 import sumaBrutaRoutes from './routes/agricola/sumaBruta.routes.js';
+import motivoRepiqueRoutes from './routes/agricola/motivoRepique.routes.js';
+import motivoRecuseRoutes from './routes/agricola/motivoRecuse.routes.js';
+import racimoMovimientoRoutes from './routes/agricola/racimoMovimiento.routes.js';
 
 import configuracionRoutes from './routes/sistema/configuracion.routes.js';
 
@@ -93,6 +96,10 @@ router.use('/evaluaciones', evaluacionRoutes);
 router.use('/evaluaciones', infeccionRoutes);
 router.use('/evaluaciones', conteoHojasRoutes);
 router.use('/evaluaciones', sumaBrutaRoutes);
+
+router.use('/motivos-repique', motivoRepiqueRoutes);
+router.use('/motivos-recuse', motivoRecuseRoutes);
+router.use('/racimo-movimientos', racimoMovimientoRoutes);
 
 router.use('/configuraciones', configuracionRoutes);
 

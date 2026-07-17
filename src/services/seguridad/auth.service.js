@@ -4,6 +4,7 @@ import { roleRepository } from '../../repositories/seguridad/role.repository.js'
 import { authRepository } from '../../repositories/seguridad/auth.repository.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { logger } from '../../utils/logger.js';
+import { ROLES } from '../../constants/roles.constants.js';
 import {
   signAccessToken,
   generateRefreshToken,
@@ -14,7 +15,11 @@ import {
 const buildTokenPair = async (user) => {
   const roleNames = (user.roles || []).map((r) => r.nombre);
   const roleIds = (user.roles || []).map((r) => r.id);
-  const permissions = await roleRepository.findPermissionCodesByRoleIds(roleIds);
+  // El rol Administrador siempre tiene acceso a todo, sin depender de que
+  // cada permiso nuevo se asigne manualmente en rol_permisos.
+  const permissions = roleNames.includes(ROLES.ADMINISTRADOR)
+    ? await roleRepository.findAllPermissionCodes()
+    : await roleRepository.findPermissionCodesByRoleIds(roleIds);
 
   const accessToken = signAccessToken({
     id: user.id,

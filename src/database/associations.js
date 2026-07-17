@@ -19,6 +19,9 @@ import { SumaBruta } from './models/sumaBruta.model.js';
 import { EstadioHoja } from './models/estadioHoja.model.js';
 import { Configuracion } from './models/configuracion.model.js';
 import { LoteAreaProduccion } from './models/loteAreaProduccion.model.js';
+import { MotivoRepique } from './models/motivoRepique.model.js';
+import { MotivoRecuse } from './models/motivoRecuse.model.js';
+import { RacimoMovimiento } from './models/racimoMovimiento.model.js';
 
 const withAuditAssociations = (TargetModel) => {
   TargetModel.belongsTo(User, { as: 'creadoPor', foreignKey: 'createdBy' });
@@ -135,6 +138,26 @@ export const setupAssociations = () => {
   SumaBruta.hasMany(EstadioHoja, { foreignKey: 'sumaBrutaId', as: 'estadios' });
   EstadioHoja.belongsTo(SumaBruta, { foreignKey: 'sumaBrutaId', as: 'sumaBruta' });
 
+  // Inventario de racimos embolsados: movimientos por cohorte (finca + lote
+  // + semana de embolse). EMBOLSE suma; REPIQUE/RECUSE/CORTE restan.
+  Finca.hasMany(RacimoMovimiento, { foreignKey: 'fincaId', as: 'racimoMovimientos' });
+  RacimoMovimiento.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+
+  Lote.hasMany(RacimoMovimiento, { foreignKey: 'loteId', as: 'racimoMovimientos' });
+  RacimoMovimiento.belongsTo(Lote, { foreignKey: 'loteId', as: 'lote' });
+
+  Semana.hasMany(RacimoMovimiento, { foreignKey: 'semanaEmbolseId', as: 'racimosEmbolsados' });
+  RacimoMovimiento.belongsTo(Semana, { foreignKey: 'semanaEmbolseId', as: 'semanaEmbolse' });
+
+  Semana.hasMany(RacimoMovimiento, { foreignKey: 'semanaRegistroId', as: 'racimosRegistrados' });
+  RacimoMovimiento.belongsTo(Semana, { foreignKey: 'semanaRegistroId', as: 'semanaRegistro' });
+
+  MotivoRepique.hasMany(RacimoMovimiento, { foreignKey: 'motivoRepiqueId', as: 'movimientos' });
+  RacimoMovimiento.belongsTo(MotivoRepique, { foreignKey: 'motivoRepiqueId', as: 'motivoRepique' });
+
+  MotivoRecuse.hasMany(RacimoMovimiento, { foreignKey: 'motivoRecuseId', as: 'movimientos' });
+  RacimoMovimiento.belongsTo(MotivoRecuse, { foreignKey: 'motivoRecuseId', as: 'motivoRecuse' });
+
   // Auditoría — Fase 2 (maestras con deleted_by, transaccionales sin deleted_by)
   withAuditAssociations(Finca);
   withAuditAssociations(Lote);
@@ -148,6 +171,9 @@ export const setupAssociations = () => {
   withAuditAssociationsNoDelete(ConteoHojas);
   withAuditAssociationsNoDelete(SumaBruta);
   withAuditAssociationsNoDelete(EstadioHoja);
+  withAuditAssociations(MotivoRepique);
+  withAuditAssociations(MotivoRecuse);
+  withAuditAssociations(RacimoMovimiento);
 };
 
 export {
@@ -172,6 +198,9 @@ export {
   EstadioHoja,
   Configuracion,
   LoteAreaProduccion,
+  MotivoRepique,
+  MotivoRecuse,
+  RacimoMovimiento,
 };
 
 export default setupAssociations;
