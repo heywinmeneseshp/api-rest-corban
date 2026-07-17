@@ -11,6 +11,9 @@ export const listEvaluacionesSchema = Joi.object({
     limit: Joi.number().integer().min(1).max(100),
     fechaDesde: Joi.date().iso().raw(),
     fechaHasta: Joi.date().iso().raw(),
+    fincaUuid: uuidRef,
+    loteUuid: uuidRef,
+    tipoEvaluacionUuid: uuidRef,
   }),
 });
 

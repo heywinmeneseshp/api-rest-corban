@@ -1,5 +1,5 @@
 import { sequelize } from '../../database/connection.js';
-import { Planta, User, TipoEvaluacion, Semana } from '../../database/associations.js';
+import { Planta, User, TipoEvaluacion, Semana, Finca, Lote } from '../../database/associations.js';
 import { evaluacionRepository } from '../../repositories/agricola/evaluacion.repository.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
@@ -28,14 +28,36 @@ const findUsuarioByUuidOrFail = async (uuid) => {
   return usuario;
 };
 
+const findFincaByUuidOrFail = async (uuid) => {
+  const finca = await Finca.findOne({ where: { uuid } });
+  if (!finca) throw ApiError.notFound('Finca no encontrada');
+  return finca;
+};
+
+const findLoteByUuidOrFail = async (uuid) => {
+  const lote = await Lote.findOne({ where: { uuid } });
+  if (!lote) throw ApiError.notFound('Lote no encontrado');
+  return lote;
+};
+
 export const evaluacionService = {
   async listEvaluaciones(query) {
     const { page, limit, offset } = getPagination(query);
+
+    const fincaId = query.fincaUuid ? (await findFincaByUuidOrFail(query.fincaUuid)).id : undefined;
+    const loteId = query.loteUuid ? (await findLoteByUuidOrFail(query.loteUuid)).id : undefined;
+    const tipoEvaluacionId = query.tipoEvaluacionUuid
+      ? (await findTipoEvaluacionByUuidOrFail(query.tipoEvaluacionUuid)).id
+      : undefined;
+
     const { rows, count } = await evaluacionRepository.findAndCountAll({
       limit,
       offset,
       fechaDesde: query.fechaDesde,
       fechaHasta: query.fechaHasta,
+      fincaId,
+      loteId,
+      tipoEvaluacionId,
     });
     return { items: rows, meta: buildPaginationMeta({ page, limit, total: count }) };
   },
