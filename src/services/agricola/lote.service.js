@@ -1,6 +1,6 @@
+import { Op } from 'sequelize';
 import { Finca } from '../../database/associations.js';
 import { loteRepository } from '../../repositories/agricola/lote.repository.js';
-import { fincaRepository } from '../../repositories/agricola/finca.repository.js';
 import { loteAreaProduccionRepository } from '../../repositories/agricola/loteAreaProduccion.repository.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
@@ -103,15 +103,16 @@ export const loteService = {
   // Cargue masivo de lotes desde un archivo .csv/.xlsx. Columnas esperadas
   // (encabezados, sin importar mayúsculas/acentos): fincacodigo, nombre,
   // area (opcional), estado (opcional). El código del lote SIEMPRE se
-  // genera automáticamente ({codigoFinca}-{consecutivo}), igual que al
-  // crear un lote individual.
-  async bulkCreateLotes(file, actorId) {
+  // genera automáticamente ({codigoFinca}-{consecutivo}). Se valida todo
+  // primero y el consecutivo de cada finca se asigna en memoria (contra un
+  // set de códigos ya usados, prefetcheado una sola vez), para poder
+  // escribir todas las filas válidas en un único bulkCreate.
+  async bulkCreateLotes(file, actorId, { dryRun = false } = {}) {
     const rows = parseBulkFile(file);
     if (rows.length === 0) throw ApiError.badRequest('El archivo no tiene filas para procesar');
 
-    let creados = 0;
     const errores = [];
-    const fincaCache = new Map();
+    const filasValidas = [];
 
     for (let i = 0; i < rows.length; i += 1) {
       const fila = i + 2;
@@ -125,39 +126,73 @@ export const loteService = {
         continue;
       }
 
-      try {
-        let finca = fincaCache.get(fincaCodigo);
-        if (finca === undefined) {
-          finca = await fincaRepository.findByCodigo(fincaCodigo);
-          fincaCache.set(fincaCodigo, finca);
-        }
-        if (!finca) {
-          errores.push({ fila, mensaje: `No existe ninguna finca con código '${fincaCodigo}'` });
-          continue;
-        }
-
-        const area = areaRaw !== undefined && areaRaw !== '' ? Number(areaRaw) : undefined;
-        if (area !== undefined && Number.isNaN(area)) {
-          errores.push({ fila, mensaje: 'El área debe ser un número' });
-          continue;
-        }
-
-        const codigo = await this.generateCodigo(finca);
-        await loteRepository.create({
-          fincaId: finca.id,
-          codigo,
-          nombre,
-          area,
-          estado: parseEstado(row.estado),
-          createdBy: actorId,
-        });
-        creados += 1;
-      } catch (error) {
-        errores.push({ fila, mensaje: error.message || 'Error al procesar la fila' });
+      const area = areaRaw !== undefined && areaRaw !== '' ? Number(areaRaw) : undefined;
+      if (area !== undefined && Number.isNaN(area)) {
+        errores.push({ fila, mensaje: 'El área debe ser un número' });
+        continue;
       }
+
+      filasValidas.push({ fila, fincaCodigo, nombre, area, estado: parseEstado(row.estado) });
     }
 
-    return { totalFilas: rows.length, lotesCreados: creados, errores };
+    const fincaCodigos = [...new Set(filasValidas.map((f) => f.fincaCodigo))];
+    const fincas = fincaCodigos.length ? await Finca.findAll({ where: { codigo: { [Op.in]: fincaCodigos } } }) : [];
+    const fincaPorCodigo = new Map(fincas.map((f) => [f.codigo, f]));
+
+    const filasConFinca = [];
+    for (const f of filasValidas) {
+      const finca = fincaPorCodigo.get(f.fincaCodigo);
+      if (!finca) {
+        errores.push({ fila: f.fila, mensaje: `No existe ninguna finca con código '${f.fincaCodigo}'` });
+        continue;
+      }
+      filasConFinca.push({ ...f, finca });
+    }
+
+    // Consecutivo por finca: arranca en countByFincaId(+1) y evita
+    // cualquier código ya usado (incluidos lotes eliminados lógicamente),
+    // todo en memoria en vez de una consulta por fila.
+    const fincaIds = [...new Set(filasConFinca.map((f) => f.finca.id))];
+    const codigosExistentes = fincaIds.length ? await loteRepository.findCodigosByFincaIds(fincaIds) : [];
+    const codigosUsadosPorFinca = new Map();
+    for (const c of codigosExistentes) {
+      if (!codigosUsadosPorFinca.has(c.fincaId)) codigosUsadosPorFinca.set(c.fincaId, new Set());
+      codigosUsadosPorFinca.get(c.fincaId).add(c.codigo);
+    }
+
+    const siguienteConsecutivo = new Map();
+    for (const fincaId of fincaIds) {
+      siguienteConsecutivo.set(fincaId, (await loteRepository.countByFincaId(fincaId)) + 1);
+    }
+
+    const asignarCodigo = (finca) => {
+      const usados = codigosUsadosPorFinca.get(finca.id) || new Set();
+      let consecutivo = siguienteConsecutivo.get(finca.id);
+      let codigo;
+      do {
+        codigo = `${finca.codigo}-${String(consecutivo).padStart(2, '0')}`;
+        consecutivo += 1;
+      } while (usados.has(codigo));
+      usados.add(codigo);
+      codigosUsadosPorFinca.set(finca.id, usados);
+      siguienteConsecutivo.set(finca.id, consecutivo);
+      return codigo;
+    };
+
+    const filasParaCrear = filasConFinca.map((f) => ({
+      fincaId: f.finca.id,
+      codigo: asignarCodigo(f.finca),
+      nombre: f.nombre,
+      area: f.area,
+      estado: f.estado,
+      createdBy: actorId,
+    }));
+
+    if (!dryRun && filasParaCrear.length > 0) {
+      await loteRepository.bulkCreate(filasParaCrear);
+    }
+
+    return { totalFilas: rows.length, lotesCreados: filasParaCrear.length, errores };
   },
 
   // Historial de área en producción: el "área disponible" del lote (campo

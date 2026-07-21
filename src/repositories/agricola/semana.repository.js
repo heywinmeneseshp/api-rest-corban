@@ -8,6 +8,12 @@ export const semanaRepository = {
     });
   },
 
+  // Última semana registrada de un año (para reportes de un año ya cerrado,
+  // que no es el año en curso).
+  findUltimaDelAnio(anio) {
+    return Semana.findOne({ where: { anio }, order: [['numero_semana', 'DESC']] });
+  },
+
   // Últimas `n` semanas contando hacia atrás desde `semanaActualId` (incluida),
   // ordenadas de más antigua a más reciente. Se usa para acotar el
   // inventario de racimos a un rango razonable de cohortes de embolse.

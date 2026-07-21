@@ -73,10 +73,6 @@ export const roleRepository = {
     return [...new Set(codes)];
   },
 
-  async findAllPermissionCodes() {
-    const permisos = await Permiso.findAll({ attributes: ['codigo'] });
-    return permisos.map((p) => p.codigo);
-  },
 };
 
 export default roleRepository;

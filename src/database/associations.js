@@ -139,7 +139,7 @@ export const setupAssociations = () => {
   EstadioHoja.belongsTo(SumaBruta, { foreignKey: 'sumaBrutaId', as: 'sumaBruta' });
 
   // Inventario de racimos embolsados: movimientos por cohorte (finca + lote
-  // + semana de embolse). EMBOLSE suma; REPIQUE/RECUSE/CORTE restan.
+  // + semana de embolse). EMBOLSE suma; REPIQUE/RECUSE/PROCESADO restan.
   Finca.hasMany(RacimoMovimiento, { foreignKey: 'fincaId', as: 'racimoMovimientos' });
   RacimoMovimiento.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
 

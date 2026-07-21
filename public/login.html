@@ -252,6 +252,7 @@
 
       localStorage.setItem('corbana_access_token', data.data.accessToken);
       localStorage.setItem('corbana_refresh_token', data.data.refreshToken);
+      localStorage.setItem('corbana_user', JSON.stringify(data.data.user || {}));
       window.location.href = '/dashboard';
     } catch (err) {
       errorMsg.textContent = err.message;

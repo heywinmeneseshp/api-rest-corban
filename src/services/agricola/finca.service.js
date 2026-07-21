@@ -160,16 +160,16 @@ export const fincaService = {
 
   // Cargue masivo de fincas desde un archivo .csv/.xlsx. Columnas esperadas
   // (encabezados, sin importar mayúsculas/acentos): codigo, nombre, estado
-  // (opcional; por defecto activo). Fila por fila: crea, actualiza o
-  // restaura (si el código coincide con una finca eliminada lógicamente).
-  async bulkCreateFincas(file, actorId) {
+  // (opcional; por defecto activo). Sin dependencias entre filas: se valida
+  // todo primero y se escribe en un solo bulkCreate con upsert (INSERT ...
+  // ON DUPLICATE KEY UPDATE sobre el código), que de paso restaura las que
+  // estaban eliminadas lógicamente.
+  async bulkCreateFincas(file, actorId, { dryRun = false } = {}) {
     const rows = parseBulkFile(file);
     if (rows.length === 0) throw ApiError.badRequest('El archivo no tiene filas para procesar');
 
-    let creados = 0;
-    let actualizados = 0;
-    let restaurados = 0;
     const errores = [];
+    const filasValidas = [];
 
     for (let i = 0; i < rows.length; i += 1) {
       const fila = i + 2; // +2: fila 1 son encabezados, y es 1-indexed para el usuario
@@ -182,24 +182,41 @@ export const fincaService = {
         continue;
       }
 
-      try {
-        const estado = parseEstado(row.estado);
-        const existing = await fincaRepository.findByCodigoIncludingDeleted(codigo);
+      filasValidas.push({ codigo, nombre, estado: parseEstado(row.estado) });
+    }
 
-        if (existing && existing.deletedAt) {
-          await fincaRepository.restore(existing);
-          await fincaRepository.update(existing, { nombre, estado, updatedBy: actorId });
-          restaurados += 1;
-        } else if (existing) {
-          await fincaRepository.update(existing, { nombre, estado, updatedBy: actorId });
-          actualizados += 1;
-        } else {
-          await fincaRepository.create({ codigo, nombre, estado, createdBy: actorId });
-          creados += 1;
-        }
-      } catch (error) {
-        errores.push({ fila, mensaje: error.message || 'Error al procesar la fila' });
-      }
+    // Si el mismo código aparece varias veces en el archivo, se procesa una
+    // sola vez con los valores de su última aparición.
+    const porCodigo = new Map();
+    for (const f of filasValidas) porCodigo.set(f.codigo, f);
+    const filasUnicas = [...porCodigo.values()];
+
+    const codigos = filasUnicas.map((f) => f.codigo);
+    const existentes = codigos.length ? await fincaRepository.findByCodigosIncludingDeleted(codigos) : [];
+    const existentesPorCodigo = new Map(existentes.map((f) => [f.codigo, f]));
+
+    let creados = 0;
+    let actualizados = 0;
+    let restaurados = 0;
+    for (const f of filasUnicas) {
+      const existente = existentesPorCodigo.get(f.codigo);
+      if (existente?.deletedAt) restaurados += 1;
+      else if (existente) actualizados += 1;
+      else creados += 1;
+    }
+
+    if (!dryRun && filasUnicas.length > 0) {
+      await fincaRepository.bulkUpsert(
+        filasUnicas.map((f) => ({
+          codigo: f.codigo,
+          nombre: f.nombre,
+          estado: f.estado,
+          deletedAt: null,
+          deletedBy: null,
+          createdBy: actorId,
+          updatedBy: actorId,
+        })),
+      );
     }
 
     return {

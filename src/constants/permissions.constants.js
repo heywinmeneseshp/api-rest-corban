@@ -82,6 +82,8 @@ export const PERMISSIONS = {
   RACIMO_MOVIMIENTO_CREAR: 'racimo_movimiento.crear',
   RACIMO_MOVIMIENTO_EDITAR: 'racimo_movimiento.editar',
   RACIMO_MOVIMIENTO_ELIMINAR: 'racimo_movimiento.eliminar',
+
+  SISTEMA_RESET_DATOS: 'sistema.reset_datos',
 };
 
 export const PERMISSIONS_SEED = [
@@ -168,4 +170,6 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.RACIMO_MOVIMIENTO_CREAR, nombre: 'Crear movimientos de racimos' },
   { codigo: PERMISSIONS.RACIMO_MOVIMIENTO_EDITAR, nombre: 'Editar movimientos de racimos' },
   { codigo: PERMISSIONS.RACIMO_MOVIMIENTO_ELIMINAR, nombre: 'Eliminar movimientos de racimos' },
+
+  { codigo: PERMISSIONS.SISTEMA_RESET_DATOS, nombre: 'Borrar todos los datos que no vienen de los seeders' },
 ];

@@ -2,9 +2,18 @@ import { sequelize } from '../../database/connection.js';
 import { Finca, Lote, Semana, MotivoRepique, MotivoRecuse } from '../../database/associations.js';
 import { racimoMovimientoRepository } from '../../repositories/agricola/racimoMovimiento.repository.js';
 import { semanaRepository } from '../../repositories/agricola/semana.repository.js';
+import { fincaRepository } from '../../repositories/agricola/finca.repository.js';
+import { loteRepository } from '../../repositories/agricola/lote.repository.js';
+import { motivoRepiqueRepository } from '../../repositories/agricola/motivoRepique.repository.js';
+import { motivoRecuseRepository } from '../../repositories/agricola/motivoRecuse.repository.js';
 import { calcularColorSemana } from '../../utils/semanaColor.js';
+import { parseBulkFile } from '../../utils/bulkFileParser.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
+import { logger } from '../../utils/logger.js';
+import { bulkProgress } from '../../utils/bulkProgress.js';
+
+const TIPOS_VALIDOS = ['EMBOLSE', 'REPIQUE', 'RECUSE', 'PROCESADO'];
 
 const findFincaByUuidOrFail = async (uuid) => {
   const finca = await Finca.findOne({ where: { uuid } });
@@ -36,7 +45,7 @@ const findMotivoRecuseByUuidOrFail = async (uuid) => {
   return motivo;
 };
 
-// Valida coherencia tipo <-> motivo: EMBOLSE y CORTE no llevan motivo;
+// Valida coherencia tipo <-> motivo: EMBOLSE y PROCESADO no llevan motivo;
 // REPIQUE exige motivo de repique; RECUSE exige motivo de recuse.
 async function resolveMotivos(tipo, payload) {
   if (tipo === 'REPIQUE') {
@@ -64,6 +73,20 @@ export const racimoMovimientoService = {
     const semanaEmbolseId = query.semanaEmbolseUuid
       ? (await findSemanaByUuidOrFail(query.semanaEmbolseUuid)).id
       : undefined;
+    const semanaRegistroId = query.semanaRegistroUuid
+      ? (await findSemanaByUuidOrFail(query.semanaRegistroUuid)).id
+      : undefined;
+
+    // Rango de semanas de registro: se traduce al rango de fechas que cubren
+    // esas semanas (de lunes de la primera a domingo de la última).
+    let fechaDesde = query.fechaDesde;
+    let fechaHasta = query.fechaHasta;
+    if (query.semanaRegistroDesdeUuid) {
+      fechaDesde = (await findSemanaByUuidOrFail(query.semanaRegistroDesdeUuid)).fechaInicio;
+    }
+    if (query.semanaRegistroHastaUuid) {
+      fechaHasta = (await findSemanaByUuidOrFail(query.semanaRegistroHastaUuid)).fechaFin;
+    }
 
     const { rows, count } = await racimoMovimientoRepository.findAndCountAll({
       limit,
@@ -71,10 +94,12 @@ export const racimoMovimientoService = {
       fincaId,
       loteId,
       semanaEmbolseId,
+      semanaRegistroId,
       tipo: query.tipo,
-      fechaDesde: query.fechaDesde,
-      fechaHasta: query.fechaHasta,
+      fechaDesde,
+      fechaHasta,
     });
+
     return { items: rows, meta: buildPaginationMeta({ page, limit, total: count }) };
   },
 
@@ -152,6 +177,327 @@ export const racimoMovimientoService = {
     );
   },
 
+  // Cargue masivo de movimientos históricos desde un .csv/.xlsx. Columnas
+  // esperadas: fincaCodigo, loteCodigo, tipo, semanaEmbolseCodigo,
+  // semanaRegistroCodigo (opcional, por defecto = semanaEmbolseCodigo),
+  // motivo (nombre, requerido para REPIQUE/RECUSE), cantidad, fecha,
+  // observacion (opcional).
+  //
+  // Modos:
+  //   dryRun=true  → solo valida, no escribe, devuelve errores si hay
+  //   dryRun=false → valida + inserta (cada fila se auto-commitea)
+  //   auto         → valida primero; si todo ok, inserta todo en una sola
+  //                  transacción (mucho más rápido y atómico)
+  async bulkCreateMovimientos(file, actorId, { dryRun = false, mode, progressToken } = {}) {
+    const rows = parseBulkFile(file);
+    if (rows.length === 0) throw ApiError.badRequest('El archivo no tiene filas para procesar');
+
+    if (progressToken) bulkProgress.init(progressToken, rows.length);
+
+    const fincaCache = new Map();
+    const loteCache = new Map();
+    const semanaCache = new Map();
+    const motivoRepiqueCache = new Map();
+    const motivoRecuseCache = new Map();
+    const saldoSimulado = new Map();
+    const saldoBDCache = new Map();
+    const filasValidas = [];
+
+    let creados = 0;
+    const errores = [];
+    const logInterval = Math.max(1, Math.floor(rows.length / 20));
+
+    logger.info(`Iniciando validación de ${rows.length} filas...`);
+
+    for (let i = 0; i < rows.length; i += 1) {
+      if (i % logInterval === 0) logger.info(`Validando... ${i}/${rows.length} filas (${Math.round((i / rows.length) * 100)}%)`);
+      if (progressToken) bulkProgress.update(progressToken, { pct: Math.round((i / rows.length) * 100), fase: 'validando', filas: i });
+      const fila = i + 2;
+      const row = rows[i];
+
+      const fincaCodigo = String(row.fincacodigo || '').trim();
+      const loteCodigo = String(row.lotecodigo || '').trim();
+      let tipo = String(row.tipo || '').trim().toUpperCase();
+      if (tipo === 'CORTE') tipo = 'PROCESADO';
+      const semanaEmbolseCodigo = String(row.semanaembolsecodigo || '').trim();
+      const semanaRegistroCodigo = String(row.semanaregistrocodigo || '').trim() || semanaEmbolseCodigo;
+      const motivoNombre = String(row.motivo || '').trim();
+      const cantidad = Number(row.cantidad);
+      const fecha = String(row.fecha || '').trim();
+      const observacion = row.observacion ? String(row.observacion).trim() : undefined;
+
+      if (!fincaCodigo || !loteCodigo || !tipo || !semanaEmbolseCodigo || !fecha || !cantidad) {
+        errores.push({
+          fila,
+          mensaje: 'Faltan columnas requeridas: fincaCodigo, loteCodigo, tipo, semanaEmbolseCodigo, fecha y/o cantidad',
+        });
+        continue;
+      }
+      if (!TIPOS_VALIDOS.includes(tipo)) {
+        errores.push({ fila, mensaje: `Tipo inválido '${row.tipo}'. Debe ser EMBOLSE, REPIQUE, RECUSE o PROCESADO` });
+        continue;
+      }
+      if (!Number.isInteger(cantidad) || cantidad <= 0) {
+        errores.push({ fila, mensaje: 'La cantidad debe ser un número entero mayor que 0' });
+        continue;
+      }
+
+      try {
+        let finca = fincaCache.get(fincaCodigo);
+        if (finca === undefined) {
+          finca = await fincaRepository.findByCodigo(fincaCodigo);
+          fincaCache.set(fincaCodigo, finca);
+        }
+        if (!finca) {
+          errores.push({ fila, mensaje: `No existe ninguna finca con código '${fincaCodigo}'` });
+          continue;
+        }
+
+        const loteKey = `${fincaCodigo}-${loteCodigo}`;
+        let lote = loteCache.get(loteKey);
+        if (lote === undefined) {
+          lote = await loteRepository.findByFincaAndCodigo(finca.id, loteCodigo);
+          loteCache.set(loteKey, lote);
+        }
+        if (!lote) {
+          errores.push({ fila, mensaje: `No existe el lote '${loteCodigo}' en la finca '${fincaCodigo}'` });
+          continue;
+        }
+
+        let semanaEmbolse = semanaCache.get(semanaEmbolseCodigo);
+        if (semanaEmbolse === undefined) {
+          semanaEmbolse = await semanaRepository.findByCodigo(semanaEmbolseCodigo);
+          semanaCache.set(semanaEmbolseCodigo, semanaEmbolse);
+        }
+        if (!semanaEmbolse) {
+          errores.push({ fila, mensaje: `No existe la semana de embolse '${semanaEmbolseCodigo}'` });
+          continue;
+        }
+
+        let semanaRegistro = semanaCache.get(semanaRegistroCodigo);
+        if (semanaRegistro === undefined) {
+          semanaRegistro = await semanaRepository.findByCodigo(semanaRegistroCodigo);
+          semanaCache.set(semanaRegistroCodigo, semanaRegistro);
+        }
+        if (!semanaRegistro) {
+          errores.push({ fila, mensaje: `No existe la semana de registro '${semanaRegistroCodigo}'` });
+          continue;
+        }
+
+        let motivoRepiqueId = null;
+        let motivoRecuseId = null;
+
+        if (tipo === 'REPIQUE') {
+          if (!motivoNombre) {
+            errores.push({ fila, mensaje: 'El repique requiere la columna motivo' });
+            continue;
+          }
+          let motivo = motivoRepiqueCache.get(motivoNombre);
+          if (motivo === undefined) {
+            motivo = await motivoRepiqueRepository.findByNombre(motivoNombre);
+            motivoRepiqueCache.set(motivoNombre, motivo);
+          }
+          if (!motivo) {
+            errores.push({
+              fila,
+              mensaje: `No existe el motivo de repique '${motivoNombre}'. Créalo primero en Maestros → Motivos de Repique`,
+            });
+            continue;
+          }
+          motivoRepiqueId = motivo.id;
+        } else if (tipo === 'RECUSE') {
+          if (!motivoNombre) {
+            errores.push({ fila, mensaje: 'El recuse requiere la columna motivo' });
+            continue;
+          }
+          let motivo = motivoRecuseCache.get(motivoNombre);
+          if (motivo === undefined) {
+            motivo = await motivoRecuseRepository.findByNombre(motivoNombre);
+            motivoRecuseCache.set(motivoNombre, motivo);
+          }
+          if (!motivo) {
+            errores.push({
+              fila,
+              mensaje: `No existe el motivo de recuse '${motivoNombre}'. Créalo primero en Maestros → Motivos de Recuse`,
+            });
+            continue;
+          }
+          motivoRecuseId = motivo.id;
+        }
+
+        const cohorteKey = `${finca.id}-${lote.id}-${semanaEmbolse.id}`;
+
+        if (tipo !== 'EMBOLSE') {
+          if (!saldoBDCache.has(cohorteKey)) {
+            const saldoBD = await racimoMovimientoRepository.getSaldoCohorte({
+              fincaId: finca.id,
+              loteId: lote.id,
+              semanaEmbolseId: semanaEmbolse.id,
+            });
+            saldoBDCache.set(cohorteKey, saldoBD);
+          }
+          const saldoDisponible = saldoBDCache.get(cohorteKey) + (saldoSimulado.get(cohorteKey) || 0);
+          if (cantidad > saldoDisponible) {
+            errores.push({
+              fila,
+              mensaje: `La cantidad (${cantidad}) supera el saldo disponible de esa cohorte (${saldoDisponible})`,
+            });
+            continue;
+          }
+        }
+
+        const delta = tipo === 'EMBOLSE' ? cantidad : -cantidad;
+        saldoSimulado.set(cohorteKey, (saldoSimulado.get(cohorteKey) || 0) + delta);
+
+        filasValidas.push({ fincaId: finca.id, loteId: lote.id, semanaEmbolseId: semanaEmbolse.id, semanaRegistroId: semanaRegistro.id, tipo, motivoRepiqueId, motivoRecuseId, cantidad, fecha, observacion, createdBy: actorId });
+      } catch (error) {
+        errores.push({ fila, mensaje: error.message || 'Error al procesar la fila' });
+      }
+    }
+
+    if (dryRun || (mode === 'auto' && errores.length > 0)) {
+      if (progressToken) {
+        if (errores.length > 0) bulkProgress.complete(progressToken, 0, errores);
+        else bulkProgress.complete(progressToken, 0, []);
+      }
+      return { totalFilas: rows.length, movimientosCreados: 0, errores };
+    }
+
+    if (filasValidas.length === 0) {
+      if (progressToken) bulkProgress.complete(progressToken, 0, errores);
+      return { totalFilas: rows.length, movimientosCreados: 0, errores };
+    }
+
+    logger.info(`Validación completa. Insertando ${filasValidas.length} filas en una transacción...`);
+
+    if (progressToken) bulkProgress.update(progressToken, { pct: 50, fase: 'insertando', filas: 0, total: filasValidas.length });
+
+    const BATCH_SIZE = 500;
+    await sequelize.transaction(async (transaction) => {
+      for (let i = 0; i < filasValidas.length; i += BATCH_SIZE) {
+        const batch = filasValidas.slice(i, i + BATCH_SIZE);
+        await racimoMovimientoRepository.bulkCreate(batch, { transaction });
+        creados += batch.length;
+        logger.info(`Insertando... ${Math.min(i + BATCH_SIZE, filasValidas.length)}/${filasValidas.length} filas`);
+        if (progressToken) bulkProgress.update(progressToken, { pct: Math.round((creados / filasValidas.length) * 50) + 50, fase: 'insertando', filas: creados });
+      }
+    });
+
+    logger.info(`Cargue completado: ${creados} movimientos creados`);
+    if (progressToken) bulkProgress.complete(progressToken, creados, errores);
+
+    return { totalFilas: rows.length, movimientosCreados: creados, errores };
+  },
+
+  async getReporteSaldos(query) {
+    const finca = query.fincaUuid ? await findFincaByUuidOrFail(query.fincaUuid) : null;
+
+    const cantidadSemanas = Number(query.cantidadSemanas) || 13;
+    const anioReal = new Date().getFullYear();
+    const anio = query.anio ? Number(query.anio) : anioReal;
+
+    // Semana de referencia: si es el año en curso, la semana real de hoy
+    // (para que "edad 1" sea la semana actual); si es un año distinto, la
+    // última semana registrada de ese año (para ver el cierre de ese año).
+    const semanaActual =
+      anio === anioReal
+        ? await semanaRepository.findByFecha(new Date().toISOString().slice(0, 10))
+        : await semanaRepository.findUltimaDelAnio(anio);
+    if (!semanaActual) throw ApiError.notFound(`No hay semanas registradas para el año ${anio}`);
+
+    // Últimas N semanas (incluida la de referencia), ordenadas de más antigua a más reciente
+    const semanasEmbolse = await semanaRepository.findUltimasN(semanaActual.id, cantidadSemanas);
+    const semanaEmbolseIds = semanasEmbolse.map((s) => s.id);
+
+    // Una sola consulta: todos los movimientos de esas cohortes (de una
+    // finca puntual, o de todas si no se filtra ninguna)
+    const movimientos = await racimoMovimientoRepository.findConFincaYLote({
+      semanaEmbolseIds,
+      fincaId: finca?.id,
+    });
+
+    // Invertir orden: semana actual primero (izquierda), más antigua al final (derecha)
+    semanasEmbolse.reverse();
+
+    const porCohorte = Object.fromEntries(semanasEmbolse.map((s) => [s.id, { totalEmbolsado: 0, totalRepicado: 0, totalRecusado: 0, totalProcesado: 0 }]));
+    const porLoteYCohorte = {}; // key: "loteId-semanaEmbolseId"
+
+    for (const m of movimientos) {
+      const c = porCohorte[m.semanaEmbolseId];
+      if (!c) continue;
+
+      if (m.tipo === 'EMBOLSE') c.totalEmbolsado += m.cantidad;
+      else if (m.tipo === 'REPIQUE') c.totalRepicado += m.cantidad;
+      else if (m.tipo === 'RECUSE') c.totalRecusado += m.cantidad;
+      else if (m.tipo === 'PROCESADO') c.totalProcesado += m.cantidad;
+
+      const loteKey = `${m.loteId}-${m.semanaEmbolseId}`;
+      if (!porLoteYCohorte[loteKey]) porLoteYCohorte[loteKey] = 0;
+      porLoteYCohorte[loteKey] += m.tipo === 'EMBOLSE' ? m.cantidad : -m.cantidad;
+    }
+
+    // El desglose por lote solo tiene sentido cuando se filtra una finca:
+    // "todas las fincas" mezclaría lotes con el mismo código de fincas
+    // distintas, así que en ese caso solo se muestran los totales.
+    const todosLosLotes = finca
+      ? await Lote.findAll({
+          where: { fincaId: finca.id },
+          attributes: ['id', 'uuid', 'codigo', 'nombre'],
+          order: [['codigo', 'ASC']],
+        })
+      : [];
+
+    // Construir columnas de cohortes
+    const cohortes = semanasEmbolse.map((semana) => {
+      const c = porCohorte[semana.id];
+      const diffMs = new Date(semanaActual.fechaInicio) - new Date(semana.fechaInicio);
+      const edadSemanas = Math.round(diffMs / (7 * 86400000)) + 1;
+      return {
+        semanaUuid: semana.uuid,
+        semanaCodigo: semana.codigo,
+        anio: semana.anio,
+        numeroSemana: semana.numeroSemana,
+        color: semana.color,
+        edadSemanas,
+        totalEmbolsado: c.totalEmbolsado,
+        totalRepicado: c.totalRepicado,
+        totalRecusado: c.totalRecusado,
+        totalProcesado: c.totalProcesado,
+        saldo: c.totalEmbolsado - c.totalRepicado - c.totalRecusado - c.totalProcesado,
+      };
+    });
+
+    // Construir filas de lotes (solo saldo por cohorte), keyed por uuid
+    const lotes = todosLosLotes.map((lote) => {
+      const saldos = {};
+      for (const s of semanasEmbolse) {
+        const key = `${lote.id}-${s.id}`;
+        saldos[s.uuid] = porLoteYCohorte[key] || 0;
+      }
+      return {
+        uuid: lote.uuid,
+        codigo: lote.codigo,
+        nombre: lote.nombre,
+        saldos,
+      };
+    });
+
+    // Totales finales por cohorte, keyed por uuid
+    const saldosFinales = {};
+    for (const s of semanasEmbolse) {
+      const c = porCohorte[s.id];
+      saldosFinales[s.uuid] = c.totalEmbolsado - c.totalRepicado - c.totalRecusado - c.totalProcesado;
+    }
+
+    return {
+      finca: finca ? { uuid: finca.uuid, codigo: finca.codigo, nombre: finca.nombre } : null,
+      semanaActual: { uuid: semanaActual.uuid, codigo: semanaActual.codigo, anio: semanaActual.anio, numeroSemana: semanaActual.numeroSemana },
+      cohortes,
+      lotes,
+      saldosFinales,
+    };
+  },
+
   async deleteMovimiento(uuid, actorId) {
     const movimiento = await this.getMovimientoByUuid(uuid);
     await racimoMovimientoRepository.softDelete(movimiento, actorId);
@@ -197,7 +543,7 @@ export const racimoMovimientoService = {
       if (m.tipo === 'EMBOLSE') c.totalEmbolsado += m.cantidad;
       else if (m.tipo === 'REPIQUE') c.totalRepicado += m.cantidad;
       else if (m.tipo === 'RECUSE') c.totalRecusado += m.cantidad;
-      else if (m.tipo === 'CORTE') c.totalProcesado += m.cantidad;
+      else if (m.tipo === 'PROCESADO') c.totalProcesado += m.cantidad;
     }
 
     const semanaPorId = new Map(semanasEmbolse.map((s) => [s.id, s]));

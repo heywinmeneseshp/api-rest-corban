@@ -36,8 +36,23 @@ export const loteRepository = {
     return Lote.count({ where: { fincaId }, paranoid: false });
   },
 
+  // Códigos ya usados por cualquiera de las fincas dadas, incluidos los
+  // lotes eliminados lógicamente (para calcular consecutivos libres en
+  // memoria sin una consulta por fila).
+  findCodigosByFincaIds(fincaIds) {
+    return Lote.findAll({
+      where: { fincaId: { [Op.in]: fincaIds } },
+      attributes: ['fincaId', 'codigo'],
+      paranoid: false,
+    });
+  },
+
   create(data, { transaction } = {}) {
     return Lote.create(data, { transaction });
+  },
+
+  bulkCreate(rows) {
+    return Lote.bulkCreate(rows);
   },
 
   async update(lote, data, { transaction } = {}) {

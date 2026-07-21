@@ -36,6 +36,7 @@ import motivoRecuseRoutes from './routes/agricola/motivoRecuse.routes.js';
 import racimoMovimientoRoutes from './routes/agricola/racimoMovimiento.routes.js';
 
 import configuracionRoutes from './routes/sistema/configuracion.routes.js';
+import resetDatosRoutes from './routes/sistema/resetDatos.routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -102,6 +103,7 @@ router.use('/motivos-recuse', motivoRecuseRoutes);
 router.use('/racimo-movimientos', racimoMovimientoRoutes);
 
 router.use('/configuraciones', configuracionRoutes);
+router.use('/sistema', resetDatosRoutes);
 
 app.use(env.apiPrefix, router);
 

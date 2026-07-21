@@ -39,7 +39,8 @@ export const loteController = {
   }),
 
   bulkUpload: asyncHandler(async (req, res) => {
-    const resultado = await loteService.bulkCreateLotes(req.file, req.user?.id);
+    const dryRun = req.body?.dryRun === 'true';
+    const resultado = await loteService.bulkCreateLotes(req.file, req.user?.id, { dryRun });
     ApiResponse.send(res, { message: 'Cargue masivo de lotes procesado', data: resultado });
   }),
 

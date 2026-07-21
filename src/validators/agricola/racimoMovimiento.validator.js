@@ -3,7 +3,7 @@ import Joi from 'joi';
 const uuidParam = Joi.string().guid({ version: 'uuidv4' }).required();
 const uuidRef = Joi.string().guid({ version: 'uuidv4' });
 
-const TIPOS = ['EMBOLSE', 'REPIQUE', 'RECUSE', 'CORTE'];
+const TIPOS = ['EMBOLSE', 'REPIQUE', 'RECUSE', 'PROCESADO'];
 
 export const listRacimoMovimientosSchema = Joi.object({
   body: Joi.object({}),
@@ -14,6 +14,9 @@ export const listRacimoMovimientosSchema = Joi.object({
     fincaUuid: uuidRef,
     loteUuid: uuidRef,
     semanaEmbolseUuid: uuidRef,
+    semanaRegistroUuid: uuidRef,
+    semanaRegistroDesdeUuid: uuidRef,
+    semanaRegistroHastaUuid: uuidRef,
     tipo: Joi.string().valid(...TIPOS),
     fechaDesde: Joi.date().iso().raw(),
     fechaHasta: Joi.date().iso().raw(),
@@ -50,6 +53,16 @@ export const resumenCohorteSchema = Joi.object({
     fincaUuid: uuidRef.required(),
     loteUuid: uuidRef.required(),
     semanaEmbolseUuid: uuidRef.required(),
+  }),
+});
+
+export const reporteSaldosSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({}),
+  query: Joi.object({
+    fincaUuid: uuidRef,
+    anio: Joi.number().integer().min(2000).max(2100),
+    cantidadSemanas: Joi.number().integer().min(1).max(53).default(13),
   }),
 });
 

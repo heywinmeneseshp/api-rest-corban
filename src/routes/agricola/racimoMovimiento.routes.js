@@ -3,6 +3,7 @@ import { racimoMovimientoController } from '../../controllers/agricola/racimoMov
 import { auth } from '../../middlewares/auth.middleware.js';
 import { permission } from '../../middlewares/permission.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
+import { uploadBulkFile } from '../../middlewares/upload.middleware.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import {
   listRacimoMovimientosSchema,
@@ -10,9 +11,22 @@ import {
   createRacimoMovimientoSchema,
   inventarioRacimosSchema,
   resumenCohorteSchema,
+  reporteSaldosSchema,
 } from '../../validators/agricola/racimoMovimiento.validator.js';
 
 const router = Router();
+
+/**
+ * @openapi
+ * /racimo-movimientos/bulk-progress/{token}:
+ *   get:
+ *     tags: [Movimientos de Racimos]
+ *     summary: Progreso en tiempo real del cargue masivo
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.get('/bulk-progress/:token', auth, racimoMovimientoController.bulkProgress);
 
 /**
  * @openapi
@@ -79,6 +93,42 @@ router.post(
   permission(PERMISSIONS.RACIMO_MOVIMIENTO_CREAR),
   validate(createRacimoMovimientoSchema),
   racimoMovimientoController.create,
+);
+
+/**
+ * @openapi
+ * /racimo-movimientos/reporte-saldos:
+ *   get:
+ *     tags: [Movimientos de Racimos]
+ *     summary: Reporte de saldos por lotes y cintas (tabla dinámica)
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.get(
+  '/reporte-saldos',
+  auth,
+  permission(PERMISSIONS.RACIMO_MOVIMIENTO_VER),
+  validate(reporteSaldosSchema),
+  racimoMovimientoController.reporteSaldos,
+);
+
+/**
+ * @openapi
+ * /racimo-movimientos/bulk-upload:
+ *   post:
+ *     tags: [Movimientos de Racimos]
+ *     summary: Cargue masivo de movimientos históricos desde un archivo .csv/.xlsx
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.post(
+  '/bulk-upload',
+  auth,
+  permission(PERMISSIONS.RACIMO_MOVIMIENTO_CREAR),
+  uploadBulkFile,
+  racimoMovimientoController.bulkUpload,
 );
 
 /**

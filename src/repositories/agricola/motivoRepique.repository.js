@@ -27,6 +27,18 @@ export const motivoRepiqueRepository = {
     return MotivoRepique.findOne({ where: { nombre } });
   },
 
+  findByNombres(nombres) {
+    return MotivoRepique.findAll({ where: { nombre: { [Op.in]: nombres } } });
+  },
+
+  // Inserta los nuevos y actualiza los existentes (por nombre, que es
+  // único) en una sola sentencia SQL, en vez de una consulta por fila.
+  bulkUpsert(rows) {
+    return MotivoRepique.bulkCreate(rows, {
+      updateOnDuplicate: ['descripcion', 'estado', 'updatedBy'],
+    });
+  },
+
   create(data, { transaction } = {}) {
     return MotivoRepique.create(data, { transaction });
   },

@@ -32,6 +32,12 @@ export const motivoRecuseController = {
     await motivoRecuseService.deleteMotivo(req.params.uuid, req.user?.id);
     ApiResponse.send(res, { message: 'Motivo de recuse eliminado correctamente' });
   }),
+
+  bulkUpload: asyncHandler(async (req, res) => {
+    const dryRun = req.body?.dryRun === 'true';
+    const resultado = await motivoRecuseService.bulkCreateMotivos(req.file, req.user?.id, { dryRun });
+    ApiResponse.send(res, { message: 'Cargue masivo de motivos de recuse procesado', data: resultado });
+  }),
 };
 
 export default motivoRecuseController;

@@ -55,7 +55,8 @@ export const fincaController = {
   }),
 
   bulkUpload: asyncHandler(async (req, res) => {
-    const resultado = await fincaService.bulkCreateFincas(req.file, req.user?.id);
+    const dryRun = req.body?.dryRun === 'true';
+    const resultado = await fincaService.bulkCreateFincas(req.file, req.user?.id, { dryRun });
     ApiResponse.send(res, { message: 'Cargue masivo de fincas procesado', data: resultado });
   }),
 };

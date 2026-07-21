@@ -34,6 +34,21 @@ export const fincaRepository = {
     return Finca.findOne({ where: { codigo }, paranoid: false });
   },
 
+  findByCodigosIncludingDeleted(codigos) {
+    return Finca.findAll({ where: { codigo: { [Op.in]: codigos } }, paranoid: false });
+  },
+
+  // Inserta las nuevas, actualiza las existentes y restaura las que estaban
+  // borradas lógicamente, todo en una sola sentencia SQL (INSERT ... ON
+  // DUPLICATE KEY UPDATE sobre el UNIQUE de `codigo`), en vez de una
+  // consulta por fila. Cada fila debe traer `deletedAt: null` para que,
+  // si el código coincide con una finca borrada, quede restaurada.
+  bulkUpsert(rows) {
+    return Finca.bulkCreate(rows, {
+      updateOnDuplicate: ['nombre', 'estado', 'deletedAt', 'deletedBy', 'updatedBy'],
+    });
+  },
+
   async restore(finca, { transaction } = {}) {
     await finca.restore({ transaction });
     return finca;

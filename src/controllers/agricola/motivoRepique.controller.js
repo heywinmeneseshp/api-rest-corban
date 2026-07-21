@@ -32,6 +32,12 @@ export const motivoRepiqueController = {
     await motivoRepiqueService.deleteMotivo(req.params.uuid, req.user?.id);
     ApiResponse.send(res, { message: 'Motivo de repique eliminado correctamente' });
   }),
+
+  bulkUpload: asyncHandler(async (req, res) => {
+    const dryRun = req.body?.dryRun === 'true';
+    const resultado = await motivoRepiqueService.bulkCreateMotivos(req.file, req.user?.id, { dryRun });
+    ApiResponse.send(res, { message: 'Cargue masivo de motivos de repique procesado', data: resultado });
+  }),
 };
 
 export default motivoRepiqueController;

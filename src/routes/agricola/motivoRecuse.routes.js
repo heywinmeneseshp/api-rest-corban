@@ -3,6 +3,7 @@ import { motivoRecuseController } from '../../controllers/agricola/motivoRecuse.
 import { auth } from '../../middlewares/auth.middleware.js';
 import { permission } from '../../middlewares/permission.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
+import { uploadBulkFile } from '../../middlewares/upload.middleware.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import {
   listMotivosRecuseSchema,
@@ -42,6 +43,24 @@ router.post(
   permission(PERMISSIONS.MOTIVO_RECUSE_CREAR),
   validate(createMotivoRecuseSchema),
   motivoRecuseController.create,
+);
+
+/**
+ * @openapi
+ * /motivos-recuse/bulk-upload:
+ *   post:
+ *     tags: [Motivos de Recuse]
+ *     summary: Cargue masivo de motivos de recuse desde un archivo .csv/.xlsx
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.post(
+  '/bulk-upload',
+  auth,
+  permission(PERMISSIONS.MOTIVO_RECUSE_CREAR),
+  uploadBulkFile,
+  motivoRecuseController.bulkUpload,
 );
 
 /**

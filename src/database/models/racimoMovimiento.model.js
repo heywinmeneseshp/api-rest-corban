@@ -1,7 +1,7 @@
 import { DataTypes, Model } from 'sequelize';
 import { sequelize } from '../connection.js';
 
-export const TIPOS_RACIMO_MOVIMIENTO = ['EMBOLSE', 'REPIQUE', 'RECUSE', 'CORTE'];
+export const TIPOS_RACIMO_MOVIMIENTO = ['EMBOLSE', 'REPIQUE', 'RECUSE', 'PROCESADO'];
 
 export class RacimoMovimiento extends Model {}
 

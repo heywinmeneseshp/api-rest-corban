@@ -5,6 +5,7 @@ import { authRepository } from '../../repositories/seguridad/auth.repository.js'
 import { ApiError } from '../../utils/ApiError.js';
 import { logger } from '../../utils/logger.js';
 import { ROLES } from '../../constants/roles.constants.js';
+import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import {
   signAccessToken,
   generateRefreshToken,
@@ -12,13 +13,18 @@ import {
   refreshTokenExpiryDate,
 } from '../../utils/jwt.js';
 
+/**
+ * Lista completa de permisos quemada para el rol Administrador.
+ * Así el admin siempre tiene todos los permisos sin depender de
+ * seeders ni de la tabla rol_permisos.
+ */
+const ALL_PERMISSION_CODES = Object.values(PERMISSIONS);
+
 const buildTokenPair = async (user) => {
   const roleNames = (user.roles || []).map((r) => r.nombre);
   const roleIds = (user.roles || []).map((r) => r.id);
-  // El rol Administrador siempre tiene acceso a todo, sin depender de que
-  // cada permiso nuevo se asigne manualmente en rol_permisos.
   const permissions = roleNames.includes(ROLES.ADMINISTRADOR)
-    ? await roleRepository.findAllPermissionCodes()
+    ? ALL_PERMISSION_CODES
     : await roleRepository.findPermissionCodesByRoleIds(roleIds);
 
   const accessToken = signAccessToken({

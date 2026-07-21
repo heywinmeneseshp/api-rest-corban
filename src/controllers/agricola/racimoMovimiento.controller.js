@@ -2,6 +2,7 @@ import { racimoMovimientoService } from '../../services/agricola/racimoMovimient
 import { ApiResponse } from '../../utils/ApiResponse.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { HTTP_STATUS } from '../../constants/httpStatus.constants.js';
+import { bulkProgress } from '../../utils/bulkProgress.js';
 
 export const racimoMovimientoController = {
   list: asyncHandler(async (req, res) => {
@@ -36,6 +37,27 @@ export const racimoMovimientoController = {
   resumenCohorte: asyncHandler(async (req, res) => {
     const data = await racimoMovimientoService.getResumenCohorte(req.query);
     ApiResponse.send(res, { message: 'Resumen de cohorte obtenido correctamente', data });
+  }),
+
+  reporteSaldos: asyncHandler(async (req, res) => {
+    const data = await racimoMovimientoService.getReporteSaldos(req.query);
+    ApiResponse.send(res, { message: 'Reporte de saldos obtenido correctamente', data });
+  }),
+
+  bulkUpload: asyncHandler(async (req, res) => {
+    const dryRun = req.body?.dryRun === 'true';
+    const mode = req.body?.mode;
+    const progressToken = req.body?.progressToken;
+    const resultado = await racimoMovimientoService.bulkCreateMovimientos(req.file, req.user?.id, { dryRun, mode, progressToken });
+    if (progressToken) bulkProgress.remove(progressToken);
+    ApiResponse.send(res, { message: 'Cargue masivo de movimientos procesado', data: resultado });
+  }),
+
+  bulkProgress: asyncHandler(async (req, res) => {
+    const { token } = req.params;
+    const progreso = bulkProgress.get(token);
+    if (!progreso) return ApiResponse.send(res, { data: null });
+    ApiResponse.send(res, { data: progreso });
   }),
 };
 
