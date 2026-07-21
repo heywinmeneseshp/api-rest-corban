@@ -73,6 +73,34 @@ export const racimoMovimientoRepository = {
     return RacimoMovimiento.bulkCreate(dataArray, { transaction });
   },
 
+  async getSaldosCohortes(cohortes) {
+    if (cohortes.length === 0) return new Map();
+
+    const results = await RacimoMovimiento.findAll({
+      where: {
+        [Op.or]: cohortes.map((c) => ({
+          fincaId: c.fincaId,
+          loteId: c.loteId,
+          semanaEmbolseId: c.semanaEmbolseId,
+        })),
+      },
+      attributes: [
+        'fincaId',
+        'loteId',
+        'semanaEmbolseId',
+        [fn('COALESCE', fn('SUM', literal("CASE WHEN tipo = 'EMBOLSE' THEN cantidad ELSE -cantidad END")), 0), 'saldo'],
+      ],
+      group: ['fincaId', 'loteId', 'semanaEmbolseId'],
+      raw: true,
+    });
+
+    const map = new Map();
+    for (const r of results) {
+      map.set(`${r.fincaId}-${r.loteId}-${r.semanaEmbolseId}`, Number(r.saldo));
+    }
+    return map;
+  },
+
   async update(movimiento, data, { transaction } = {}) {
     await movimiento.update(data, { transaction });
     return movimiento;

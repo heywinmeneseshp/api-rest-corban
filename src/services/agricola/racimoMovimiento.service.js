@@ -2,10 +2,6 @@ import { sequelize } from '../../database/connection.js';
 import { Finca, Lote, Semana, MotivoRepique, MotivoRecuse } from '../../database/associations.js';
 import { racimoMovimientoRepository } from '../../repositories/agricola/racimoMovimiento.repository.js';
 import { semanaRepository } from '../../repositories/agricola/semana.repository.js';
-import { fincaRepository } from '../../repositories/agricola/finca.repository.js';
-import { loteRepository } from '../../repositories/agricola/lote.repository.js';
-import { motivoRepiqueRepository } from '../../repositories/agricola/motivoRepique.repository.js';
-import { motivoRecuseRepository } from '../../repositories/agricola/motivoRecuse.repository.js';
 import { calcularColorSemana } from '../../utils/semanaColor.js';
 import { parseBulkFile } from '../../utils/bulkFileParser.js';
 import { ApiError } from '../../utils/ApiError.js';
@@ -194,11 +190,29 @@ export const racimoMovimientoService = {
 
     if (progressToken) bulkProgress.init(progressToken, rows.length);
 
-    const fincaCache = new Map();
+    logger.info(`Precargando catálogos (${rows.length} filas por procesar)...`);
+
+    const [todasFincas, todosLotes, todasSemanas, todosMotivosRepique, todosMotivosRecuse] = await Promise.all([
+      Finca.findAll({ raw: true }),
+      Lote.findAll({ raw: true }),
+      Semana.findAll({ raw: true }),
+      MotivoRepique.findAll({ raw: true }),
+      MotivoRecuse.findAll({ raw: true }),
+    ]);
+
+    const fincaCache = new Map(todasFincas.map((f) => [f.codigo, f]));
+    const fincaCodigoPorId = new Map(todasFincas.map((f) => [f.id, f.codigo]));
+
     const loteCache = new Map();
-    const semanaCache = new Map();
-    const motivoRepiqueCache = new Map();
-    const motivoRecuseCache = new Map();
+    for (const l of todosLotes) {
+      const fc = fincaCodigoPorId.get(l.fincaId);
+      if (fc) loteCache.set(`${fc}-${l.codigo}`, l);
+    }
+
+    const semanaCache = new Map(todasSemanas.map((s) => [s.codigo, s]));
+    const motivoRepiqueCache = new Map(todosMotivosRepique.map((m) => [m.nombre, m]));
+    const motivoRecuseCache = new Map(todosMotivosRecuse.map((m) => [m.nombre, m]));
+
     const saldoSimulado = new Map();
     const saldoBDCache = new Map();
     const filasValidas = [];
@@ -206,6 +220,48 @@ export const racimoMovimientoService = {
     let creados = 0;
     const errores = [];
     const logInterval = Math.max(1, Math.floor(rows.length / 20));
+
+    logger.info(`Colectando cohortes únicas no-EMBOLSE...`);
+
+    const cohortesUnicos = new Map();
+
+    for (let i = 0; i < rows.length; i += 1) {
+      const row = rows[i];
+      const fincaCodigo = String(row.fincacodigo || '').trim();
+      const loteCodigo = String(row.lotecodigo || '').trim();
+      let tipo = String(row.tipo || '').trim().toUpperCase();
+      if (tipo === 'CORTE') tipo = 'PROCESADO';
+      const semanaEmbolseCodigo = String(row.semanaembolsecodigo || '').trim();
+      const cantidad = Number(row.cantidad);
+
+      if (!fincaCodigo || !loteCodigo || !tipo || !semanaEmbolseCodigo || !cantidad) continue;
+      if (!TIPOS_VALIDOS.includes(tipo)) continue;
+      if (!Number.isInteger(cantidad) || cantidad <= 0) continue;
+
+      if (tipo !== 'EMBOLSE') {
+        const finca = fincaCache.get(fincaCodigo);
+        if (!finca) continue;
+        const lote = loteCache.get(`${fincaCodigo}-${loteCodigo}`);
+        if (!lote) continue;
+        const semanaEmbolse = semanaCache.get(semanaEmbolseCodigo);
+        if (!semanaEmbolse) continue;
+        const key = `${finca.id}-${lote.id}-${semanaEmbolse.id}`;
+        cohortesUnicos.set(key, { fincaId: finca.id, loteId: lote.id, semanaEmbolseId: semanaEmbolse.id });
+      }
+    }
+
+    if (cohortesUnicos.size > 0) {
+      logger.info(`Consultando saldos de ${cohortesUnicos.size} cohortes en lote...`);
+      const cohortesArr = Array.from(cohortesUnicos.values());
+      const BATCH_SALDO = 500;
+      for (let i = 0; i < cohortesArr.length; i += BATCH_SALDO) {
+        const batch = cohortesArr.slice(i, i + BATCH_SALDO);
+        const saldos = await racimoMovimientoRepository.getSaldosCohortes(batch);
+        for (const [key, saldo] of saldos) {
+          saldoBDCache.set(key, saldo);
+        }
+      }
+    }
 
     logger.info(`Iniciando validación de ${rows.length} filas...`);
 
@@ -243,43 +299,27 @@ export const racimoMovimientoService = {
       }
 
       try {
-        let finca = fincaCache.get(fincaCodigo);
+        const finca = fincaCache.get(fincaCodigo);
         if (finca === undefined) {
-          finca = await fincaRepository.findByCodigo(fincaCodigo);
-          fincaCache.set(fincaCodigo, finca);
-        }
-        if (!finca) {
           errores.push({ fila, mensaje: `No existe ninguna finca con código '${fincaCodigo}'` });
           continue;
         }
 
         const loteKey = `${fincaCodigo}-${loteCodigo}`;
-        let lote = loteCache.get(loteKey);
+        const lote = loteCache.get(loteKey);
         if (lote === undefined) {
-          lote = await loteRepository.findByFincaAndCodigo(finca.id, loteCodigo);
-          loteCache.set(loteKey, lote);
-        }
-        if (!lote) {
           errores.push({ fila, mensaje: `No existe el lote '${loteCodigo}' en la finca '${fincaCodigo}'` });
           continue;
         }
 
-        let semanaEmbolse = semanaCache.get(semanaEmbolseCodigo);
+        const semanaEmbolse = semanaCache.get(semanaEmbolseCodigo);
         if (semanaEmbolse === undefined) {
-          semanaEmbolse = await semanaRepository.findByCodigo(semanaEmbolseCodigo);
-          semanaCache.set(semanaEmbolseCodigo, semanaEmbolse);
-        }
-        if (!semanaEmbolse) {
           errores.push({ fila, mensaje: `No existe la semana de embolse '${semanaEmbolseCodigo}'` });
           continue;
         }
 
-        let semanaRegistro = semanaCache.get(semanaRegistroCodigo);
+        const semanaRegistro = semanaCache.get(semanaRegistroCodigo);
         if (semanaRegistro === undefined) {
-          semanaRegistro = await semanaRepository.findByCodigo(semanaRegistroCodigo);
-          semanaCache.set(semanaRegistroCodigo, semanaRegistro);
-        }
-        if (!semanaRegistro) {
           errores.push({ fila, mensaje: `No existe la semana de registro '${semanaRegistroCodigo}'` });
           continue;
         }
@@ -292,12 +332,8 @@ export const racimoMovimientoService = {
             errores.push({ fila, mensaje: 'El repique requiere la columna motivo' });
             continue;
           }
-          let motivo = motivoRepiqueCache.get(motivoNombre);
+          const motivo = motivoRepiqueCache.get(motivoNombre);
           if (motivo === undefined) {
-            motivo = await motivoRepiqueRepository.findByNombre(motivoNombre);
-            motivoRepiqueCache.set(motivoNombre, motivo);
-          }
-          if (!motivo) {
             errores.push({
               fila,
               mensaje: `No existe el motivo de repique '${motivoNombre}'. Créalo primero en Maestros → Motivos de Repique`,
@@ -310,12 +346,8 @@ export const racimoMovimientoService = {
             errores.push({ fila, mensaje: 'El recuse requiere la columna motivo' });
             continue;
           }
-          let motivo = motivoRecuseCache.get(motivoNombre);
+          const motivo = motivoRecuseCache.get(motivoNombre);
           if (motivo === undefined) {
-            motivo = await motivoRecuseRepository.findByNombre(motivoNombre);
-            motivoRecuseCache.set(motivoNombre, motivo);
-          }
-          if (!motivo) {
             errores.push({
               fila,
               mensaje: `No existe el motivo de recuse '${motivoNombre}'. Créalo primero en Maestros → Motivos de Recuse`,
@@ -328,15 +360,8 @@ export const racimoMovimientoService = {
         const cohorteKey = `${finca.id}-${lote.id}-${semanaEmbolse.id}`;
 
         if (tipo !== 'EMBOLSE') {
-          if (!saldoBDCache.has(cohorteKey)) {
-            const saldoBD = await racimoMovimientoRepository.getSaldoCohorte({
-              fincaId: finca.id,
-              loteId: lote.id,
-              semanaEmbolseId: semanaEmbolse.id,
-            });
-            saldoBDCache.set(cohorteKey, saldoBD);
-          }
-          const saldoDisponible = saldoBDCache.get(cohorteKey) + (saldoSimulado.get(cohorteKey) || 0);
+          const saldoBD = saldoBDCache.has(cohorteKey) ? saldoBDCache.get(cohorteKey) : 0;
+          const saldoDisponible = saldoBD + (saldoSimulado.get(cohorteKey) || 0);
           if (cantidad > saldoDisponible) {
             errores.push({
               fila,
