@@ -8,6 +8,8 @@ import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { logger } from '../../utils/logger.js';
 import { bulkProgress } from '../../utils/bulkProgress.js';
+import { bulkValidationCache } from '../../utils/bulkValidationCache.js';
+import { getFincaIdsPermitidas, assertFincaPermitida } from '../../utils/fincaScope.js';
 
 const TIPOS_VALIDOS = ['EMBOLSE', 'REPIQUE', 'RECUSE', 'PROCESADO'];
 
@@ -61,10 +63,11 @@ async function resolveMotivos(tipo, payload) {
 }
 
 export const racimoMovimientoService = {
-  async listMovimientos(query) {
+  async listMovimientos(query, user) {
     const { page, limit, offset } = getPagination(query);
 
     const fincaId = query.fincaUuid ? (await findFincaByUuidOrFail(query.fincaUuid)).id : undefined;
+    if (fincaId) assertFincaPermitida(user, fincaId);
     const loteId = query.loteUuid ? (await findLoteByUuidOrFail(query.loteUuid)).id : undefined;
     const semanaEmbolseId = query.semanaEmbolseUuid
       ? (await findSemanaByUuidOrFail(query.semanaEmbolseUuid)).id
@@ -88,6 +91,7 @@ export const racimoMovimientoService = {
       limit,
       offset,
       fincaId,
+      fincaIds: getFincaIdsPermitidas(user),
       loteId,
       semanaEmbolseId,
       semanaRegistroId,
@@ -99,17 +103,78 @@ export const racimoMovimientoService = {
     return { items: rows, meta: buildPaginationMeta({ page, limit, total: count }) };
   },
 
-  async getMovimientoByUuid(uuid) {
+  async exportMovimientosToExcel(query, user) {
+    const { default: XLSX } = await import('xlsx');
+
+    const tieneFiltroSemanaRegistro = query.semanaRegistroDesdeUuid && query.semanaRegistroHastaUuid;
+    const tieneFiltroSemanaEmbolse = !!query.semanaEmbolseUuid;
+    if (!tieneFiltroSemanaRegistro && !tieneFiltroSemanaEmbolse) {
+      throw ApiError.badRequest('Debe filtrar por rango de semana de registro o por semana de embolse para exportar');
+    }
+
+    const fincaId = query.fincaUuid ? (await findFincaByUuidOrFail(query.fincaUuid)).id : undefined;
+    if (fincaId) assertFincaPermitida(user, fincaId);
+    const loteId = query.loteUuid ? (await findLoteByUuidOrFail(query.loteUuid)).id : undefined;
+    const semanaEmbolseId = query.semanaEmbolseUuid
+      ? (await findSemanaByUuidOrFail(query.semanaEmbolseUuid)).id
+      : undefined;
+
+    let fechaDesde = query.fechaDesde;
+    let fechaHasta = query.fechaHasta;
+    if (query.semanaRegistroDesdeUuid) {
+      fechaDesde = (await findSemanaByUuidOrFail(query.semanaRegistroDesdeUuid)).fechaInicio;
+    }
+    if (query.semanaRegistroHastaUuid) {
+      fechaHasta = (await findSemanaByUuidOrFail(query.semanaRegistroHastaUuid)).fechaFin;
+    }
+
+    const rows = await racimoMovimientoRepository.findAllForExport({
+      fincaId, fincaIds: getFincaIdsPermitidas(user), loteId, semanaEmbolseId,
+      tipo: query.tipo, fechaDesde, fechaHasta,
+    });
+
+    const FILAS_POR_HOJA = 50000;
+    const wb = XLSX.utils.book_new();
+
+    for (let i = 0; i < rows.length; i += FILAS_POR_HOJA) {
+      const bloque = rows.slice(i, i + FILAS_POR_HOJA);
+      const datos = bloque.map((r) => ({
+        Fecha: r.fecha ? new Date(r.fecha).toLocaleDateString('es-CR') : '',
+        'Semana Registro': r.semanaRegistro?.codigo || '',
+        'Semana Embolse': r.semanaEmbolse?.codigo || '',
+        Cinta: r.semanaEmbolse?.color || '',
+        Finca: r.finca?.nombre || '',
+        Lote: r.lote?.nombre || '',
+        Tipo: r.tipo || '',
+        Motivo: r.motivoRepique?.nombre || r.motivoRecuse?.nombre || '',
+        Cantidad: r.tipo === 'EMBOLSE' ? r.cantidad : -(r.cantidad || 0),
+        Usuario: r.creadoPor?.usuario || 'Sistema',
+      }));
+      const ws = XLSX.utils.json_to_sheet(datos);
+      const nombreHoja = rows.length <= FILAS_POR_HOJA ? 'Movimientos' : `Movimientos ${i / FILAS_POR_HOJA + 1}`;
+      XLSX.utils.book_append_sheet(wb, ws, nombreHoja);
+    }
+
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    return buffer;
+  },
+
+  async getMovimientoByUuid(uuid, user) {
     const movimiento = await racimoMovimientoRepository.findByUuid(uuid);
     if (!movimiento) throw ApiError.notFound('Movimiento de racimos no encontrado');
+    const permitidas = getFincaIdsPermitidas(user);
+    if (permitidas !== null && !permitidas.includes(movimiento.fincaId)) {
+      throw ApiError.notFound('Movimiento de racimos no encontrado');
+    }
     return movimiento;
   },
 
   // Resumen de una cohorte puntual (finca + lote + semana de embolse):
   // totales por tipo y saldo disponible, para mostrar antes de registrar
   // un nuevo movimiento sobre esa cohorte.
-  async getResumenCohorte(query) {
+  async getResumenCohorte(query, user) {
     const finca = await findFincaByUuidOrFail(query.fincaUuid);
+    assertFincaPermitida(user, finca.id);
     const lote = await findLoteByUuidOrFail(query.loteUuid);
     const semanaEmbolse = await findSemanaByUuidOrFail(query.semanaEmbolseUuid);
 
@@ -130,8 +195,9 @@ export const racimoMovimientoService = {
     };
   },
 
-  async createMovimiento(payload, actorId) {
+  async createMovimiento(payload, actorId, user) {
     const finca = await findFincaByUuidOrFail(payload.fincaUuid);
+    assertFincaPermitida(user, finca.id);
     const lote = await findLoteByUuidOrFail(payload.loteUuid);
     const semanaEmbolse = await findSemanaByUuidOrFail(payload.semanaEmbolseUuid);
     const semanaRegistro = payload.semanaRegistroUuid
@@ -184,12 +250,49 @@ export const racimoMovimientoService = {
   //   dryRun=false → valida + inserta (cada fila se auto-commitea)
   //   auto         → valida primero; si todo ok, inserta todo en una sola
   //                  transacción (mucho más rápido y atómico)
-  async bulkCreateMovimientos(file, actorId, { dryRun = false, mode, progressToken } = {}) {
+  async bulkCreateMovimientos(file, actorId, { dryRun = false, mode, progressToken, forceNegativeSaldos = false, esAdmin = false, user } = {}) {
+    // Confirmación de saldos negativos: si ya se validó este archivo antes
+    // (mismo progressToken, cacheado al pedir confirmación) no hace falta
+    // volver a subirlo ni revalidarlo — se insertan directamente las filas
+    // que ya habían quedado listas en la primera pasada.
+    if (forceNegativeSaldos && progressToken) {
+      const cache = bulkValidationCache.get(progressToken);
+      if (cache) {
+        bulkValidationCache.remove(progressToken);
+        bulkProgress.init(progressToken, cache.totalFilas);
+        try {
+          return await this._insertarYFinalizar(cache.filasValidas, cache.totalFilas, cache.errores, cache.warnings, progressToken);
+        } catch (error) {
+          bulkProgress.fail(progressToken, error.message || 'Error inesperado durante el cargue');
+          throw error;
+        }
+      }
+    }
+
+    if (!file) {
+      throw ApiError.badRequest(
+        'La validación anterior ya expiró o no se encontró. Selecciona el archivo de nuevo e inténtalo otra vez.',
+      );
+    }
+
     const rows = parseBulkFile(file);
     if (rows.length === 0) throw ApiError.badRequest('El archivo no tiene filas para procesar');
 
     if (progressToken) bulkProgress.init(progressToken, rows.length);
 
+    try {
+      return await this._procesarBulkMovimientos(rows, actorId, { dryRun, mode, progressToken, forceNegativeSaldos, esAdmin, user });
+    } catch (error) {
+      // Si algo revienta a mitad de camino (BD, bridge, etc.), el frontend
+      // debe enterarse por el polling en vez de quedarse esperando para
+      // siempre a que 'fase' llegue a 'completado'.
+      if (progressToken) bulkProgress.fail(progressToken, error.message || 'Error inesperado durante el cargue');
+      throw error;
+    }
+  },
+
+  async _procesarBulkMovimientos(rows, actorId, { dryRun, mode, progressToken, forceNegativeSaldos, esAdmin, user }) {
+    const fincaIdsPermitidas = getFincaIdsPermitidas(user);
     logger.info(`Precargando catálogos (${rows.length} filas por procesar)...`);
 
     const [todasFincas, todosLotes, todasSemanas, todosMotivosRepique, todosMotivosRecuse] = await Promise.all([
@@ -217,8 +320,8 @@ export const racimoMovimientoService = {
     const saldoBDCache = new Map();
     const filasValidas = [];
 
-    let creados = 0;
     const errores = [];
+    const warnings = [];
     const logInterval = Math.max(1, Math.floor(rows.length / 20));
 
     logger.info(`Colectando cohortes únicas no-EMBOLSE...`);
@@ -241,6 +344,7 @@ export const racimoMovimientoService = {
       if (tipo !== 'EMBOLSE') {
         const finca = fincaCache.get(fincaCodigo);
         if (!finca) continue;
+        if (fincaIdsPermitidas !== null && !fincaIdsPermitidas.includes(finca.id)) continue;
         const lote = loteCache.get(`${fincaCodigo}-${loteCodigo}`);
         if (!lote) continue;
         const semanaEmbolse = semanaCache.get(semanaEmbolseCodigo);
@@ -304,6 +408,10 @@ export const racimoMovimientoService = {
           errores.push({ fila, mensaje: `No existe ninguna finca con código '${fincaCodigo}'` });
           continue;
         }
+        if (fincaIdsPermitidas !== null && !fincaIdsPermitidas.includes(finca.id)) {
+          errores.push({ fila, mensaje: `No tienes acceso a la finca '${fincaCodigo}'` });
+          continue;
+        }
 
         const loteKey = `${fincaCodigo}-${loteCodigo}`;
         const lote = loteCache.get(loteKey);
@@ -363,11 +471,21 @@ export const racimoMovimientoService = {
           const saldoBD = saldoBDCache.has(cohorteKey) ? saldoBDCache.get(cohorteKey) : 0;
           const saldoDisponible = saldoBD + (saldoSimulado.get(cohorteKey) || 0);
           if (cantidad > saldoDisponible) {
-            errores.push({
-              fila,
-              mensaje: `La cantidad (${cantidad}) supera el saldo disponible de esa cohorte (${saldoDisponible})`,
-            });
-            continue;
+            // Solo un administrador puede llegar a forzar esto (ver el
+            // permission check en el controller); para todos los demás
+            // sigue siendo un error duro que descarta la fila.
+            if (esAdmin) {
+              warnings.push({
+                fila,
+                mensaje: `La cantidad (${cantidad}) supera el saldo disponible de esa cohorte (${saldoDisponible})`,
+              });
+            } else {
+              errores.push({
+                fila,
+                mensaje: `La cantidad (${cantidad}) supera el saldo disponible de esa cohorte (${saldoDisponible})`,
+              });
+              continue;
+            }
           }
         }
 
@@ -380,42 +498,93 @@ export const racimoMovimientoService = {
       }
     }
 
-    if (dryRun || (mode === 'auto' && errores.length > 0)) {
+    if (dryRun) {
+      if (progressToken) bulkProgress.complete(progressToken, 0, errores);
+      return { totalFilas: rows.length, movimientosCreados: 0, errores, warnings };
+    }
+
+    // Si hay advertencias de saldo negativo (solo posibles para un admin,
+    // ver el filtro esAdmin más arriba) y aún no confirmó, se pide
+    // confirmación antes de insertar nada. Esto tiene prioridad sobre
+    // mode="auto": aunque el archivo tenga OTROS errores duros sin relación
+    // (columnas faltantes, etc.), el admin igual debe poder decidir si
+    // fuerza o no las filas de saldo negativo — los errores duros se
+    // devuelven junto con las advertencias para que los vea, pero de todas
+    // formas nunca se insertan (quedan fuera de filasValidas). Se cachean
+    // las filas ya validadas (por progressToken) para que, si confirma, no
+    // haga falta volver a subir ni revalidar el archivo completo.
+    if (warnings.length > 0 && !forceNegativeSaldos) {
       if (progressToken) {
-        if (errores.length > 0) bulkProgress.complete(progressToken, 0, errores);
-        else bulkProgress.complete(progressToken, 0, []);
+        bulkValidationCache.set(progressToken, { filasValidas, errores, warnings, totalFilas: rows.length });
+        bulkProgress.complete(progressToken, 0, errores);
       }
-      return { totalFilas: rows.length, movimientosCreados: 0, errores };
+      return { totalFilas: rows.length, movimientosCreados: 0, errores, warnings, requireConfirmation: true };
+    }
+
+    if (mode === 'auto' && errores.length > 0) {
+      if (progressToken) bulkProgress.complete(progressToken, 0, errores);
+      return { totalFilas: rows.length, movimientosCreados: 0, errores, warnings };
     }
 
     if (filasValidas.length === 0) {
       if (progressToken) bulkProgress.complete(progressToken, 0, errores);
-      return { totalFilas: rows.length, movimientosCreados: 0, errores };
+      return { totalFilas: rows.length, movimientosCreados: 0, errores, warnings };
     }
 
-    logger.info(`Validación completa. Insertando ${filasValidas.length} filas en una transacción...`);
+    return this._insertarYFinalizar(filasValidas, rows.length, errores, warnings, progressToken);
+  },
+
+  // Inserta en lotes de 500, actualizando el progreso a medida que avanza.
+  // Se usa tanto en la validación normal como al reutilizar una validación
+  // ya cacheada (confirmación de saldos negativos), para no duplicar esta
+  // lógica.
+  //
+  // NOTA: con DB_MODE=bridge (túnel HTTP), sequelize.transaction() no
+  // garantiza atomicidad real entre lotes — el bridge puede enrutar cada
+  // query a un worker distinto sin la transacción activa (bug confirmado).
+  // Por eso cada lote se inserta como su propia sentencia (ya atómica por
+  // sí sola vía bulkCreate) con reintento ante fallos transitorios del
+  // bridge, en vez de envolver todo en una transacción que daría una falsa
+  // sensación de todo-o-nada.
+  async _insertarYFinalizar(filasValidas, totalFilas, errores, warnings, progressToken) {
+    let creados = 0;
+    logger.info(`Validación completa. Insertando ${filasValidas.length} filas...`);
 
     if (progressToken) bulkProgress.update(progressToken, { pct: 50, fase: 'insertando', filas: 0, total: filasValidas.length });
 
     const BATCH_SIZE = 500;
-    await sequelize.transaction(async (transaction) => {
-      for (let i = 0; i < filasValidas.length; i += BATCH_SIZE) {
-        const batch = filasValidas.slice(i, i + BATCH_SIZE);
-        await racimoMovimientoRepository.bulkCreate(batch, { transaction });
-        creados += batch.length;
-        logger.info(`Insertando... ${Math.min(i + BATCH_SIZE, filasValidas.length)}/${filasValidas.length} filas`);
-        if (progressToken) bulkProgress.update(progressToken, { pct: Math.round((creados / filasValidas.length) * 50) + 50, fase: 'insertando', filas: creados });
+    for (let i = 0; i < filasValidas.length; i += BATCH_SIZE) {
+      const batch = filasValidas.slice(i, i + BATCH_SIZE);
+      try {
+        await racimoMovimientoRepository.bulkCreate(batch);
+      } catch (error) {
+        logger.info(`Fallo insertando lote (filas ${creados}-${creados + batch.length}), reintentando: ${error.message}`);
+        await new Promise((r) => setTimeout(r, 1500));
+        try {
+          await racimoMovimientoRepository.bulkCreate(batch);
+        } catch (error2) {
+          // Deja constancia de cuánto sí alcanzó a insertarse antes de
+          // fallar definitivamente, ya que no hay transacción envolvente
+          // que lo revierta todo.
+          throw new Error(
+            `Se insertaron ${creados} de ${filasValidas.length} filas antes de fallar: ${error2.message}`,
+          );
+        }
       }
-    });
+      creados += batch.length;
+      logger.info(`Insertando... ${Math.min(i + BATCH_SIZE, filasValidas.length)}/${filasValidas.length} filas`);
+      if (progressToken) bulkProgress.update(progressToken, { pct: Math.round((creados / filasValidas.length) * 50) + 50, fase: 'insertando', filas: creados });
+    }
 
     logger.info(`Cargue completado: ${creados} movimientos creados`);
     if (progressToken) bulkProgress.complete(progressToken, creados, errores);
 
-    return { totalFilas: rows.length, movimientosCreados: creados, errores };
+    return { totalFilas, movimientosCreados: creados, errores, warnings };
   },
 
-  async getReporteSaldos(query) {
+  async getReporteSaldos(query, user) {
     const finca = query.fincaUuid ? await findFincaByUuidOrFail(query.fincaUuid) : null;
+    if (finca) assertFincaPermitida(user, finca.id);
 
     const cantidadSemanas = Number(query.cantidadSemanas) || 13;
     const anioReal = new Date().getFullYear();
@@ -439,6 +608,7 @@ export const racimoMovimientoService = {
     const movimientos = await racimoMovimientoRepository.findConFincaYLote({
       semanaEmbolseIds,
       fincaId: finca?.id,
+      fincaIds: getFincaIdsPermitidas(user),
     });
 
     // Invertir orden: semana actual primero (izquierda), más antigua al final (derecha)
@@ -523,16 +693,69 @@ export const racimoMovimientoService = {
     };
   },
 
-  async deleteMovimiento(uuid, actorId) {
-    const movimiento = await this.getMovimientoByUuid(uuid);
+  // Total embolsado por semana de un año completo, para el gráfico de
+  // líneas de embolses (general o por finca).
+  async getReporteEmbolses(query, user) {
+    const finca = query.fincaUuid ? await findFincaByUuidOrFail(query.fincaUuid) : null;
+    if (finca) assertFincaPermitida(user, finca.id);
+    const hoy = new Date();
+
+    const anios = query.anios
+      ? query.anios.split(',').map(Number).filter(Boolean)
+      : [query.anio ? Number(query.anio) : hoy.getFullYear()];
+
+    const resultados = await Promise.all(
+      anios.map(async (anio) => {
+        const semanas = await semanaRepository.findAllByAnio(anio);
+        if (semanas.length === 0) return null;
+
+        const totalesPorSemana = await racimoMovimientoRepository.getEmbolsePorSemana({
+          semanaIds: semanas.map((s) => s.id),
+          fincaId: finca?.id,
+          fincaIds: getFincaIdsPermitidas(user),
+        });
+
+        const puntos = semanas.map((s) => {
+          const total = totalesPorSemana.get(s.id);
+          return {
+            numeroSemana: s.numeroSemana,
+            totalEmbolsado: total ?? null,
+            codigo: s.codigo,
+            color: s.color,
+            fechaInicio: s.fechaInicio,
+          };
+        });
+
+        return {
+          anio,
+          totalAnual: puntos.reduce((acc, p) => acc + (p.totalEmbolsado || 0), 0),
+          puntos,
+        };
+      }),
+    );
+
+    const aniosValidos = resultados.filter(Boolean);
+    if (aniosValidos.length === 0) {
+      throw ApiError.notFound(`No hay semanas registradas para los años solicitados`);
+    }
+
+    return {
+      finca: finca ? { uuid: finca.uuid, codigo: finca.codigo, nombre: finca.nombre } : null,
+      anios: aniosValidos,
+    };
+  },
+
+  async deleteMovimiento(uuid, actorId, user) {
+    const movimiento = await this.getMovimientoByUuid(uuid, user);
     await racimoMovimientoRepository.softDelete(movimiento, actorId);
   },
 
   // Inventario por cohorte (finca + lote + semana de embolse): totales de
   // cada tipo de movimiento y saldo vigente, para las últimas
   // `cantidadSemanas` semanas de embolse contando desde `semanaActual`.
-  async getInventario(query) {
+  async getInventario(query, user) {
     const fincaId = query.fincaUuid ? (await findFincaByUuidOrFail(query.fincaUuid)).id : undefined;
+    if (fincaId) assertFincaPermitida(user, fincaId);
     const loteId = query.loteUuid ? (await findLoteByUuidOrFail(query.loteUuid)).id : undefined;
 
     const semanaActual = query.semanaActualUuid
@@ -546,6 +769,7 @@ export const racimoMovimientoService = {
 
     const movimientos = await racimoMovimientoRepository.findMovimientosParaInventario({
       fincaId,
+      fincaIds: getFincaIdsPermitidas(user),
       loteId,
       semanaEmbolseIds,
     });

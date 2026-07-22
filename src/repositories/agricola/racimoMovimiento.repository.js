@@ -24,6 +24,7 @@ export const racimoMovimientoRepository = {
     limit,
     offset,
     fincaId,
+    fincaIds,
     loteId,
     semanaEmbolseId,
     semanaRegistroId,
@@ -32,7 +33,7 @@ export const racimoMovimientoRepository = {
     fechaHasta,
   }) {
     const where = {
-      ...(fincaId ? { fincaId } : {}),
+      ...(fincaId ? { fincaId } : fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
       ...(loteId ? { loteId } : {}),
       ...(semanaEmbolseId ? { semanaEmbolseId } : {}),
       ...(semanaRegistroId ? { semanaRegistroId } : {}),
@@ -101,6 +102,28 @@ export const racimoMovimientoRepository = {
     return map;
   },
 
+  // Total embolsado por semana (de embolse), para el gráfico de embolses
+  // del año. `semanaIds` son las semanas del año consultado; `fincaId` es
+  // opcional (si no se da, suma todas las fincas).
+  async getEmbolsePorSemana({ semanaIds, fincaId, fincaIds }) {
+    if (semanaIds.length === 0) return new Map();
+
+    const results = await RacimoMovimiento.findAll({
+      where: {
+        tipo: 'EMBOLSE',
+        semanaEmbolseId: { [Op.in]: semanaIds },
+        ...(fincaId ? { fincaId } : fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
+      },
+      attributes: ['semanaEmbolseId', [fn('SUM', col('cantidad')), 'total']],
+      group: ['semanaEmbolseId'],
+      raw: true,
+    });
+
+    const map = new Map();
+    for (const r of results) map.set(r.semanaEmbolseId, Number(r.total));
+    return map;
+  },
+
   async update(movimiento, data, { transaction } = {}) {
     await movimiento.update(data, { transaction });
     return movimiento;
@@ -110,6 +133,30 @@ export const racimoMovimientoRepository = {
     await movimiento.update({ deletedBy }, { transaction });
     await movimiento.destroy({ transaction });
     return movimiento;
+  },
+
+  async findAllForExport({ fincaId, fincaIds, loteId, semanaEmbolseId, semanaRegistroId, tipo, fechaDesde, fechaHasta }) {
+    const where = {
+      ...(fincaId ? { fincaId } : fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
+      ...(loteId ? { loteId } : {}),
+      ...(semanaEmbolseId ? { semanaEmbolseId } : {}),
+      ...(semanaRegistroId ? { semanaRegistroId } : {}),
+      ...(tipo ? { tipo } : {}),
+      ...(fechaDesde || fechaHasta
+        ? {
+            fecha: {
+              ...(fechaDesde ? { [Op.gte]: fechaDesde } : {}),
+              ...(fechaHasta ? { [Op.lte]: fechaHasta } : {}),
+            },
+          }
+        : {}),
+    };
+
+    return RacimoMovimiento.findAll({
+      where,
+      include: listIncludes,
+      order: [['fecha', 'DESC'], ['id', 'DESC']],
+    });
   },
 
   // Suma con signo de todos los movimientos de una cohorte (finca + lote +
@@ -150,10 +197,10 @@ export const racimoMovimientoRepository = {
 
   // Todos los movimientos de las cohortes dadas, con finca y lote, para
   // construir el reporte de saldos por lotes y cintas en una sola consulta.
-  findConFincaYLote({ semanaEmbolseIds, fincaId }) {
+  findConFincaYLote({ semanaEmbolseIds, fincaId, fincaIds }) {
     const where = {
       semanaEmbolseId: { [Op.in]: semanaEmbolseIds },
-      ...(fincaId ? { fincaId } : {}),
+      ...(fincaId ? { fincaId } : fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
     };
     return RacimoMovimiento.findAll({
       where,
@@ -167,11 +214,11 @@ export const racimoMovimientoRepository = {
 
   // Movimientos crudos de las cohortes solicitadas, para que el servicio los
   // agrupe y calcule los totales del inventario.
-  findMovimientosParaInventario({ fincaId, loteId, semanaEmbolseIds }) {
+  findMovimientosParaInventario({ fincaId, fincaIds, loteId, semanaEmbolseIds }) {
     return RacimoMovimiento.findAll({
       where: {
         semanaEmbolseId: { [Op.in]: semanaEmbolseIds },
-        ...(fincaId ? { fincaId } : {}),
+        ...(fincaId ? { fincaId } : fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
         ...(loteId ? { loteId } : {}),
       },
       attributes: ['fincaId', 'loteId', 'semanaEmbolseId', 'tipo', 'cantidad'],

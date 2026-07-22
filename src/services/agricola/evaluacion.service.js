@@ -3,9 +3,18 @@ import { Planta, User, TipoEvaluacion, Semana, Finca, Lote } from '../../databas
 import { evaluacionRepository } from '../../repositories/agricola/evaluacion.repository.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
+import { getFincaIdsPermitidas, assertFincaPermitida } from '../../utils/fincaScope.js';
 
 const findPlantaByUuidOrFail = async (uuid) => {
   const planta = await Planta.findOne({ where: { uuid } });
+  if (!planta) throw ApiError.notFound('Planta no encontrada');
+  return planta;
+};
+
+// Igual que findPlantaByUuidOrFail, pero trayendo el loteId de una para
+// poder validar la finca del usuario sin otra consulta.
+const findPlantaConLoteByUuidOrFail = async (uuid) => {
+  const planta = await Planta.findOne({ where: { uuid }, include: [{ model: Lote, as: 'lote', attributes: ['id', 'fincaId'] }] });
   if (!planta) throw ApiError.notFound('Planta no encontrada');
   return planta;
 };
@@ -41,10 +50,11 @@ const findLoteByUuidOrFail = async (uuid) => {
 };
 
 export const evaluacionService = {
-  async listEvaluaciones(query) {
+  async listEvaluaciones(query, user) {
     const { page, limit, offset } = getPagination(query);
 
     const fincaId = query.fincaUuid ? (await findFincaByUuidOrFail(query.fincaUuid)).id : undefined;
+    if (fincaId) assertFincaPermitida(user, fincaId);
     const loteId = query.loteUuid ? (await findLoteByUuidOrFail(query.loteUuid)).id : undefined;
     const tipoEvaluacionId = query.tipoEvaluacionUuid
       ? (await findTipoEvaluacionByUuidOrFail(query.tipoEvaluacionUuid)).id
@@ -56,20 +66,23 @@ export const evaluacionService = {
       fechaDesde: query.fechaDesde,
       fechaHasta: query.fechaHasta,
       fincaId,
+      fincaIds: getFincaIdsPermitidas(user),
       loteId,
       tipoEvaluacionId,
     });
     return { items: rows, meta: buildPaginationMeta({ page, limit, total: count }) };
   },
 
-  async getEvaluacionByUuid(uuid) {
-    const evaluacion = await evaluacionRepository.findByUuid(uuid);
+  async getEvaluacionByUuid(uuid, user) {
+    const evaluacion = await evaluacionRepository.findByUuid(uuid, { fincaIds: getFincaIdsPermitidas(user) });
     if (!evaluacion) throw ApiError.notFound('Evaluación no encontrada');
     return evaluacion;
   },
 
-  async createEvaluacion(payload, actorId) {
-    const planta = await findPlantaByUuidOrFail(payload.plantaUuid);
+  async createEvaluacion(payload, actorId, user) {
+    const plantaConLote = await findPlantaConLoteByUuidOrFail(payload.plantaUuid);
+    assertFincaPermitida(user, plantaConLote.lote?.fincaId);
+    const planta = plantaConLote;
     const tipoEvaluacion = await findTipoEvaluacionByUuidOrFail(payload.tipoEvaluacionUuid);
     const semana = await findSemanaByUuidOrFail(payload.semanaUuid);
     const usuario = payload.usuarioUuid
@@ -93,11 +106,15 @@ export const evaluacionService = {
     );
   },
 
-  async updateEvaluacion(uuid, payload, actorId) {
-    const evaluacion = await this.getEvaluacionByUuid(uuid);
+  async updateEvaluacion(uuid, payload, actorId, user) {
+    const evaluacion = await this.getEvaluacionByUuid(uuid, user);
     const data = { updatedBy: actorId };
 
-    if (payload.plantaUuid) data.plantaId = (await findPlantaByUuidOrFail(payload.plantaUuid)).id;
+    if (payload.plantaUuid) {
+      const plantaConLote = await findPlantaConLoteByUuidOrFail(payload.plantaUuid);
+      assertFincaPermitida(user, plantaConLote.lote?.fincaId);
+      data.plantaId = plantaConLote.id;
+    }
     if (payload.tipoEvaluacionUuid) {
       data.tipoEvaluacionId = (await findTipoEvaluacionByUuidOrFail(payload.tipoEvaluacionUuid)).id;
     }
@@ -110,8 +127,8 @@ export const evaluacionService = {
     return evaluacionRepository.update(evaluacion, data);
   },
 
-  async deleteEvaluacion(uuid, actorId) {
-    const evaluacion = await this.getEvaluacionByUuid(uuid);
+  async deleteEvaluacion(uuid, actorId, user) {
+    const evaluacion = await this.getEvaluacionByUuid(uuid, user);
     await evaluacionRepository.softDelete(evaluacion, actorId);
   },
 };

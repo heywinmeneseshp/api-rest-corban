@@ -4,15 +4,15 @@ import { ApiError } from '../../utils/ApiError.js';
 import { findEvaluacionByUuidOrFail } from './evaluacionLookup.js';
 
 export const infeccionService = {
-  async getInfeccionByEvaluacionUuid(evaluacionUuid) {
-    const evaluacion = await findEvaluacionByUuidOrFail(evaluacionUuid);
+  async getInfeccionByEvaluacionUuid(evaluacionUuid, user) {
+    const evaluacion = await findEvaluacionByUuidOrFail(evaluacionUuid, user);
     const infeccion = await infeccionRepository.findByEvaluacionId(evaluacion.id);
     if (!infeccion) throw ApiError.notFound('La evaluación no tiene infección registrada');
     return infeccion;
   },
 
-  async createInfeccion(evaluacionUuid, payload, actorId) {
-    const evaluacion = await findEvaluacionByUuidOrFail(evaluacionUuid);
+  async createInfeccion(evaluacionUuid, payload, actorId, user) {
+    const evaluacion = await findEvaluacionByUuidOrFail(evaluacionUuid, user);
 
     const existing = await infeccionRepository.findByEvaluacionId(evaluacion.id);
     if (existing) throw ApiError.conflict('Esta evaluación ya tiene una infección registrada');
@@ -46,8 +46,8 @@ export const infeccionService = {
     });
   },
 
-  async updateInfeccion(evaluacionUuid, payload, actorId) {
-    const evaluacion = await findEvaluacionByUuidOrFail(evaluacionUuid);
+  async updateInfeccion(evaluacionUuid, payload, actorId, user) {
+    const evaluacion = await findEvaluacionByUuidOrFail(evaluacionUuid, user);
     const infeccion = await infeccionRepository.findByEvaluacionId(evaluacion.id);
     if (!infeccion) throw ApiError.notFound('La evaluación no tiene infección registrada');
 

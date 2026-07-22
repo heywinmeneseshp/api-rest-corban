@@ -4,15 +4,15 @@ import { ApiError } from '../../utils/ApiError.js';
 import { findEvaluacionByUuidOrFail } from './evaluacionLookup.js';
 
 export const sumaBrutaService = {
-  async getSumaBrutaByEvaluacionUuid(evaluacionUuid) {
-    const evaluacion = await findEvaluacionByUuidOrFail(evaluacionUuid);
+  async getSumaBrutaByEvaluacionUuid(evaluacionUuid, user) {
+    const evaluacion = await findEvaluacionByUuidOrFail(evaluacionUuid, user);
     const sumaBruta = await sumaBrutaRepository.findByEvaluacionId(evaluacion.id);
     if (!sumaBruta) throw ApiError.notFound('La evaluación no tiene suma bruta registrada');
     return sumaBruta;
   },
 
-  async createSumaBruta(evaluacionUuid, payload, actorId) {
-    const evaluacion = await findEvaluacionByUuidOrFail(evaluacionUuid);
+  async createSumaBruta(evaluacionUuid, payload, actorId, user) {
+    const evaluacion = await findEvaluacionByUuidOrFail(evaluacionUuid, user);
 
     const existing = await sumaBrutaRepository.findByEvaluacionId(evaluacion.id);
     if (existing) throw ApiError.conflict('Esta evaluación ya tiene una suma bruta registrada');
@@ -45,8 +45,8 @@ export const sumaBrutaService = {
     });
   },
 
-  async updateSumaBruta(evaluacionUuid, payload, actorId) {
-    const evaluacion = await findEvaluacionByUuidOrFail(evaluacionUuid);
+  async updateSumaBruta(evaluacionUuid, payload, actorId, user) {
+    const evaluacion = await findEvaluacionByUuidOrFail(evaluacionUuid, user);
     const sumaBruta = await sumaBrutaRepository.findByEvaluacionId(evaluacion.id);
     if (!sumaBruta) throw ApiError.notFound('La evaluación no tiene suma bruta registrada');
 

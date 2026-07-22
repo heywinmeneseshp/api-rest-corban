@@ -1,5 +1,17 @@
 const progressMap = new Map();
 
+// Por si un cargue nunca llega a completarse ni a fallar explícitamente
+// (proceso reiniciado, cliente abandonado, etc.), para que no se acumulen
+// tokens húerfanos en memoria para siempre.
+const TTL_MS = 30 * 60 * 1000;
+
+function limpiarViejos() {
+  const ahora = Date.now();
+  for (const [token, entry] of progressMap) {
+    if (entry.startTime && ahora - entry.startTime > TTL_MS) progressMap.delete(token);
+  }
+}
+
 function calcEta(entry) {
   if (!entry || entry.pct <= 0 || entry.pct >= 100 || !entry.startTime) return null;
   const elapsed = Date.now() - entry.startTime;
@@ -10,6 +22,7 @@ function calcEta(entry) {
 
 export const bulkProgress = {
   init(token, totalFilas) {
+    limpiarViejos();
     progressMap.set(token, { pct: 0, fase: 'iniciando', filas: 0, total: totalFilas, error: null, startTime: Date.now() });
   },
 

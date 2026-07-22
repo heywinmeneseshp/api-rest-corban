@@ -4,6 +4,7 @@ import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { logger } from '../../utils/logger.js';
 import { configuracionService } from '../sistema/configuracion.service.js';
 import { parseBulkFile } from '../../utils/bulkFileParser.js';
+import { getFincaIdsPermitidas } from '../../utils/fincaScope.js';
 
 const parseEstado = (value) => {
   if (value === undefined || value === '' || value === null) return true;
@@ -12,19 +13,27 @@ const parseEstado = (value) => {
 };
 
 export const fincaService = {
-  async listFincas(query) {
+  async listFincas(query, user) {
     const { page, limit, offset } = getPagination(query);
     const { rows, count } = await fincaRepository.findAndCountAll({
       limit,
       offset,
       search: query.search,
+      fincaIdsPermitidas: getFincaIdsPermitidas(user),
     });
     return { items: rows, meta: buildPaginationMeta({ page, limit, total: count }) };
   },
 
-  async getFincaByUuid(uuid) {
+  // `user` opcional: si se da y el usuario tiene restricción de fincas, se
+  // trata una finca fuera de su alcance como si no existiera (404), para no
+  // revelar qué fincas existen fuera de lo que tiene asignado.
+  async getFincaByUuid(uuid, user) {
     const finca = await fincaRepository.findByUuid(uuid);
     if (!finca) throw ApiError.notFound('Finca no encontrada');
+    const permitidas = getFincaIdsPermitidas(user);
+    if (permitidas !== null && !permitidas.includes(finca.id)) {
+      throw ApiError.notFound('Finca no encontrada');
+    }
     return finca;
   },
 
@@ -40,8 +49,8 @@ export const fincaService = {
     });
   },
 
-  async updateFinca(uuid, payload, actorId) {
-    const finca = await this.getFincaByUuid(uuid);
+  async updateFinca(uuid, payload, actorId, user) {
+    const finca = await this.getFincaByUuid(uuid, user);
 
     if (payload.codigo) {
       const existing = await fincaRepository.findByCodigo(payload.codigo);
@@ -53,13 +62,13 @@ export const fincaService = {
     return fincaRepository.update(finca, { ...payload, updatedBy: actorId });
   },
 
-  async deleteFinca(uuid, actorId) {
-    const finca = await this.getFincaByUuid(uuid);
+  async deleteFinca(uuid, actorId, user) {
+    const finca = await this.getFincaByUuid(uuid, user);
     await fincaRepository.softDelete(finca, actorId);
   },
 
-  async listLotes(uuid, query) {
-    const finca = await this.getFincaByUuid(uuid);
+  async listLotes(uuid, query, user) {
+    const finca = await this.getFincaByUuid(uuid, user);
     const { page, limit, offset } = getPagination(query);
     const { rows, count } = await fincaRepository.findLotesByFincaId(finca.id, { limit, offset });
     return { items: rows, meta: buildPaginationMeta({ page, limit, total: count }) };

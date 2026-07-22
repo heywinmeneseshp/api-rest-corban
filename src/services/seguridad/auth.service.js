@@ -23,9 +23,18 @@ const ALL_PERMISSION_CODES = Object.values(PERMISSIONS);
 const buildTokenPair = async (user) => {
   const roleNames = (user.roles || []).map((r) => r.nombre);
   const roleIds = (user.roles || []).map((r) => r.id);
-  const permissions = roleNames.includes(ROLES.ADMINISTRADOR)
+  const esAdmin = roleNames.includes(ROLES.ADMINISTRADOR);
+  const permissions = esAdmin
     ? ALL_PERMISSION_CODES
     : await roleRepository.findPermissionCodesByRoleIds(roleIds);
+
+  // Fincas asignadas al usuario (para restringir qué datos puede ver/crear
+  // /editar). Administrador se salta esta restricción por completo (igual
+  // que ya se salta la tabla rol_permisos): fincaIds=null significa "sin
+  // restricción, ve todas las fincas". Para cualquier otro usuario, un
+  // arreglo vacío significa que no ve ningún dato hasta que se le asignen
+  // fincas explícitamente.
+  const fincaIds = esAdmin ? null : await userRepository.findFincaIdsByUserId(user.id);
 
   const accessToken = signAccessToken({
     id: user.id,
@@ -33,6 +42,7 @@ const buildTokenPair = async (user) => {
     usuario: user.usuario,
     roles: roleNames,
     permissions,
+    fincaIds,
   });
 
   const refreshTokenPlain = generateRefreshToken();
@@ -45,7 +55,7 @@ const buildTokenPair = async (user) => {
   return {
     accessToken,
     refreshToken: refreshTokenPlain,
-    user: { ...user.toSafeJSON(), roles: roleNames, permissions },
+    user: { ...user.toSafeJSON(), roles: roleNames, permissions, fincaIds },
   };
 };
 

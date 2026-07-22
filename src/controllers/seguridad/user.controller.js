@@ -47,6 +47,21 @@ export const userController = {
     await userService.removeRole(req.params.uuid, req.params.roleUuid);
     ApiResponse.send(res, { message: 'Rol removido correctamente', data: null });
   }),
+
+  listFincas: asyncHandler(async (req, res) => {
+    const fincas = await userService.listUserFincas(req.params.uuid);
+    ApiResponse.send(res, { message: 'Fincas del usuario obtenidas correctamente', data: fincas });
+  }),
+
+  assignFinca: asyncHandler(async (req, res) => {
+    await userService.assignFinca(req.params.uuid, req.body.fincaUuid, req.user?.id);
+    ApiResponse.send(res, { message: 'Finca asignada correctamente', data: null });
+  }),
+
+  removeFinca: asyncHandler(async (req, res) => {
+    await userService.removeFinca(req.params.uuid, req.params.fincaUuid);
+    ApiResponse.send(res, { message: 'Finca removida correctamente', data: null });
+  }),
 };
 
 export default userController;

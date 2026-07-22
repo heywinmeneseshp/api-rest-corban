@@ -34,6 +34,8 @@ import sumaBrutaRoutes from './routes/agricola/sumaBruta.routes.js';
 import motivoRepiqueRoutes from './routes/agricola/motivoRepique.routes.js';
 import motivoRecuseRoutes from './routes/agricola/motivoRecuse.routes.js';
 import racimoMovimientoRoutes from './routes/agricola/racimoMovimiento.routes.js';
+import produccionSemanalRoutes from './routes/agricola/produccionSemanal.routes.js';
+import dashboardRoutes from './routes/agricola/dashboard.routes.js';
 
 import configuracionRoutes from './routes/sistema/configuracion.routes.js';
 import resetDatosRoutes from './routes/sistema/resetDatos.routes.js';
@@ -101,6 +103,8 @@ router.use('/evaluaciones', sumaBrutaRoutes);
 router.use('/motivos-repique', motivoRepiqueRoutes);
 router.use('/motivos-recuse', motivoRecuseRoutes);
 router.use('/racimo-movimientos', racimoMovimientoRoutes);
+router.use('/produccion-semanal', produccionSemanalRoutes);
+router.use('/dashboard', dashboardRoutes);
 
 router.use('/configuraciones', configuracionRoutes);
 router.use('/sistema', resetDatosRoutes);

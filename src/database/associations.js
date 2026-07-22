@@ -3,7 +3,7 @@ import { Role } from './models/role.model.js';
 import { Permiso } from './models/permiso.model.js';
 import { MenuItem } from './models/menuItem.model.js';
 import { RefreshToken } from './models/refreshToken.model.js';
-import { UsuarioRol, RolPermiso } from './models/pivotModels.js';
+import { UsuarioRol, RolPermiso, UsuarioFinca } from './models/pivotModels.js';
 
 import { Finca } from './models/finca.model.js';
 import { Lote } from './models/lote.model.js';
@@ -22,6 +22,7 @@ import { LoteAreaProduccion } from './models/loteAreaProduccion.model.js';
 import { MotivoRepique } from './models/motivoRepique.model.js';
 import { MotivoRecuse } from './models/motivoRecuse.model.js';
 import { RacimoMovimiento } from './models/racimoMovimiento.model.js';
+import { ProduccionSemanal } from './models/produccionSemanal.model.js';
 
 const withAuditAssociations = (TargetModel) => {
   TargetModel.belongsTo(User, { as: 'creadoPor', foreignKey: 'createdBy' });
@@ -58,6 +59,23 @@ export const setupAssociations = () => {
   });
   UsuarioRol.belongsTo(User, { foreignKey: 'userId', as: 'usuario' });
   UsuarioRol.belongsTo(Role, { foreignKey: 'roleId', as: 'rol' });
+
+  // Usuarios <-> Fincas (N:M) — qué fincas puede administrar/ver cada
+  // usuario. Administrador se salta esta restricción (ver auth.service.js).
+  User.belongsToMany(Finca, {
+    through: UsuarioFinca,
+    foreignKey: 'userId',
+    otherKey: 'fincaId',
+    as: 'fincas',
+  });
+  Finca.belongsToMany(User, {
+    through: UsuarioFinca,
+    foreignKey: 'fincaId',
+    otherKey: 'userId',
+    as: 'usuarios',
+  });
+  UsuarioFinca.belongsTo(User, { foreignKey: 'userId', as: 'usuario' });
+  UsuarioFinca.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
 
   // Roles <-> Permisos (N:M)
   Role.belongsToMany(Permiso, {
@@ -158,6 +176,13 @@ export const setupAssociations = () => {
   MotivoRecuse.hasMany(RacimoMovimiento, { foreignKey: 'motivoRecuseId', as: 'movimientos' });
   RacimoMovimiento.belongsTo(MotivoRecuse, { foreignKey: 'motivoRecuseId', as: 'motivoRecuse' });
 
+  // Producción semanal: cajas de 20kg por finca y semana
+  Finca.hasMany(ProduccionSemanal, { foreignKey: 'fincaId', as: 'produccionSemanal' });
+  ProduccionSemanal.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+
+  Semana.hasMany(ProduccionSemanal, { foreignKey: 'semanaId', as: 'produccionSemanal' });
+  ProduccionSemanal.belongsTo(Semana, { foreignKey: 'semanaId', as: 'semana' });
+
   // Auditoría — Fase 2 (maestras con deleted_by, transaccionales sin deleted_by)
   withAuditAssociations(Finca);
   withAuditAssociations(Lote);
@@ -174,6 +199,7 @@ export const setupAssociations = () => {
   withAuditAssociations(MotivoRepique);
   withAuditAssociations(MotivoRecuse);
   withAuditAssociations(RacimoMovimiento);
+  withAuditAssociations(ProduccionSemanal);
 };
 
 export {
@@ -184,6 +210,7 @@ export {
   RefreshToken,
   UsuarioRol,
   RolPermiso,
+  UsuarioFinca,
   Finca,
   Lote,
   Planta,
@@ -201,6 +228,7 @@ export {
   MotivoRepique,
   MotivoRecuse,
   RacimoMovimiento,
+  ProduccionSemanal,
 };
 
 export default setupAssociations;

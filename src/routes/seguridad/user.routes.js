@@ -11,6 +11,8 @@ import {
   updateUserSchema,
   assignRoleSchema,
   removeRoleSchema,
+  assignFincaSchema,
+  removeFincaSchema,
 } from '../../validators/seguridad/user.validator.js';
 
 const router = Router();
@@ -136,6 +138,55 @@ router.delete(
   permission(PERMISSIONS.USUARIOS_ASIGNAR_ROL),
   validate(removeRoleSchema),
   userController.removeRole,
+);
+
+/**
+ * @openapi
+ * /users/{uuid}/fincas:
+ *   get:
+ *     tags: [Usuarios]
+ *     summary: Listar fincas asignadas al usuario
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ *   post:
+ *     tags: [Usuarios]
+ *     summary: Asignar finca al usuario
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.get(
+  '/:uuid/fincas',
+  auth,
+  permission(PERMISSIONS.USUARIOS_VER),
+  validate(getUserSchema),
+  userController.listFincas,
+);
+router.post(
+  '/:uuid/fincas',
+  auth,
+  permission(PERMISSIONS.USUARIOS_ASIGNAR_FINCA),
+  validate(assignFincaSchema),
+  userController.assignFinca,
+);
+
+/**
+ * @openapi
+ * /users/{uuid}/fincas/{fincaUuid}:
+ *   delete:
+ *     tags: [Usuarios]
+ *     summary: Remover finca del usuario
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.delete(
+  '/:uuid/fincas/:fincaUuid',
+  auth,
+  permission(PERMISSIONS.USUARIOS_ASIGNAR_FINCA),
+  validate(removeFincaSchema),
+  userController.removeFinca,
 );
 
 export default router;

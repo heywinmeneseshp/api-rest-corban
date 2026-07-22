@@ -2,9 +2,9 @@ import { Op } from 'sequelize';
 import { Lote, Planta } from '../../database/associations.js';
 
 export const loteRepository = {
-  async findAndCountAll({ limit, offset, search, fincaId }) {
+  async findAndCountAll({ limit, offset, search, fincaId, fincaIdsPermitidas }) {
     const where = {
-      ...(fincaId ? { fincaId } : {}),
+      ...(fincaId ? { fincaId } : fincaIdsPermitidas ? { fincaId: { [Op.in]: fincaIdsPermitidas } } : {}),
       ...(search
         ? {
             [Op.or]: [
@@ -28,6 +28,13 @@ export const loteRepository = {
 
   findByFincaAndCodigo(fincaId, codigo) {
     return Lote.findOne({ where: { fincaId, codigo } });
+  },
+
+  // Incluye lotes eliminados lógicamente: el UNIQUE de `codigo` en la BD no
+  // distingue registros con soft-delete, así que hay que revisar esto antes
+  // de asignar un código para no chocar con la restricción.
+  findByFincaAndCodigoIncludingDeleted(fincaId, codigo) {
+    return Lote.findOne({ where: { fincaId, codigo }, paranoid: false });
   },
 
   // Cuenta TODOS los lotes de la finca, incluidos los eliminados

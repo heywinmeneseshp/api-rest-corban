@@ -16,8 +16,9 @@ import {
 // `required` se activa en cascada solo si hay algún filtro de finca/lote,
 // para que la condición anidada realmente se aplique (INNER JOIN); sin
 // filtro, todo queda opcional (LEFT JOIN) como antes.
-const buildIncludes = ({ fincaId, loteId } = {}) => {
-  const filtrandoUbicacion = Boolean(fincaId || loteId);
+const buildIncludes = ({ fincaId, fincaIds, loteId } = {}) => {
+  const filtrandoUbicacion = Boolean(fincaId || fincaIds || loteId);
+  const fincaWhere = fincaId ? { id: fincaId } : fincaIds ? { id: { [Op.in]: fincaIds } } : undefined;
   return [
     {
       model: Planta,
@@ -36,8 +37,8 @@ const buildIncludes = ({ fincaId, loteId } = {}) => {
               model: Finca,
               as: 'finca',
               attributes: ['id', 'uuid', 'codigo', 'nombre'],
-              where: fincaId ? { id: fincaId } : undefined,
-              required: Boolean(fincaId),
+              where: fincaWhere,
+              required: Boolean(fincaWhere),
             },
           ],
         },
@@ -53,7 +54,7 @@ const buildIncludes = ({ fincaId, loteId } = {}) => {
 };
 
 export const evaluacionRepository = {
-  async findAndCountAll({ limit, offset, plantaId, fechaDesde, fechaHasta, fincaId, loteId, tipoEvaluacionId }) {
+  async findAndCountAll({ limit, offset, plantaId, fechaDesde, fechaHasta, fincaId, fincaIds, loteId, tipoEvaluacionId }) {
     const where = {};
     if (plantaId) where.plantaId = plantaId;
     if (tipoEvaluacionId) where.tipoEvaluacionId = tipoEvaluacionId;
@@ -68,14 +69,15 @@ export const evaluacionRepository = {
       limit,
       offset,
       order: [['fecha', 'DESC']],
-      include: buildIncludes({ fincaId, loteId }),
+      include: buildIncludes({ fincaId, fincaIds, loteId }),
+      distinct: true,
     });
   },
 
-  findByUuid(uuid) {
+  findByUuid(uuid, { fincaIds } = {}) {
     return Evaluacion.findOne({
       where: { uuid },
-      include: buildIncludes(),
+      include: buildIncludes({ fincaIds }),
     });
   },
 

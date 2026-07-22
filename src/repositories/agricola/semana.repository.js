@@ -27,6 +27,12 @@ export const semanaRepository = {
     });
     return anteriores.reverse();
   },
+  // Todas las semanas de un año, ordenadas de la más antigua a la más
+  // reciente. Se usa para reportes anuales (ej. gráfico de embolses).
+  findAllByAnio(anio) {
+    return Semana.findAll({ where: { anio }, order: [['fecha_inicio', 'ASC']] });
+  },
+
   async findAndCountAll({ limit, offset, anio }) {
     const where = anio ? { anio } : undefined;
     return Semana.findAndCountAll({

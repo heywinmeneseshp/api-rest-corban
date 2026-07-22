@@ -1,6 +1,6 @@
 import { Op } from 'sequelize';
-import { User, Role } from '../../database/associations.js';
-import { UsuarioRol } from '../../database/models/pivotModels.js';
+import { User, Role, Finca } from '../../database/associations.js';
+import { UsuarioRol, UsuarioFinca } from '../../database/models/pivotModels.js';
 
 export const userRepository = {
   async findAndCountAll({ limit, offset, search }) {
@@ -20,15 +20,26 @@ export const userRepository = {
       limit,
       offset,
       order: [['id', 'ASC']],
-      include: [{ model: Role, as: 'roles', through: { attributes: [] } }],
+      include: [
+        { model: Role, as: 'roles', through: { attributes: [] } },
+        { model: Finca, as: 'fincas', through: { attributes: [] }, attributes: ['id', 'uuid', 'codigo', 'nombre'] },
+      ],
+      distinct: true,
     });
   },
 
-  findByUuid(uuid, { includeRoles = true } = {}) {
-    return User.findOne({
-      where: { uuid },
-      include: includeRoles ? [{ model: Role, as: 'roles', through: { attributes: [] } }] : [],
-    });
+  findByUuid(uuid, { includeRoles = true, includeFincas = false } = {}) {
+    const include = [];
+    if (includeRoles) include.push({ model: Role, as: 'roles', through: { attributes: [] } });
+    if (includeFincas) include.push({ model: Finca, as: 'fincas', through: { attributes: [] } });
+    return User.findOne({ where: { uuid }, include });
+  },
+
+  // Ids de las fincas asignadas a un usuario (para el JWT y el scoping de
+  // datos). Consulta liviana, sin traer el modelo completo.
+  async findFincaIdsByUserId(userId) {
+    const filas = await UsuarioFinca.findAll({ where: { userId }, attributes: ['fincaId'], raw: true });
+    return filas.map((f) => f.fincaId);
   },
 
   findById(id) {
@@ -71,6 +82,18 @@ export const userRepository = {
 
   removeRole(userId, roleId, { transaction } = {}) {
     return UsuarioRol.destroy({ where: { userId, roleId }, transaction });
+  },
+
+  async assignFinca(userId, fincaId, createdBy, { transaction } = {}) {
+    return UsuarioFinca.findOrCreate({
+      where: { userId, fincaId },
+      defaults: { userId, fincaId, createdBy },
+      transaction,
+    });
+  },
+
+  removeFinca(userId, fincaId, { transaction } = {}) {
+    return UsuarioFinca.destroy({ where: { userId, fincaId }, transaction });
   },
 };
 

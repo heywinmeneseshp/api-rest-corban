@@ -10,15 +10,15 @@ const findSemanaByUuidOrFail = async (uuid) => {
 };
 
 export const conteoHojasService = {
-  async getConteoByEvaluacionUuid(evaluacionUuid) {
-    const evaluacion = await findEvaluacionByUuidOrFail(evaluacionUuid);
+  async getConteoByEvaluacionUuid(evaluacionUuid, user) {
+    const evaluacion = await findEvaluacionByUuidOrFail(evaluacionUuid, user);
     const conteo = await conteoHojasRepository.findByEvaluacionId(evaluacion.id);
     if (!conteo) throw ApiError.notFound('La evaluación no tiene conteo de hojas registrado');
     return conteo;
   },
 
-  async createConteo(evaluacionUuid, payload, actorId) {
-    const evaluacion = await findEvaluacionByUuidOrFail(evaluacionUuid);
+  async createConteo(evaluacionUuid, payload, actorId, user) {
+    const evaluacion = await findEvaluacionByUuidOrFail(evaluacionUuid, user);
 
     const existing = await conteoHojasRepository.findByEvaluacionId(evaluacion.id);
     if (existing) throw ApiError.conflict('Esta evaluación ya tiene un conteo de hojas registrado');
@@ -34,8 +34,8 @@ export const conteoHojasService = {
     });
   },
 
-  async updateConteo(evaluacionUuid, payload, actorId) {
-    const evaluacion = await findEvaluacionByUuidOrFail(evaluacionUuid);
+  async updateConteo(evaluacionUuid, payload, actorId, user) {
+    const evaluacion = await findEvaluacionByUuidOrFail(evaluacionUuid, user);
     const conteo = await conteoHojasRepository.findByEvaluacionId(evaluacion.id);
     if (!conteo) throw ApiError.notFound('La evaluación no tiene conteo de hojas registrado');
 

@@ -36,6 +36,41 @@ UsuarioRol.init(
   },
 );
 
+export class UsuarioFinca extends Model {}
+
+UsuarioFinca.init(
+  {
+    id: {
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
+      primaryKey: true,
+    },
+    userId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      field: 'user_id',
+    },
+    fincaId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      field: 'finca_id',
+    },
+    createdBy: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: 'created_by',
+    },
+  },
+  {
+    sequelize,
+    modelName: 'UsuarioFinca',
+    tableName: 'usuario_fincas',
+    underscored: true,
+    timestamps: true,
+    updatedAt: false,
+  },
+);
+
 export class RolPermiso extends Model {}
 
 RolPermiso.init(
@@ -71,4 +106,4 @@ RolPermiso.init(
   },
 );
 
-export default { UsuarioRol, RolPermiso };
+export default { UsuarioRol, RolPermiso, UsuarioFinca };

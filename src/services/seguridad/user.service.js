@@ -1,6 +1,6 @@
 import bcrypt from 'bcrypt';
 import { sequelize } from '../../database/connection.js';
-import { Role } from '../../database/associations.js';
+import { Role, Finca } from '../../database/associations.js';
 import { userRepository } from '../../repositories/seguridad/user.repository.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
@@ -11,6 +11,12 @@ const findRoleByUuidOrFail = async (roleUuid) => {
   const role = await Role.findOne({ where: { uuid: roleUuid } });
   if (!role) throw ApiError.notFound('Rol no encontrado');
   return role;
+};
+
+const findFincaByUuidOrFail = async (fincaUuid) => {
+  const finca = await Finca.findOne({ where: { uuid: fincaUuid } });
+  if (!finca) throw ApiError.notFound('Finca no encontrada');
+  return finca;
 };
 
 export const userService = {
@@ -102,6 +108,26 @@ export const userService = {
     if (!user) throw ApiError.notFound('Usuario no encontrado');
     const role = await findRoleByUuidOrFail(roleUuid);
     await userRepository.removeRole(user.id, role.id);
+  },
+
+  async listUserFincas(uuid) {
+    const user = await userRepository.findByUuid(uuid, { includeRoles: false, includeFincas: true });
+    if (!user) throw ApiError.notFound('Usuario no encontrado');
+    return user.fincas || [];
+  },
+
+  async assignFinca(uuid, fincaUuid, actorId) {
+    const user = await userRepository.findByUuid(uuid, { includeRoles: false });
+    if (!user) throw ApiError.notFound('Usuario no encontrado');
+    const finca = await findFincaByUuidOrFail(fincaUuid);
+    await userRepository.assignFinca(user.id, finca.id, actorId);
+  },
+
+  async removeFinca(uuid, fincaUuid) {
+    const user = await userRepository.findByUuid(uuid, { includeRoles: false });
+    if (!user) throw ApiError.notFound('Usuario no encontrado');
+    const finca = await findFincaByUuidOrFail(fincaUuid);
+    await userRepository.removeFinca(user.id, finca.id);
   },
 };
 

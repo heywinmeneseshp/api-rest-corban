@@ -4,6 +4,7 @@ export const PERMISSIONS = {
   USUARIOS_EDITAR: 'usuarios.editar',
   USUARIOS_ELIMINAR: 'usuarios.eliminar',
   USUARIOS_ASIGNAR_ROL: 'usuarios.asignar_rol',
+  USUARIOS_ASIGNAR_FINCA: 'usuarios.asignar_finca',
 
   ROLES_VER: 'roles.ver',
   ROLES_CREAR: 'roles.crear',
@@ -83,6 +84,9 @@ export const PERMISSIONS = {
   RACIMO_MOVIMIENTO_EDITAR: 'racimo_movimiento.editar',
   RACIMO_MOVIMIENTO_ELIMINAR: 'racimo_movimiento.eliminar',
 
+  PRODUCCION_VER: 'produccion.ver',
+  PRODUCCION_CREAR: 'produccion.crear',
+
   SISTEMA_RESET_DATOS: 'sistema.reset_datos',
 };
 
@@ -92,6 +96,7 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.USUARIOS_EDITAR, nombre: 'Editar usuarios' },
   { codigo: PERMISSIONS.USUARIOS_ELIMINAR, nombre: 'Eliminar usuarios' },
   { codigo: PERMISSIONS.USUARIOS_ASIGNAR_ROL, nombre: 'Asignar roles a usuarios' },
+  { codigo: PERMISSIONS.USUARIOS_ASIGNAR_FINCA, nombre: 'Asignar fincas a usuarios' },
 
   { codigo: PERMISSIONS.ROLES_VER, nombre: 'Ver roles' },
   { codigo: PERMISSIONS.ROLES_CREAR, nombre: 'Crear roles' },
@@ -170,6 +175,9 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.RACIMO_MOVIMIENTO_CREAR, nombre: 'Crear movimientos de racimos' },
   { codigo: PERMISSIONS.RACIMO_MOVIMIENTO_EDITAR, nombre: 'Editar movimientos de racimos' },
   { codigo: PERMISSIONS.RACIMO_MOVIMIENTO_ELIMINAR, nombre: 'Eliminar movimientos de racimos' },
+
+  { codigo: PERMISSIONS.PRODUCCION_VER, nombre: 'Ver producción semanal' },
+  { codigo: PERMISSIONS.PRODUCCION_CREAR, nombre: 'Crear producción semanal' },
 
   { codigo: PERMISSIONS.SISTEMA_RESET_DATOS, nombre: 'Borrar todos los datos que no vienen de los seeders' },
 ];

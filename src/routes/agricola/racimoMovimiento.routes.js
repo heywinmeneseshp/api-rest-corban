@@ -12,6 +12,8 @@ import {
   inventarioRacimosSchema,
   resumenCohorteSchema,
   reporteSaldosSchema,
+  reporteEmbolsesSchema,
+  exportarMovimientosSchema,
 } from '../../validators/agricola/racimoMovimiento.validator.js';
 
 const router = Router();
@@ -115,6 +117,24 @@ router.get(
 
 /**
  * @openapi
+ * /racimo-movimientos/reporte-embolses:
+ *   get:
+ *     tags: [Movimientos de Racimos]
+ *     summary: Total de embolses por semana en un año (general o por finca), para gráfico de líneas
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.get(
+  '/reporte-embolses',
+  auth,
+  permission(PERMISSIONS.RACIMO_MOVIMIENTO_VER),
+  validate(reporteEmbolsesSchema),
+  racimoMovimientoController.reporteEmbolses,
+);
+
+/**
+ * @openapi
  * /racimo-movimientos/bulk-upload:
  *   post:
  *     tags: [Movimientos de Racimos]
@@ -129,6 +149,24 @@ router.post(
   permission(PERMISSIONS.RACIMO_MOVIMIENTO_CREAR),
   uploadBulkFile,
   racimoMovimientoController.bulkUpload,
+);
+
+/**
+ * @openapi
+ * /racimo-movimientos/exportar:
+ *   get:
+ *     tags: [Movimientos de Racimos]
+ *     summary: Exportar movimientos a Excel con los filtros actuales
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Archivo Excel }
+ */
+router.get(
+  '/exportar',
+  auth,
+  permission(PERMISSIONS.RACIMO_MOVIMIENTO_VER),
+  validate(exportarMovimientosSchema),
+  racimoMovimientoController.exportar,
 );
 
 /**

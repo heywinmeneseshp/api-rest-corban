@@ -2,15 +2,18 @@ import { Op } from 'sequelize';
 import { Finca, Lote } from '../../database/associations.js';
 
 export const fincaRepository = {
-  async findAndCountAll({ limit, offset, search }) {
-    const where = search
-      ? {
-          [Op.or]: [
-            { codigo: { [Op.like]: `%${search}%` } },
-            { nombre: { [Op.like]: `%${search}%` } },
-          ],
-        }
-      : undefined;
+  async findAndCountAll({ limit, offset, search, fincaIdsPermitidas }) {
+    const where = {
+      ...(search
+        ? {
+            [Op.or]: [
+              { codigo: { [Op.like]: `%${search}%` } },
+              { nombre: { [Op.like]: `%${search}%` } },
+            ],
+          }
+        : {}),
+      ...(fincaIdsPermitidas ? { id: { [Op.in]: fincaIdsPermitidas } } : {}),
+    };
 
     return Finca.findAndCountAll({ where, limit, offset, order: [['id', 'ASC']] });
   },

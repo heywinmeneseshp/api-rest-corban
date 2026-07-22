@@ -5,12 +5,12 @@ import { HTTP_STATUS } from '../../constants/httpStatus.constants.js';
 
 export const sumaBrutaController = {
   getByEvaluacion: asyncHandler(async (req, res) => {
-    const sumaBruta = await sumaBrutaService.getSumaBrutaByEvaluacionUuid(req.params.uuid);
+    const sumaBruta = await sumaBrutaService.getSumaBrutaByEvaluacionUuid(req.params.uuid, req.user);
     ApiResponse.send(res, { message: 'Suma bruta obtenida correctamente', data: sumaBruta });
   }),
 
   create: asyncHandler(async (req, res) => {
-    const sumaBruta = await sumaBrutaService.createSumaBruta(req.params.uuid, req.body, req.user?.id);
+    const sumaBruta = await sumaBrutaService.createSumaBruta(req.params.uuid, req.body, req.user?.id, req.user);
     ApiResponse.send(res, {
       statusCode: HTTP_STATUS.CREATED,
       message: 'Suma bruta registrada correctamente',
@@ -19,7 +19,7 @@ export const sumaBrutaController = {
   }),
 
   update: asyncHandler(async (req, res) => {
-    const sumaBruta = await sumaBrutaService.updateSumaBruta(req.params.uuid, req.body, req.user?.id);
+    const sumaBruta = await sumaBrutaService.updateSumaBruta(req.params.uuid, req.body, req.user?.id, req.user);
     ApiResponse.send(res, { message: 'Suma bruta actualizada correctamente', data: sumaBruta });
   }),
 };
