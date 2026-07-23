@@ -22,6 +22,7 @@ export const createMotivoRecuseSchema = Joi.object({
   body: Joi.object({
     nombre: Joi.string().min(2).max(100).required(),
     descripcion: Joi.string().max(255).allow('', null),
+    codigoExterno: Joi.string().max(50).allow('', null),
     estado: Joi.boolean(),
   }),
   params: Joi.object({}),
@@ -32,6 +33,7 @@ export const updateMotivoRecuseSchema = Joi.object({
   body: Joi.object({
     nombre: Joi.string().min(2).max(100),
     descripcion: Joi.string().max(255).allow('', null),
+    codigoExterno: Joi.string().max(50).allow('', null),
     estado: Joi.boolean(),
   }).min(1),
   params: Joi.object({ uuid: uuidParam }),
