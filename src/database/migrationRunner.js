@@ -13,7 +13,6 @@ const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
 const SEEDERS_DIR = path.join(__dirname, 'seeders');
 const META_TABLE = 'SequelizeMeta';
 const SEED_TABLE = 'SequelizeData';
-const LOCK_NAME = 'corbana_migrations';
 
 // El primer usuario administrador ya no se crea desde variables de entorno:
 // se pide por un asistente de configuración inicial en el front (ver
@@ -73,29 +72,22 @@ async function applyPending({ dir, trackingTable, label, excluir }) {
 // cualquier momento: lo que ya se aplicó de un lado, el otro lo detecta como
 // hecho y lo salta. Pensado para llamarse en cada arranque (ver api/index.js
 // y server.js): si la base ya tiene todo aplicado, es prácticamente gratis
-// (un par de SELECT). Usa un lock a nivel de MySQL para que, si dos
-// invocaciones "frías" arrancan al mismo tiempo (típico de serverless), no
-// intenten correr la misma migración dos veces en paralelo.
+// (un par de SELECT).
+//
+// Nota: no hay lock entre invocaciones concurrentes (dos arranques "fríos"
+// de Vercel al mismo tiempo podrían pisarse en la primera migración). Es un
+// riesgo acotado a los primeros segundos después de un deploy con la base
+// vacía, se decidió no complicar el adaptador del túnel con eso.
 export const runPendingMigrationsAndSeeders = async () => {
-  const [[{ lock }]] = await sequelize.query(`SELECT GET_LOCK('${LOCK_NAME}', 10) AS lock`);
-  if (lock !== 1) {
-    logger.warn('No se pudo obtener el lock de migraciones (otra instancia ya lo tiene); se omite este arranque');
-    return;
-  }
-
-  try {
-    const migraciones = await applyPending({ dir: MIGRATIONS_DIR, trackingTable: META_TABLE, label: 'migración' });
-    const seeders = await applyPending({
-      dir: SEEDERS_DIR,
-      trackingTable: SEED_TABLE,
-      label: 'seeder',
-      excluir: SEEDERS_EXCLUIDOS_DEL_AUTORUN,
-    });
-    if (migraciones === 0 && seeders === 0) {
-      logger.info('Base de datos al día: no había migraciones ni seeders pendientes');
-    }
-  } finally {
-    await sequelize.query(`SELECT RELEASE_LOCK('${LOCK_NAME}')`);
+  const migraciones = await applyPending({ dir: MIGRATIONS_DIR, trackingTable: META_TABLE, label: 'migración' });
+  const seeders = await applyPending({
+    dir: SEEDERS_DIR,
+    trackingTable: SEED_TABLE,
+    label: 'seeder',
+    excluir: SEEDERS_EXCLUIDOS_DEL_AUTORUN,
+  });
+  if (migraciones === 0 && seeders === 0) {
+    logger.info('Base de datos al día: no había migraciones ni seeders pendientes');
   }
 };
 
