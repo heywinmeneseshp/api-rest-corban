@@ -66,7 +66,14 @@ async function applyPending({ dir, trackingTable, label, excluir }) {
       throw new Error(`Fallo aplicando ${label} '${file}': ${error.message || error}`);
     }
     try {
-      await sequelize.query(`INSERT INTO \`${trackingTable}\` (name) VALUES (?)`, { replacements: [file] });
+      // `bind` (no `replacements`): el valor viaja separado del texto del
+      // SQL en vez de quedar embebido como string literal. Importa acá
+      // porque el túnel bloquea cualquier SQL que contenga como palabra
+      // suelta "DROP/TRUNCATE/GRANT/REVOKE/RENAME" — con `replacements`,
+      // un nombre de archivo (o cualquier dato) que contenga alguna de esas
+      // palabras (ej. "...-rename-....cjs") queda embebido en el SQL final
+      // y dispara un falso positivo del filtro.
+      await sequelize.query(`INSERT INTO \`${trackingTable}\` (name) VALUES ($1)`, { bind: [file] });
     } catch (error) {
       throw new Error(
         `'${file}' se aplicó pero falló al registrarlo en ${trackingTable} (se reintentará en el próximo arranque): ${error.message || error}`,

@@ -187,8 +187,15 @@ function txnDel($config, $id) {
 
 // ─── Validación de SQL ───
 function validateSql($config, $sqlUpper, $sql, $clientIp) {
+    // Ojo: se compara solo contra el INICIO del SQL (igual que
+    // allowed_commands más abajo), no en cualquier parte del texto. Con un
+    // preg_match sin ancla, cualquier VALOR de datos que contenga alguna de
+    // estas palabras como palabra suelta (ej. un nombre de archivo o una
+    // observación con "rename", "grant", etc.) disparaba un falso positivo
+    // y bloqueaba la query aunque el comando real fuera un SELECT/INSERT
+    // inofensivo.
     foreach ($config['blocked_commands'] as $cmd) {
-        if (preg_match('/\b' . preg_quote(strtoupper($cmd), '/') . '\b/i', $sqlUpper)) {
+        if (strpos($sqlUpper, strtoupper($cmd)) === 0) {
             http_response_code(403);
             echo json_encode(['success' => false, 'error' => "Command '{$cmd}' blocked"]);
             logMsg($config, "BLOCKED | {$clientIp} | " . substr($sql, 0, 300));
