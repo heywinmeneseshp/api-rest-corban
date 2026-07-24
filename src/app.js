@@ -39,6 +39,7 @@ import dashboardRoutes from './routes/agricola/dashboard.routes.js';
 
 import configuracionRoutes from './routes/sistema/configuracion.routes.js';
 import resetDatosRoutes from './routes/sistema/resetDatos.routes.js';
+import setupRoutes from './routes/sistema/setup.routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -108,6 +109,7 @@ router.use('/dashboard', dashboardRoutes);
 
 router.use('/configuraciones', configuracionRoutes);
 router.use('/sistema', resetDatosRoutes);
+router.use('/sistema', setupRoutes);
 
 app.use(env.apiPrefix, router);
 

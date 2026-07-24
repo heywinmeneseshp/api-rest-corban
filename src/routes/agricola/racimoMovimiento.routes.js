@@ -14,6 +14,7 @@ import {
   reporteSaldosSchema,
   reporteEmbolsesSchema,
   exportarMovimientosSchema,
+  exportarReporteSemanalSchema,
 } from '../../validators/agricola/racimoMovimiento.validator.js';
 
 const router = Router();
@@ -167,6 +168,24 @@ router.get(
   permission(PERMISSIONS.RACIMO_MOVIMIENTO_VER),
   validate(exportarMovimientosSchema),
   racimoMovimientoController.exportar,
+);
+
+/**
+ * @openapi
+ * /racimo-movimientos/exportar-semanal:
+ *   get:
+ *     tags: [Movimientos de Racimos]
+ *     summary: Descarga semanal en el formato exacto (Semana/Año/Finca/Lote/Edad/Novedad/Cantidad) para cargar en el sistema externo
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Archivo Excel }
+ */
+router.get(
+  '/exportar-semanal',
+  auth,
+  permission(PERMISSIONS.RACIMO_MOVIMIENTO_VER),
+  validate(exportarReporteSemanalSchema),
+  racimoMovimientoController.exportarReporteSemanal,
 );
 
 /**

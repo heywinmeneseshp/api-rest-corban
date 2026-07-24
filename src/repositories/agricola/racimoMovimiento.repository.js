@@ -12,10 +12,18 @@ import {
 const listIncludes = [
   { model: Finca, as: 'finca', attributes: ['id', 'uuid', 'codigo', 'nombre'] },
   { model: Lote, as: 'lote', attributes: ['id', 'uuid', 'codigo', 'nombre'] },
-  { model: Semana, as: 'semanaEmbolse', attributes: ['id', 'uuid', 'codigo', 'anio', 'numeroSemana', 'color'] },
-  { model: Semana, as: 'semanaRegistro', attributes: ['id', 'uuid', 'codigo', 'anio', 'numeroSemana', 'color'] },
-  { model: MotivoRepique, as: 'motivoRepique', attributes: ['id', 'uuid', 'nombre'] },
-  { model: MotivoRecuse, as: 'motivoRecuse', attributes: ['id', 'uuid', 'nombre'] },
+  {
+    model: Semana,
+    as: 'semanaEmbolse',
+    attributes: ['id', 'uuid', 'codigo', 'anio', 'numeroSemana', 'color', 'fechaInicio'],
+  },
+  {
+    model: Semana,
+    as: 'semanaRegistro',
+    attributes: ['id', 'uuid', 'codigo', 'anio', 'numeroSemana', 'color', 'fechaInicio'],
+  },
+  { model: MotivoRepique, as: 'motivoRepique', attributes: ['id', 'uuid', 'nombre', 'codigoExterno'] },
+  { model: MotivoRecuse, as: 'motivoRecuse', attributes: ['id', 'uuid', 'nombre', 'codigoExterno'] },
   { model: User, as: 'creadoPor', attributes: ['id', 'uuid', 'usuario', 'nombre'] },
 ];
 

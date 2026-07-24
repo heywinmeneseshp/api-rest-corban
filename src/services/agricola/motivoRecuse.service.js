@@ -33,6 +33,7 @@ export const motivoRecuseService = {
     return motivoRecuseRepository.create({
       nombre: payload.nombre,
       descripcion: payload.descripcion,
+      codigoExterno: payload.codigoExterno,
       estado: payload.estado ?? true,
       createdBy: actorId,
     });
@@ -56,12 +57,29 @@ export const motivoRecuseService = {
     await motivoRecuseRepository.softDelete(motivo, actorId);
   },
 
+  async exportMotivosToExcel() {
+    const { default: XLSX } = await import('xlsx');
+    const rows = await motivoRecuseRepository.findAll();
+
+    const datos = rows.map((m) => ({
+      Nombre: m.nombre,
+      Descripción: m.descripcion || '',
+      'Código externo': m.codigoExterno || '',
+      Estado: m.estado ? 'Activo' : 'Inactivo',
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(datos);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Motivos de Recuse');
+    return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  },
+
   // Cargue masivo desde .csv/.xlsx. Columnas esperadas: nombre, descripcion
-  // (opcional), estado (opcional: activo/inactivo). Si ya existe un motivo
-  // con ese nombre, se actualiza en vez de duplicarlo. Sin dependencias
-  // entre filas, así que se valida todo primero y se escribe en un solo
-  // bulkCreate con upsert (INSERT ... ON DUPLICATE KEY UPDATE), en vez de
-  // una consulta por fila.
+  // (opcional), codigoExterno (opcional), estado (opcional: activo/inactivo).
+  // Si ya existe un motivo con ese nombre, se actualiza en vez de
+  // duplicarlo. Sin dependencias entre filas, así que se valida todo primero
+  // y se escribe en un solo bulkCreate con upsert (INSERT ... ON DUPLICATE
+  // KEY UPDATE), en vez de una consulta por fila.
   async bulkCreateMotivos(file, actorId, { dryRun = false } = {}) {
     const rows = parseBulkFile(file);
     if (rows.length === 0) throw ApiError.badRequest('El archivo no tiene filas para procesar');
@@ -80,8 +98,9 @@ export const motivoRecuseService = {
       }
 
       const descripcion = row.descripcion ? String(row.descripcion).trim() : undefined;
+      const codigoExterno = row.codigoexterno ? String(row.codigoexterno).trim() : undefined;
       const estado = parseEstado(row.estado);
-      filasValidas.push({ nombre, descripcion, estado });
+      filasValidas.push({ nombre, descripcion, codigoExterno, estado });
     }
 
     // Si el mismo nombre aparece varias veces en el archivo, se procesa una
@@ -102,6 +121,7 @@ export const motivoRecuseService = {
         filasUnicas.map((f) => ({
           nombre: f.nombre,
           descripcion: f.descripcion,
+          codigoExterno: f.codigoExterno,
           estado: f.estado,
           createdBy: actorId,
           updatedBy: actorId,

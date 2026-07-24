@@ -65,6 +65,23 @@ router.post(
 
 /**
  * @openapi
+ * /motivos-recuse/exportar:
+ *   get:
+ *     tags: [Motivos de Recuse]
+ *     summary: Exportar todos los motivos de recuse a Excel
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Archivo Excel }
+ */
+router.get(
+  '/exportar',
+  auth,
+  permission(PERMISSIONS.MOTIVO_RECUSE_VER),
+  motivoRecuseController.exportar,
+);
+
+/**
+ * @openapi
  * /motivos-recuse/{uuid}:
  *   get:
  *     tags: [Motivos de Recuse]

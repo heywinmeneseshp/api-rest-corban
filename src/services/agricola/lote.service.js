@@ -165,6 +165,11 @@ export const loteService = {
         continue;
       }
 
+      if (!/^\d+$/.test(nombre)) {
+        errores.push({ fila, mensaje: `El nombre del lote debe contener solo números (ej: 01, 02): '${nombre}'` });
+        continue;
+      }
+
       const area = areaRaw !== undefined && areaRaw !== '' ? Number(areaRaw) : undefined;
       if (area !== undefined && Number.isNaN(area)) {
         errores.push({ fila, mensaje: 'El área debe ser un número' });

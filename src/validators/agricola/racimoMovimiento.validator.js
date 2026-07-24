@@ -91,6 +91,15 @@ export const exportarMovimientosSchema = Joi.object({
   }),
 });
 
+export const exportarReporteSemanalSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({}),
+  query: Joi.object({
+    semanaUuid: uuidRef.required(),
+    tipo: Joi.string().valid(...TIPOS).required(),
+  }),
+});
+
 export const inventarioRacimosSchema = Joi.object({
   body: Joi.object({}),
   params: Joi.object({}),

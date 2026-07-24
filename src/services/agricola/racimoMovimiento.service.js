@@ -159,6 +159,76 @@ export const racimoMovimientoService = {
     return buffer;
   },
 
+  // Reporte semanal para cargar en el sistema externo: una hoja por tipo de
+  // movimiento (Embolse/Repique/Recuse/Procesado), con las columnas exactas
+  // que espera esa plantilla. Se agrupa por cohorte (finca + lote + semana
+  // de embolse + motivo) sumando cantidad — el formato destino no distingue
+  // movimientos individuales del mismo día, solo el total por novedad.
+  async exportReporteSemanal(query, user) {
+    const { default: XLSX } = await import('xlsx');
+
+    const semana = await findSemanaByUuidOrFail(query.semanaUuid);
+    const tipo = query.tipo;
+
+    const rows = await racimoMovimientoRepository.findAllForExport({
+      semanaRegistroId: semana.id,
+      tipo,
+      fincaIds: getFincaIdsPermitidas(user),
+    });
+
+    const pad2 = (v) => String(v ?? '').trim().padStart(2, '0');
+    const MS_POR_SEMANA = 7 * 24 * 60 * 60 * 1000;
+
+    const grupos = new Map();
+    for (const r of rows) {
+      const motivoId = r.motivoRepiqueId || r.motivoRecuseId || null;
+      const key = `${r.fincaId}-${r.loteId}-${r.semanaEmbolseId}-${motivoId}`;
+      if (!grupos.has(key)) {
+        grupos.set(key, {
+          finca: r.finca,
+          lote: r.lote,
+          semanaEmbolse: r.semanaEmbolse,
+          motivo: r.motivoRepique || r.motivoRecuse || null,
+          cantidad: 0,
+        });
+      }
+      grupos.get(key).cantidad += r.cantidad;
+    }
+
+    const columnas =
+      tipo === 'EMBOLSE'
+        ? ['Semana', 'Año', 'Finca', 'Lote', 'Cantidad']
+        : tipo === 'PROCESADO'
+          ? ['Semana', 'Año', 'Finca', 'Lote', 'Edad', 'Cantidad']
+          : ['Semana', 'Año', 'Finca', 'Lote', 'Edad', 'Novedad', 'Cantidad'];
+
+    const datos = [...grupos.values()].map((g) => {
+      const fila = {
+        Semana: pad2(semana.numeroSemana),
+        Año: semana.anio,
+        Finca: g.finca?.codigo || '',
+        Lote: pad2(g.lote?.nombre),
+      };
+      if (tipo !== 'EMBOLSE') {
+        const semanasTranscurridas = Math.round(
+          (new Date(semana.fechaInicio) - new Date(g.semanaEmbolse.fechaInicio)) / MS_POR_SEMANA,
+        );
+        fila.Edad = pad2(semanasTranscurridas + 1);
+      }
+      if (tipo === 'REPIQUE' || tipo === 'RECUSE') {
+        fila.Novedad = g.motivo?.codigoExterno || '';
+      }
+      fila.Cantidad = g.cantidad;
+      return fila;
+    });
+
+    const ws =
+      datos.length > 0 ? XLSX.utils.json_to_sheet(datos, { header: columnas }) : XLSX.utils.aoa_to_sheet([columnas]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Hoja1');
+    return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  },
+
   async getMovimientoByUuid(uuid, user) {
     const movimiento = await racimoMovimientoRepository.findByUuid(uuid);
     if (!movimiento) throw ApiError.notFound('Movimiento de racimos no encontrado');

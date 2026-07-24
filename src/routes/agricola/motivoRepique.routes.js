@@ -65,6 +65,23 @@ router.post(
 
 /**
  * @openapi
+ * /motivos-repique/exportar:
+ *   get:
+ *     tags: [Motivos de Repique]
+ *     summary: Exportar todos los motivos de repique a Excel
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Archivo Excel }
+ */
+router.get(
+  '/exportar',
+  auth,
+  permission(PERMISSIONS.MOTIVO_REPIQUE_VER),
+  motivoRepiqueController.exportar,
+);
+
+/**
+ * @openapi
  * /motivos-repique/{uuid}:
  *   get:
  *     tags: [Motivos de Repique]

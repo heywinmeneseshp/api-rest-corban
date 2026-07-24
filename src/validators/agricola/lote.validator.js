@@ -28,13 +28,20 @@ export const listLotePlantasSchema = Joi.object({
   }),
 });
 
+// El nombre del lote es siempre numérico (ej: "01", "02"), sin letras ni
+// otros caracteres — así coincide con el número real del lote en campo.
+const nombreLote = Joi.string()
+  .pattern(/^\d+$/)
+  .max(150)
+  .messages({ 'string.pattern.base': 'El nombre del lote debe contener solo números (ej: 01, 02).' });
+
 export const createLoteSchema = Joi.object({
   body: Joi.object({
     fincaUuid: uuidRef.required(),
     // El código se genera automáticamente ({codigoFinca}-{consecutivo}), pero
     // se acepta opcionalmente por si se quiere forzar uno específico.
     codigo: Joi.string().min(1).max(20),
-    nombre: Joi.string().min(2).max(150).required(),
+    nombre: nombreLote.required(),
     area: Joi.number().positive().precision(2),
     estado: Joi.boolean(),
   }),
@@ -46,7 +53,7 @@ export const updateLoteSchema = Joi.object({
   body: Joi.object({
     fincaUuid: uuidRef,
     codigo: Joi.string().min(1).max(20),
-    nombre: Joi.string().min(2).max(150),
+    nombre: nombreLote,
     area: Joi.number().positive().precision(2),
     estado: Joi.boolean(),
   }).min(1),

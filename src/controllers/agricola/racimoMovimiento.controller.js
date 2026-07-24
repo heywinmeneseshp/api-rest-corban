@@ -82,6 +82,17 @@ export const racimoMovimientoController = {
     res.send(buffer);
   }),
 
+  exportarReporteSemanal: asyncHandler(async (req, res) => {
+    const buffer = await racimoMovimientoService.exportReporteSemanal(req.query, req.user);
+    const nombres = { EMBOLSE: 'embolsados', REPIQUE: 'repicados', RECUSE: 'recusados', PROCESADO: 'procesados' };
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="registro-${nombres[req.query.tipo] || 'reporte'}-${Date.now()}.xlsx"`,
+    );
+    res.send(buffer);
+  }),
+
   bulkProgress: asyncHandler(async (req, res) => {
     const { token } = req.params;
     const progreso = bulkProgress.get(token);

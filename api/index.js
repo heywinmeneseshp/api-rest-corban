@@ -1,6 +1,7 @@
 import { app } from '../src/app.js';
 import { setupAssociations } from '../src/database/associations.js';
 import { testConnection } from '../src/database/connection.js';
+import { runPendingMigrationsAndSeeders } from '../src/database/migrationRunner.js';
 import { logger } from '../src/utils/logger.js';
 
 // En Vercel (serverless) no hay `app.listen()`: cada invocación reusa el
@@ -14,6 +15,7 @@ const ensureInit = () => {
     initPromise = (async () => {
       setupAssociations();
       await testConnection();
+      await runPendingMigrationsAndSeeders();
     })().catch((error) => {
       initPromise = null; // permite reintentar en la siguiente invocación
       throw error;

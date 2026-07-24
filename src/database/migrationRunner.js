@@ -1,0 +1,102 @@
+import { createRequire } from 'node:module';
+import { readdirSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { Sequelize, QueryTypes } from 'sequelize';
+import { sequelize } from './connection.js';
+import { logger } from '../utils/logger.js';
+
+const require = createRequire(import.meta.url);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
+const SEEDERS_DIR = path.join(__dirname, 'seeders');
+const META_TABLE = 'SequelizeMeta';
+const SEED_TABLE = 'SequelizeData';
+const LOCK_NAME = 'corbana_migrations';
+
+// El primer usuario administrador ya no se crea desde variables de entorno:
+// se pide por un asistente de configuración inicial en el front (ver
+// /sistema/setup). Estos dos seeders quedan excluidos del arranque
+// automático para que la base no tenga ningún usuario todavía y el
+// asistente se muestre — siguen disponibles para `npm run db:seed` manual
+// si alguna vez se necesita el flujo viejo (ej. entornos de test).
+const SEEDERS_EXCLUIDOS_DEL_AUTORUN = new Set([
+  '20260101000004-seed-admin-user.cjs',
+  '20260101000005-seed-usuarios-roles.cjs',
+]);
+
+const listFiles = (dir, { excluir } = {}) =>
+  readdirSync(dir)
+    .filter((f) => f.endsWith('.cjs'))
+    .filter((f) => !excluir?.has(f))
+    .sort();
+
+async function ensureTrackingTable(queryInterface, tableName) {
+  const tables = await queryInterface.showAllTables();
+  const exists = tables.some((t) => String(t).toLowerCase() === tableName.toLowerCase());
+  if (!exists) {
+    await queryInterface.createTable(tableName, {
+      name: { type: Sequelize.STRING, allowNull: false, unique: true, primaryKey: true },
+    });
+  }
+}
+
+async function getApplied(tableName) {
+  const rows = await sequelize.query(`SELECT name FROM \`${tableName}\``, { type: QueryTypes.SELECT });
+  return new Set(rows.map((r) => r.name));
+}
+
+async function applyPending({ dir, trackingTable, label, excluir }) {
+  const queryInterface = sequelize.getQueryInterface();
+  await ensureTrackingTable(queryInterface, trackingTable);
+
+  const aplicados = await getApplied(trackingTable);
+  const pendientes = listFiles(dir, { excluir }).filter((f) => !aplicados.has(f));
+
+  for (const file of pendientes) {
+    logger.info(`Ejecutando ${label} pendiente: ${file}`);
+    const modulo = require(path.join(dir, file));
+    await modulo.up(queryInterface, Sequelize);
+    await sequelize.query(`INSERT INTO \`${trackingTable}\` (name) VALUES (?)`, { replacements: [file] });
+  }
+
+  if (pendientes.length > 0) {
+    logger.info(`${pendientes.length} ${label}(s) aplicado(s) automáticamente al iniciar`);
+  }
+  return pendientes.length;
+}
+
+// Corre migraciones y seeders pendientes contra la base de datos, usando las
+// MISMAS tablas de control que sequelize-cli (SequelizeMeta/SequelizeData) —
+// así que es compatible con correr `npm run db:migrate`/`db:seed` a mano en
+// cualquier momento: lo que ya se aplicó de un lado, el otro lo detecta como
+// hecho y lo salta. Pensado para llamarse en cada arranque (ver api/index.js
+// y server.js): si la base ya tiene todo aplicado, es prácticamente gratis
+// (un par de SELECT). Usa un lock a nivel de MySQL para que, si dos
+// invocaciones "frías" arrancan al mismo tiempo (típico de serverless), no
+// intenten correr la misma migración dos veces en paralelo.
+export const runPendingMigrationsAndSeeders = async () => {
+  const [[{ lock }]] = await sequelize.query(`SELECT GET_LOCK('${LOCK_NAME}', 10) AS lock`);
+  if (lock !== 1) {
+    logger.warn('No se pudo obtener el lock de migraciones (otra instancia ya lo tiene); se omite este arranque');
+    return;
+  }
+
+  try {
+    const migraciones = await applyPending({ dir: MIGRATIONS_DIR, trackingTable: META_TABLE, label: 'migración' });
+    const seeders = await applyPending({
+      dir: SEEDERS_DIR,
+      trackingTable: SEED_TABLE,
+      label: 'seeder',
+      excluir: SEEDERS_EXCLUIDOS_DEL_AUTORUN,
+    });
+    if (migraciones === 0 && seeders === 0) {
+      logger.info('Base de datos al día: no había migraciones ni seeders pendientes');
+    }
+  } finally {
+    await sequelize.query(`SELECT RELEASE_LOCK('${LOCK_NAME}')`);
+  }
+};
+
+export default runPendingMigrationsAndSeeders;

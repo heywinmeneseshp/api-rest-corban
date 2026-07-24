@@ -19,6 +19,10 @@ export const motivoRecuseRepository = {
     return MotivoRecuse.findOne({ where: { uuid } });
   },
 
+  findAll() {
+    return MotivoRecuse.findAll({ order: [['nombre', 'ASC']] });
+  },
+
   findById(id) {
     return MotivoRecuse.findByPk(id);
   },
@@ -35,7 +39,7 @@ export const motivoRecuseRepository = {
   // único) en una sola sentencia SQL, en vez de una consulta por fila.
   bulkUpsert(rows) {
     return MotivoRecuse.bulkCreate(rows, {
-      updateOnDuplicate: ['descripcion', 'estado', 'updatedBy'],
+      updateOnDuplicate: ['descripcion', 'codigoExterno', 'estado', 'updatedBy'],
     });
   },
 

@@ -2,12 +2,14 @@ import { app } from './app.js';
 import { env } from './config/env.config.js';
 import { testConnection } from './database/connection.js';
 import { setupAssociations } from './database/associations.js';
+import { runPendingMigrationsAndSeeders } from './database/migrationRunner.js';
 import { logger } from './utils/logger.js';
 
 const start = async () => {
   try {
     setupAssociations();
     await testConnection();
+    await runPendingMigrationsAndSeeders();
 
     const server = app.listen(env.port, () => {
       logger.info(`Servidor escuchando en el puerto ${env.port} (${env.nodeEnv})`);

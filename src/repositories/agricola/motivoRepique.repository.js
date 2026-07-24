@@ -19,6 +19,10 @@ export const motivoRepiqueRepository = {
     return MotivoRepique.findOne({ where: { uuid } });
   },
 
+  findAll() {
+    return MotivoRepique.findAll({ order: [['nombre', 'ASC']] });
+  },
+
   findById(id) {
     return MotivoRepique.findByPk(id);
   },
@@ -35,7 +39,7 @@ export const motivoRepiqueRepository = {
   // único) en una sola sentencia SQL, en vez de una consulta por fila.
   bulkUpsert(rows) {
     return MotivoRepique.bulkCreate(rows, {
-      updateOnDuplicate: ['descripcion', 'estado', 'updatedBy'],
+      updateOnDuplicate: ['descripcion', 'codigoExterno', 'estado', 'updatedBy'],
     });
   },
 

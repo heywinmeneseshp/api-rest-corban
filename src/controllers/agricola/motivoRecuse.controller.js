@@ -38,6 +38,13 @@ export const motivoRecuseController = {
     const resultado = await motivoRecuseService.bulkCreateMotivos(req.file, req.user?.id, { dryRun });
     ApiResponse.send(res, { message: 'Cargue masivo de motivos de recuse procesado', data: resultado });
   }),
+
+  exportar: asyncHandler(async (req, res) => {
+    const buffer = await motivoRecuseService.exportMotivosToExcel();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="motivos-recuse-${Date.now()}.xlsx"`);
+    res.send(buffer);
+  }),
 };
 
 export default motivoRecuseController;
