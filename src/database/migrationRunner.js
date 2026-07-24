@@ -56,8 +56,22 @@ async function applyPending({ dir, trackingTable, label, excluir }) {
   for (const file of pendientes) {
     logger.info(`Ejecutando ${label} pendiente: ${file}`);
     const modulo = require(path.join(dir, file));
-    await modulo.up(queryInterface, Sequelize);
-    await sequelize.query(`INSERT INTO \`${trackingTable}\` (name) VALUES (?)`, { replacements: [file] });
+    try {
+      await modulo.up(queryInterface, Sequelize);
+    } catch (error) {
+      // Se relanza con un mensaje propio (en vez de dejar pasar el error tal
+      // cual) porque Sequelize pisa `.stack` con uno genérico sin texto real
+      // al reenviar errores de MySQL — así el motivo real queda visible en
+      // los logs sin depender de esa particularidad.
+      throw new Error(`Fallo aplicando ${label} '${file}': ${error.message || error}`);
+    }
+    try {
+      await sequelize.query(`INSERT INTO \`${trackingTable}\` (name) VALUES (?)`, { replacements: [file] });
+    } catch (error) {
+      throw new Error(
+        `'${file}' se aplicó pero falló al registrarlo en ${trackingTable} (se reintentará en el próximo arranque): ${error.message || error}`,
+      );
+    }
   }
 
   if (pendientes.length > 0) {

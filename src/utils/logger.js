@@ -14,7 +14,12 @@ const consoleFormat = combine(
   errors({ stack: true }),
   printf(({ level, message, timestamp: ts, stack, ...meta }) => {
     const metaStr = Object.keys(meta).length ? ` ${JSON.stringify(meta)}` : '';
-    return `[${ts}] ${level}: ${stack || message}${metaStr}`;
+    // Sequelize reemplaza `.stack` con uno genérico (siempre "Error", sin
+    // texto real) cuando reenvía errores de MySQL — si solo mostráramos
+    // `stack || message` (como antes), el mensaje real quedaba oculto.
+    // Mostrar siempre el mensaje primero y el stack como detalle aparte.
+    const detalle = stack && stack !== `Error` && !stack.startsWith('Error\n') ? `\n${stack}` : '';
+    return `[${ts}] ${level}: ${message}${detalle}${metaStr}`;
   }),
 );
 
