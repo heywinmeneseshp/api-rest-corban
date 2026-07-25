@@ -1,8 +1,46 @@
+import crypto from 'node:crypto';
 import { parseBulkFile } from '../../utils/bulkFileParser.js';
 import { produccionSemanalRepository } from '../../repositories/agricola/produccionSemanal.repository.js';
 import { Finca, Semana } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getFincaIdsPermitidas, assertFincaPermitida } from '../../utils/fincaScope.js';
+import { env } from '../../config/env.config.js';
+import mysqlHttpBridge from '../../database/mysqlHttpBridge.cjs';
+
+// Mismo tope y misma lógica de "menos peticiones, más grandes" que el
+// cargue masivo de Movimientos de Racimos (ver ese servicio para más
+// contexto) — un archivo con demasiadas filas no cabe en el tiempo de
+// ejecución de la función serverless, y en modo bridge cada tanda de 500
+// filas era antes una petición HTTP aparte al túnel.
+const MAX_FILAS_BULK = 15000;
+const FILAS_POR_STATEMENT = 2000;
+const STATEMENTS_POR_PETICION = 5;
+
+const construirInsertMultifila = (filas) => {
+  const columnas = ['uuid', 'semana_id', 'finca_id', 'cajas_20kg', 'created_by'];
+  const grupo = `(${columnas.map(() => '?').join(',')}, NOW(), NOW())`;
+  const sql = `INSERT INTO produccion_semanal (${columnas.join(',')}, created_at, updated_at) VALUES ${filas.map(() => grupo).join(',')}`;
+  const params = [];
+  for (const f of filas) {
+    params.push(crypto.randomUUID(), f.semanaId, f.fincaId, f.cajas20kg, f.createdBy);
+  }
+  return { sql, params };
+};
+
+async function insertarViaBridgeBatch(filas) {
+  let creados = 0;
+  const filasPorPeticion = FILAS_POR_STATEMENT * STATEMENTS_POR_PETICION;
+  for (let i = 0; i < filas.length; i += filasPorPeticion) {
+    const grupoGrande = filas.slice(i, i + filasPorPeticion);
+    const queries = [];
+    for (let j = 0; j < grupoGrande.length; j += FILAS_POR_STATEMENT) {
+      queries.push(construirInsertMultifila(grupoGrande.slice(j, j + FILAS_POR_STATEMENT)));
+    }
+    await mysqlHttpBridge.sendBatch(env.db.bridgeUrl, env.db.bridgeApiKey, queries);
+    creados += grupoGrande.length;
+  }
+  return creados;
+}
 
 export const produccionSemanalService = {
   async listProduccion(query, user) {
@@ -31,6 +69,16 @@ export const produccionSemanalService = {
   async bulkCreateProduccion(file, actorId, user) {
     const filas = parseBulkFile(file);
     if (filas.length === 0) throw ApiError.badRequest('El archivo está vacío');
+
+    // Ver el mismo límite en racimoMovimiento.service.js: un archivo
+    // demasiado grande no cabe en el tiempo de ejecución de la función
+    // serverless y se queda colgado sin ningún error visible.
+    if (filas.length > MAX_FILAS_BULK) {
+      throw ApiError.badRequest(
+        `El archivo tiene ${filas.length.toLocaleString('es')} filas — el máximo por cargue es ${MAX_FILAS_BULK.toLocaleString('es')}. ` +
+          'Dividilo en partes más chicas (por ejemplo, por año) y subilas una por una.',
+      );
+    }
 
     const fincaIdsPermitidas = getFincaIdsPermitidas(user);
     const errores = [];
@@ -98,7 +146,11 @@ export const produccionSemanalService = {
     const saltados = filasValidas.length - aInsertar.length;
 
     if (aInsertar.length > 0) {
-      await produccionSemanalRepository.bulkCreate(aInsertar);
+      if (env.db.mode === 'bridge') {
+        await insertarViaBridgeBatch(aInsertar);
+      } else {
+        await produccionSemanalRepository.bulkCreate(aInsertar);
+      }
     }
 
     return {

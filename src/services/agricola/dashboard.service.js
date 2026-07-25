@@ -37,8 +37,18 @@ export const dashboardService = {
     }
     const fw = fincaWhere(fincaIds, fincaIdsPermitidas !== null);
 
+    // Ordenar por `semanaId` (el id interno de la tabla semanas) NO es
+    // confiable: ese id solo refleja el orden en que se CREÓ cada fila de
+    // semana, no el orden cronológico real — una carga histórica tardía
+    // (ej. producción de 2023 subida recién ahora) puede terminar con un id
+    // más alto que semanas más recientes. Hay que ordenar por año y número
+    // de semana de verdad.
     const ultimaProduccion = await ProduccionSemanal.findOne({
-      order: [['semanaId', 'DESC']],
+      include: [{ model: Semana, as: 'semana', attributes: [] }],
+      order: [
+        [{ model: Semana, as: 'semana' }, 'anio', 'DESC'],
+        [{ model: Semana, as: 'semana' }, 'numeroSemana', 'DESC'],
+      ],
       attributes: ['semanaId'],
     });
 

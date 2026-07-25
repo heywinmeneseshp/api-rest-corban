@@ -13,12 +13,20 @@ export const produccionSemanalRepository = {
       ...(semanaId ? { semanaId } : {}),
     };
 
+    // Ordenar por año/número de semana real, no por `semanaId` (el id
+    // interno de la tabla semanas solo refleja cuándo se creó esa fila, no
+    // el orden cronológico — una carga histórica tardía puede tener un id
+    // más alto que semanas más recientes ya existentes).
     return ProduccionSemanal.findAndCountAll({
       where,
       include: listIncludes,
       limit,
       offset,
-      order: [['semanaId', 'DESC'], ['fincaId', 'ASC']],
+      order: [
+        [{ model: Semana, as: 'semana' }, 'anio', 'DESC'],
+        [{ model: Semana, as: 'semana' }, 'numeroSemana', 'DESC'],
+        ['fincaId', 'ASC'],
+      ],
       distinct: true,
     });
   },
