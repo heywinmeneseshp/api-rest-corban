@@ -6,3 +6,6 @@ uploads/*
 npm-debug.log*
 .DS_Store
 coverage/
+
+.vercel
+.env*
