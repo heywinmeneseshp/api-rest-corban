@@ -1,4 +1,4 @@
-import { Op } from 'sequelize';
+import { Op, fn, col } from 'sequelize';
 import { Semana } from '../../database/associations.js';
 
 export const semanaRepository = {
@@ -31,6 +31,17 @@ export const semanaRepository = {
   // reciente. Se usa para reportes anuales (ej. gráfico de embolses).
   findAllByAnio(anio) {
     return Semana.findAll({ where: { anio }, order: [['fecha_inicio', 'ASC']] });
+  },
+
+  // Años distintos con semanas generadas — para el selector de año de los
+  // gráficos del dashboard (Ratio, Cajas Producidas, Embolses).
+  async findAniosDistintos() {
+    const filas = await Semana.findAll({
+      attributes: [[fn('DISTINCT', col('anio')), 'anio']],
+      order: [['anio', 'DESC']],
+      raw: true,
+    });
+    return filas.map((f) => f.anio);
   },
 
   async findAndCountAll({ limit, offset, anio }) {

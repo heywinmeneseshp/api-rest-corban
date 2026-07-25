@@ -162,8 +162,13 @@ export const dashboardService = {
       };
     });
 
-    const anioActual = new Date().getFullYear();
+    // Los 3 gráficos anuales (Ratio, Cajas Producidas, Embolses) van por año
+    // seleccionable — antes quedaban fijos al año calendario actual, así
+    // que una carga histórica (ej. producción desde 2023) nunca se veía
+    // reflejada ahí. `anio` es opcional; sin elegir, cae al año actual.
+    const anioActual = query.anio ? Number(query.anio) : new Date().getFullYear();
     const semanasAnio = await semanaRepository.findAllByAnio(anioActual);
+    const aniosDisponibles = await semanaRepository.findAniosDistintos();
     const todasSemanaIds = semanasAnio.map((s) => s.id);
 
     const primeraEmbolse = todasSemanaIds.length > 0 ? await RacimoMovimiento.findOne({
@@ -319,6 +324,8 @@ export const dashboardService = {
       ratioAnual,
       embolseAnual,
       aprovechamientoAnual,
+      anioSeleccionado: anioActual,
+      aniosDisponibles,
     };
   },
 };
