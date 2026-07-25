@@ -50,7 +50,10 @@ export const env = {
 
   rateLimit: {
     windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 900000),
-    max: Number(process.env.RATE_LIMIT_MAX || 300),
+    // 300 era muy bajo para uso normal de la app (varias pantallas disparan
+    // varios GET en paralelo) y se disparaba fácil con el polling de
+    // progreso del cargue masivo en partes.
+    max: Number(process.env.RATE_LIMIT_MAX || 1000),
     authMax: Number(process.env.AUTH_RATE_LIMIT_MAX || 10),
   },
 

@@ -30,6 +30,12 @@ export const loteRepository = {
     return Lote.findOne({ where: { fincaId, codigo } });
   },
 
+  findByFincaAndNombre(fincaId, nombre, { excludeId } = {}) {
+    return Lote.findOne({
+      where: { fincaId, nombre, ...(excludeId ? { id: { [Op.ne]: excludeId } } : {}) },
+    });
+  },
+
   // Incluye lotes eliminados lógicamente: el UNIQUE de `codigo` en la BD no
   // distingue registros con soft-delete, así que hay que revisar esto antes
   // de asignar un código para no chocar con la restricción.
@@ -51,6 +57,17 @@ export const loteRepository = {
       where: { fincaId: { [Op.in]: fincaIds } },
       attributes: ['fincaId', 'codigo'],
       paranoid: false,
+    });
+  },
+
+  // Igual que findCodigosByFincaIds pero de `nombre` — para detectar
+  // duplicados de nombre dentro de una finca en el cargue masivo (no
+  // incluye eliminados lógicamente: un nombre de un lote borrado sí se
+  // puede reutilizar).
+  findNombresByFincaIds(fincaIds) {
+    return Lote.findAll({
+      where: { fincaId: { [Op.in]: fincaIds } },
+      attributes: ['fincaId', 'nombre'],
     });
   },
 

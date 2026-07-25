@@ -184,6 +184,36 @@ export const racimoMovimientoRepository = {
     return Number(result.saldo);
   },
 
+  // Última semana de registro usada por cada finca (la de fecha_inicio más
+  // reciente entre todos sus movimientos) — para impedir que un usuario
+  // no-administrador registre movimientos "hacia atrás" respecto de dónde
+  // va esa finca. Devuelve un Map fincaId -> { semanaRegistroId, codigo,
+  // fechaInicio }.
+  async getUltimaSemanaRegistroPorFinca(fincaIds) {
+    if (fincaIds.length === 0) return new Map();
+
+    const rows = await RacimoMovimiento.findAll({
+      where: { fincaId: { [Op.in]: fincaIds } },
+      attributes: ['fincaId', 'semanaRegistroId'],
+      include: [{ model: Semana, as: 'semanaRegistro', attributes: ['id', 'codigo', 'fechaInicio'] }],
+      raw: true,
+      nest: true,
+    });
+
+    const map = new Map();
+    for (const r of rows) {
+      const actual = map.get(r.fincaId);
+      if (!actual || r.semanaRegistro.fechaInicio > actual.fechaInicio) {
+        map.set(r.fincaId, {
+          semanaRegistroId: r.semanaRegistroId,
+          codigo: r.semanaRegistro.codigo,
+          fechaInicio: r.semanaRegistro.fechaInicio,
+        });
+      }
+    }
+    return map;
+  },
+
   // Desglose por tipo de una cohorte (finca + lote + semana de embolse),
   // para mostrar el resumen antes de registrar un nuevo movimiento.
   async getResumenCohorte({ fincaId, loteId, semanaEmbolseId }) {

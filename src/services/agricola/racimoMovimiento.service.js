@@ -10,8 +10,21 @@ import { logger } from '../../utils/logger.js';
 import { bulkProgress } from '../../utils/bulkProgress.js';
 import { bulkValidationCache } from '../../utils/bulkValidationCache.js';
 import { getFincaIdsPermitidas, assertFincaPermitida } from '../../utils/fincaScope.js';
+import { ROLES } from '../../constants/roles.constants.js';
+import { PERMISSIONS } from '../../constants/permissions.constants.js';
+
+// Además del Administrador (que se salta toda restricción), un usuario con
+// este permiso puntual también puede crear/eliminar movimientos de semanas
+// anteriores a la última registrada en una finca, sin heredar el resto de
+// los poderes de Administrador.
+const puedeIgnorarRestriccionSemana = (user) =>
+  (user?.roles || []).includes(ROLES.ADMINISTRADOR) ||
+  (user?.permissions || []).includes(PERMISSIONS.RACIMO_MOVIMIENTO_EDITAR_HISTORICO);
 
 const TIPOS_VALIDOS = ['EMBOLSE', 'REPIQUE', 'RECUSE', 'PROCESADO'];
+
+// Tope de filas por cargue masivo — ver comentario en bulkCreateMovimientos.
+const MAX_FILAS_BULK = 15000;
 
 const findFincaByUuidOrFail = async (uuid) => {
   const finca = await Finca.findOne({ where: { uuid } });
@@ -276,6 +289,21 @@ export const racimoMovimientoService = {
 
     const { motivoRepiqueId, motivoRecuseId } = await resolveMotivos(payload.tipo, payload);
 
+    // Solo un administrador (o alguien con el permiso puntual
+    // racimo_movimiento.editar_historico) puede registrar movimientos
+    // "hacia atrás": semanas de registro anteriores a la última que ya se
+    // usó en esa finca. Evita que un usuario normal descuadre el histórico
+    // ya cerrado.
+    if (!puedeIgnorarRestriccionSemana(user)) {
+      const ultimaPorFinca = await racimoMovimientoRepository.getUltimaSemanaRegistroPorFinca([finca.id]);
+      const ultima = ultimaPorFinca.get(finca.id);
+      if (ultima && semanaRegistro.fechaInicio < ultima.fechaInicio) {
+        throw ApiError.forbidden(
+          `Solo un administrador (o alguien con permiso de editar histórico) puede registrar movimientos de semanas anteriores a la última semana registrada en esta finca (${ultima.codigo})`,
+        );
+      }
+    }
+
     if (payload.tipo !== 'EMBOLSE') {
       const saldo = await racimoMovimientoRepository.getSaldoCohorte({
         fincaId: finca.id,
@@ -348,6 +376,18 @@ export const racimoMovimientoService = {
     const rows = parseBulkFile(file);
     if (rows.length === 0) throw ApiError.badRequest('El archivo no tiene filas para procesar');
 
+    // Un archivo demasiado grande no cabe en el tiempo de ejecución de la
+    // función serverless (se corta a mitad de camino, y como el progreso
+    // vive en memoria no queda ni rastro de qué se llegó a insertar — la
+    // pantalla se queda pegada sin ningún error visible). Mejor rechazarlo
+    // de entrada con instrucciones claras que dejar que se cuelgue.
+    if (rows.length > MAX_FILAS_BULK) {
+      throw ApiError.badRequest(
+        `El archivo tiene ${rows.length.toLocaleString('es')} filas — el máximo por cargue es ${MAX_FILAS_BULK.toLocaleString('es')}. ` +
+          'Dividilo en partes más chicas (por ejemplo, por semana o por año) y subilas una por una.',
+      );
+    }
+
     if (progressToken) bulkProgress.init(progressToken, rows.length);
 
     try {
@@ -363,6 +403,10 @@ export const racimoMovimientoService = {
 
   async _procesarBulkMovimientos(rows, actorId, { dryRun, mode, progressToken, forceNegativeSaldos, esAdmin, user }) {
     const fincaIdsPermitidas = getFincaIdsPermitidas(user);
+    // Distinto de `esAdmin` (que solo gobierna forzar saldo negativo, más
+    // abajo): esto también deja pasar a quien tenga el permiso puntual
+    // racimo_movimiento.editar_historico, sin ser Administrador.
+    const puedeSaltarRestriccionSemana = puedeIgnorarRestriccionSemana(user);
     logger.info(`Precargando catálogos (${rows.length} filas por procesar)...`);
 
     const [todasFincas, todosLotes, todasSemanas, todosMotivosRepique, todosMotivosRecuse] = await Promise.all([
@@ -385,6 +429,15 @@ export const racimoMovimientoService = {
     const semanaCache = new Map(todasSemanas.map((s) => [s.codigo, s]));
     const motivoRepiqueCache = new Map(todosMotivosRepique.map((m) => [m.nombre, m]));
     const motivoRecuseCache = new Map(todosMotivosRecuse.map((m) => [m.nombre, m]));
+
+    // Solo un administrador (o alguien con racimo_movimiento.editar_historico)
+    // puede cargar movimientos de semanas anteriores a la última semana de
+    // registro ya usada en cada finca (ver la misma regla en
+    // createMovimiento). Se calcula una sola vez contra el estado actual de
+    // la BD, no fila por fila.
+    const ultimaSemanaRegistroPorFinca = puedeSaltarRestriccionSemana
+      ? new Map()
+      : await racimoMovimientoRepository.getUltimaSemanaRegistroPorFinca(todasFincas.map((f) => f.id));
 
     const saldoSimulado = new Map();
     const saldoBDCache = new Map();
@@ -500,6 +553,17 @@ export const racimoMovimientoService = {
         if (semanaRegistro === undefined) {
           errores.push({ fila, mensaje: `No existe la semana de registro '${semanaRegistroCodigo}'` });
           continue;
+        }
+
+        if (!puedeSaltarRestriccionSemana) {
+          const ultima = ultimaSemanaRegistroPorFinca.get(finca.id);
+          if (ultima && semanaRegistro.fechaInicio < ultima.fechaInicio) {
+            errores.push({
+              fila,
+              mensaje: `Solo un administrador (o alguien con permiso de editar histórico) puede cargar movimientos de semanas anteriores a la última semana registrada en esta finca (${ultima.codigo})`,
+            });
+            continue;
+          }
         }
 
         let motivoRepiqueId = null;
@@ -815,8 +879,24 @@ export const racimoMovimientoService = {
     };
   },
 
+  // Requiere el permiso racimo_movimiento.eliminar (ya lo exige la ruta).
+  // Además, un usuario no-administrador solo puede borrar movimientos de la
+  // última semana de registro de esa finca (o más reciente) — misma regla
+  // que ya aplica a crear, para no tocar el histórico ya cerrado. El
+  // administrador puede borrar cualquier movimiento, de cualquier semana.
   async deleteMovimiento(uuid, actorId, user) {
     const movimiento = await this.getMovimientoByUuid(uuid, user);
+
+    if (!puedeIgnorarRestriccionSemana(user)) {
+      const ultimaPorFinca = await racimoMovimientoRepository.getUltimaSemanaRegistroPorFinca([movimiento.fincaId]);
+      const ultima = ultimaPorFinca.get(movimiento.fincaId);
+      if (ultima && movimiento.semanaRegistro.fechaInicio < ultima.fechaInicio) {
+        throw ApiError.forbidden(
+          `Solo un administrador (o alguien con permiso de editar histórico) puede eliminar movimientos de semanas anteriores a la última semana registrada en esta finca (${ultima.codigo})`,
+        );
+      }
+    }
+
     await racimoMovimientoRepository.softDelete(movimiento, actorId);
   },
 

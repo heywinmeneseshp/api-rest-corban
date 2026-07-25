@@ -71,6 +71,10 @@ export const loteService = {
   async createLote(payload, actorId, user) {
     const finca = await findFincaByUuidOrFail(payload.fincaUuid);
     assertFincaPermitida(user, finca.id);
+
+    const nombreDuplicado = await loteRepository.findByFincaAndNombre(finca.id, payload.nombre);
+    if (nombreDuplicado) throw ApiError.conflict('Ya existe un lote con ese nombre en esta finca');
+
     const codigo = payload.codigo || (await this.generateCodigo(finca, payload.nombre));
 
     const existing = await loteRepository.findByFincaAndCodigo(finca.id, codigo);
@@ -103,6 +107,12 @@ export const loteService = {
       if (existing && existing.id !== lote.id) {
         throw ApiError.conflict('Ya existe un lote con ese código en esta finca');
       }
+    }
+
+    if (payload.nombre) {
+      const fincaId = data.fincaId ?? lote.fincaId;
+      const nombreDuplicado = await loteRepository.findByFincaAndNombre(fincaId, payload.nombre, { excludeId: lote.id });
+      if (nombreDuplicado) throw ApiError.conflict('Ya existe un lote con ese nombre en esta finca');
     }
 
     return loteRepository.update(lote, data);
@@ -210,6 +220,29 @@ export const loteService = {
       codigosUsadosPorFinca.get(c.fincaId).add(c.codigo);
     }
 
+    // Un mismo nombre de lote repetido dentro de la misma finca (ya sea
+    // porque ya existía en la BD, o porque el archivo lo trae dos veces) se
+    // rechaza — antes esto no se validaba y por eso podían quedar dos lotes
+    // "00" en la misma finca con códigos distintos.
+    const nombresExistentes = fincaIds.length ? await loteRepository.findNombresByFincaIds(fincaIds) : [];
+    const nombresUsadosPorFinca = new Map();
+    for (const n of nombresExistentes) {
+      if (!nombresUsadosPorFinca.has(n.fincaId)) nombresUsadosPorFinca.set(n.fincaId, new Set());
+      nombresUsadosPorFinca.get(n.fincaId).add(n.nombre);
+    }
+
+    const filasSinNombreDuplicado = [];
+    for (const f of filasConFinca) {
+      const usados = nombresUsadosPorFinca.get(f.finca.id) || new Set();
+      if (usados.has(f.nombre)) {
+        errores.push({ fila: f.fila, mensaje: `Ya existe un lote con nombre '${f.nombre}' en la finca '${f.fincaCodigo}'` });
+        continue;
+      }
+      usados.add(f.nombre);
+      nombresUsadosPorFinca.set(f.finca.id, usados);
+      filasSinNombreDuplicado.push(f);
+    }
+
     const siguienteConsecutivo = new Map();
     for (const fincaId of fincaIds) {
       siguienteConsecutivo.set(fincaId, (await loteRepository.countByFincaId(fincaId)) + 1);
@@ -244,7 +277,7 @@ export const loteService = {
       return codigo;
     };
 
-    const filasParaCrear = filasConFinca.map((f) => ({
+    const filasParaCrear = filasSinNombreDuplicado.map((f) => ({
       fincaId: f.finca.id,
       codigo: asignarCodigo(f.finca, f.nombre),
       nombre: f.nombre,

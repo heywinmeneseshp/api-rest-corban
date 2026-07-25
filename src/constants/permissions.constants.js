@@ -83,6 +83,11 @@ export const PERMISSIONS = {
   RACIMO_MOVIMIENTO_CREAR: 'racimo_movimiento.crear',
   RACIMO_MOVIMIENTO_EDITAR: 'racimo_movimiento.editar',
   RACIMO_MOVIMIENTO_ELIMINAR: 'racimo_movimiento.eliminar',
+  // Permiso aparte (no lo tiene nadie por defecto salvo Administrador, que
+  // igual se salta toda restricción): permite crear/eliminar movimientos de
+  // semanas anteriores a la última semana registrada en esa finca, sin
+  // necesidad de ser Administrador ni heredar sus demás poderes.
+  RACIMO_MOVIMIENTO_EDITAR_HISTORICO: 'racimo_movimiento.editar_historico',
 
   PRODUCCION_VER: 'produccion.ver',
   PRODUCCION_CREAR: 'produccion.crear',
@@ -175,6 +180,7 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.RACIMO_MOVIMIENTO_CREAR, nombre: 'Crear movimientos de racimos' },
   { codigo: PERMISSIONS.RACIMO_MOVIMIENTO_EDITAR, nombre: 'Editar movimientos de racimos' },
   { codigo: PERMISSIONS.RACIMO_MOVIMIENTO_ELIMINAR, nombre: 'Eliminar movimientos de racimos' },
+  { codigo: PERMISSIONS.RACIMO_MOVIMIENTO_EDITAR_HISTORICO, nombre: 'Crear/eliminar movimientos de semanas anteriores' },
 
   { codigo: PERMISSIONS.PRODUCCION_VER, nombre: 'Ver producción semanal' },
   { codigo: PERMISSIONS.PRODUCCION_CREAR, nombre: 'Crear producción semanal' },

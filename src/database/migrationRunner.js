@@ -31,6 +31,20 @@ const listFiles = (dir, { excluir } = {}) =>
     .filter((f) => !excluir?.has(f))
     .sort();
 
+// Sin lock entre invocaciones concurrentes (ver nota más abajo), una
+// migración/seeder puede terminar de aplicarse de verdad pero, por lo que
+// sea, no quedar registrada en la tabla de control (ej. dos arranques
+// pisándose, o un corte justo después del `up()`). El siguiente intento la
+// vuelve a correr desde cero y choca con sus propios datos ya insertados
+// (clave duplicada) o su propia tabla ya creada. En vez de abortar, se
+// detecta este caso puntual y se marca como aplicada igual.
+const ALREADY_APPLIED_SQLSTATES = new Set(['23000', '42S01']); // duplicate entry / table exists
+const ALREADY_APPLIED_CODES = new Set(['1062', '1050', 'ER_DUP_ENTRY', 'ER_TABLE_EXISTS_ERROR']);
+const isAlreadyAppliedError = (error) =>
+  ALREADY_APPLIED_SQLSTATES.has(error.sqlState) ||
+  ALREADY_APPLIED_CODES.has(String(error.code)) ||
+  /duplicate entry|already exists/i.test(error.message || '');
+
 async function ensureTrackingTable(queryInterface, tableName) {
   const tables = await queryInterface.showAllTables();
   const exists = tables.some((t) => String(t).toLowerCase() === tableName.toLowerCase());
@@ -59,11 +73,18 @@ async function applyPending({ dir, trackingTable, label, excluir }) {
     try {
       await modulo.up(queryInterface, Sequelize);
     } catch (error) {
-      // Se relanza con un mensaje propio (en vez de dejar pasar el error tal
-      // cual) porque Sequelize pisa `.stack` con uno genérico sin texto real
-      // al reenviar errores de MySQL — así el motivo real queda visible en
-      // los logs sin depender de esa particularidad.
-      throw new Error(`Fallo aplicando ${label} '${file}': ${error.message || error}`);
+      if (isAlreadyAppliedError(error)) {
+        logger.warn(
+          `${label} '${file}' ya estaba aplicado (se detectó por clave duplicada / tabla existente) — se marca como hecho sin reintentar`,
+          { detalle: error.message },
+        );
+      } else {
+        // Se relanza con un mensaje propio (en vez de dejar pasar el error
+        // tal cual) porque Sequelize pisa `.stack` con uno genérico sin
+        // texto real al reenviar errores de MySQL — así el motivo real
+        // queda visible en los logs sin depender de esa particularidad.
+        throw new Error(`Fallo aplicando ${label} '${file}': ${error.message || error}`);
+      }
     }
     try {
       // `bind` (no `replacements`): el valor viaja separado del texto del
