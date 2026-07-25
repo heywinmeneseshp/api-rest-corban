@@ -50,9 +50,13 @@ const bridgeConfig = {
   timezone: '+00:00',
   define: commonDefine,
   // Pool chico: cada conexión "lógica" solo agrega overhead HTTP, no hay
-  // límite real de sockets MySQL que cuidar del lado de Node.
+  // límite real de sockets MySQL que cuidar del lado de Node. Se bajó de 5
+  // a 3 porque varias conexiones "frías" abriéndose en simultáneo (típico
+  // al cargar una pantalla que dispara varios fetch en paralelo) generaba
+  // una ráfaga de peticiones al túnel que el firewall del hosting a veces
+  // bloqueaba en conjunto.
   pool: {
-    max: 5,
+    max: 3,
     min: 0,
     acquire: 30000,
     idle: 10000,

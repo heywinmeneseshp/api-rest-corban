@@ -20,6 +20,27 @@ const crypto = require('crypto');
 const zlib = require('zlib');
 const { EventEmitter } = require('events');
 
+// ─── Reintentos ante fallas transitorias ───
+// El hosting compartido pone Imunify360 delante del túnel; bajo ráfagas de
+// tráfico a veces responde con una página de desafío HTML en vez del JSON
+// esperado (detectable: falla el parseo), o directamente corta la
+// conexión. En esos casos la query casi seguro NUNCA llegó a ejecutarse en
+// el servidor (el firewall la interceptó antes), así que reintentar es
+// seguro — a diferencia de un error real de la BD (clave duplicada, SQL
+// bloqueado, etc.), que jamás se reintenta para no duplicar escrituras.
+const MAX_REINTENTOS = 4;
+const BACKOFF_BASE_MS = 500;
+const esErrorTransitorio = (err) => /Bridge non-JSON|Bridge connection:/.test(err.message || '');
+const esperar = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// gateway.php SIEMPRE incluye un `error` en cualquier respuesta
+// success:false (verificado: no hay ningún caso en el PHP que devuelva
+// success:false sin texto de error). Si llega un success:false SIN mensaje,
+// esa respuesta no salió de nuestro script — es alguna otra capa (firewall
+// del hosting, caché, etc.) devolviendo un JSON con esa forma por las
+// suyas. Es igual de seguro reintentarlo que los casos de "non-JSON".
+const esRespuestaFallidaSinOrigenPropio = (resp) => resp && resp.success === false && !resp.error;
+
 // ─── HTTP Agent con keep-alive (reusa sockets TCP/TLS) ───
 const KEEP_ALIVE_MS = 60000;
 
@@ -272,25 +293,38 @@ class HttpBridgeConnection extends EventEmitter {
         });
     }
 
-    // ─── Envío al bridge ───
+    // ─── Envío al bridge (con reintento ante fallas transitorias) ───
     _send(body, callback) {
         if (this._destroyed) return this._error(new Error('Connection destroyed'), callback);
         body.apiKey = this._apiKey;
 
-        httpPost(this._urlObj, body, this._apiKey)
-            .then(({ body: resp }) => {
+        const intentar = async (intento) => {
+            try {
+                const { body: resp } = await httpPost(this._urlObj, body, this._apiKey);
+
+                if (esRespuestaFallidaSinOrigenPropio(resp) && intento < MAX_REINTENTOS) {
+                    await esperar(BACKOFF_BASE_MS * 2 ** (intento - 1));
+                    return intentar(intento + 1);
+                }
+
                 if (!resp.success) {
-                    const err = new Error(resp.error || 'Bridge query failed');
+                    const err = new Error(resp.error || 'Bridge query failed (respuesta sin mensaje — probablemente no es del gateway)');
                     err.code = resp.code || 'ER_BRIDGE_ERROR';
                     err.sqlState = resp.sqlState || 'HY000';
                     return callback(err, resp);
                 }
                 callback(null, resp);
-            })
-            .catch((err) => {
+            } catch (err) {
+                if (esErrorTransitorio(err) && intento < MAX_REINTENTOS) {
+                    await esperar(BACKOFF_BASE_MS * 2 ** (intento - 1));
+                    return intentar(intento + 1);
+                }
                 this.emit('error', err);
                 callback(err);
-            });
+            }
+        };
+
+        intentar(1);
     }
 
     // ─── Formateo de resultados ───
@@ -347,8 +381,48 @@ class HttpBridgeConnection extends EventEmitter {
     }
 }
 
+// ─── Envío de lote: varias queries en UNA sola petición HTTP ───
+// Pensado para cargues masivos: en vez de una petición por cada tanda de
+// filas (lo normal con Sequelize, una query = un _send()), se manda un
+// array de {sql, params} y el gateway.php las corre TODAS en una
+// transacción real del lado del servidor (mismo proceso PHP, así que es
+// atómico de verdad — a diferencia de mandar queries sueltas bajo el mismo
+// transactionId, que depende de que caigan en el mismo worker de PHP-FPM).
+// Baja drásticamente la cantidad de peticiones externas, que es lo que
+// dispara los bloqueos del firewall del hosting bajo ráfagas de tráfico.
+async function sendBatch(bridgeUrl, bridgeApiKey, queries) {
+    const urlObj = parseBridgeUrl(bridgeUrl);
+    const body = { action: 'batch', queries, apiKey: bridgeApiKey };
+
+    for (let intento = 1; ; intento += 1) {
+        try {
+            const { body: resp } = await httpPost(urlObj, body, bridgeApiKey, 60000);
+
+            if (esRespuestaFallidaSinOrigenPropio(resp) && intento < MAX_REINTENTOS) {
+                await esperar(BACKOFF_BASE_MS * 2 ** (intento - 1));
+                continue;
+            }
+
+            if (!resp.success) {
+                const err = new Error(resp.error || 'Batch query failed (respuesta sin mensaje — probablemente no es del gateway)');
+                err.code = resp.code || 'ER_BRIDGE_ERROR';
+                err.sqlState = resp.sqlState || 'HY000';
+                throw err;
+            }
+            return resp.results;
+        } catch (err) {
+            if (esErrorTransitorio(err) && intento < MAX_REINTENTOS) {
+                await esperar(BACKOFF_BASE_MS * 2 ** (intento - 1));
+                continue;
+            }
+            throw err;
+        }
+    }
+}
+
 // ─── Exports ───
 module.exports = {
+    sendBatch,
     createConnection: (config) => new HttpBridgeConnection(config),
     createPool: (config) => {
         const conn = new HttpBridgeConnection(config);

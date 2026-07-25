@@ -349,6 +349,55 @@ switch ($action) {
         }
         exit;
 
+    // ── BATCH: varias queries en UNA sola petición HTTP ──
+    // Pensado para cargues masivos: en vez de una petición por cada tanda
+    // de filas, el cliente manda un array de {sql, params} y acá se
+    // ejecutan TODAS en una transacción real (mismo proceso PHP, así que
+    // es atómico de verdad), en una sola ida y vuelta. Reduce muchísimo la
+    // cantidad de peticiones externas bajo cargas grandes.
+    case 'batch':
+        $queries = $body['queries'] ?? [];
+        if (!is_array($queries) || empty($queries)) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'Missing or empty queries array']);
+            exit;
+        }
+
+        // Valida TODAS las queries antes de ejecutar ninguna.
+        foreach ($queries as $i => $q) {
+            $qSql = trim($q['sql'] ?? '');
+            if (!$qSql) {
+                http_response_code(400);
+                echo json_encode(['success' => false, 'error' => "queries[{$i}]: missing sql"]);
+                exit;
+            }
+            if (!validateSql($config, strtoupper($qSql), $qSql, $clientIp)) exit;
+        }
+
+        try {
+            $db = pdo($config);
+            $row = $db->query('SELECT @@in_transaction AS t')->fetch();
+            if ($row && $row['t']) $db->rollBack();
+
+            $db->beginTransaction();
+            $results = [];
+            foreach ($queries as $q) {
+                $results[] = execQuery($db, trim($q['sql']), $q['params'] ?? []);
+            }
+            $db->commit();
+
+            echo json_encode(['success' => true, 'results' => $results]);
+            logMsg($config, "BATCH | {$clientIp} | " . count($queries) . ' queries');
+        } catch (PDOException $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            http_response_code(400);
+            echo json_encode(['success' => false,
+                'error' => $config['debug'] ? $e->getMessage() : 'Batch execution failed',
+                'code' => $e->getCode(), 'sqlState' => $e->errorInfo[0] ?? 'HY000']);
+            logMsg($config, "BATCH ERROR | {$clientIp} | {$e->getMessage()}");
+        }
+        exit;
+
     default:
         http_response_code(400);
         echo json_encode(['success' => false, 'error' => "Unknown action: {$action}"]);
