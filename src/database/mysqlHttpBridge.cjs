@@ -28,10 +28,16 @@ const { EventEmitter } = require('events');
 // el servidor (el firewall la interceptó antes), así que reintentar es
 // seguro — a diferencia de un error real de la BD (clave duplicada, SQL
 // bloqueado, etc.), que jamás se reintenta para no duplicar escrituras.
-const MAX_REINTENTOS = 4;
+// 6 intentos con backoff exponencial ≈ 500+1000+2000+4000+8000 = 15.5s de
+// margen total antes de rendirse — el bloqueo del hosting a veces dura más
+// que unos pocos segundos, así que vale la pena esperar un poco más antes
+// de que el usuario vea un error, en vez de rendirse rápido.
+const MAX_REINTENTOS = 6;
 const BACKOFF_BASE_MS = 500;
+const BACKOFF_MAX_MS = 8000;
 const esErrorTransitorio = (err) => /Bridge non-JSON|Bridge connection:/.test(err.message || '');
 const esperar = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const calcularBackoff = (intento) => Math.min(BACKOFF_BASE_MS * 2 ** (intento - 1), BACKOFF_MAX_MS);
 
 // gateway.php SIEMPRE incluye un `error` en cualquier respuesta
 // success:false (verificado: no hay ningún caso en el PHP que devuelva
@@ -303,7 +309,7 @@ class HttpBridgeConnection extends EventEmitter {
                 const { body: resp } = await httpPost(this._urlObj, body, this._apiKey);
 
                 if (esRespuestaFallidaSinOrigenPropio(resp) && intento < MAX_REINTENTOS) {
-                    await esperar(BACKOFF_BASE_MS * 2 ** (intento - 1));
+                    await esperar(calcularBackoff(intento));
                     return intentar(intento + 1);
                 }
 
@@ -316,7 +322,7 @@ class HttpBridgeConnection extends EventEmitter {
                 callback(null, resp);
             } catch (err) {
                 if (esErrorTransitorio(err) && intento < MAX_REINTENTOS) {
-                    await esperar(BACKOFF_BASE_MS * 2 ** (intento - 1));
+                    await esperar(calcularBackoff(intento));
                     return intentar(intento + 1);
                 }
                 this.emit('error', err);
@@ -399,7 +405,7 @@ async function sendBatch(bridgeUrl, bridgeApiKey, queries) {
             const { body: resp } = await httpPost(urlObj, body, bridgeApiKey, 60000);
 
             if (esRespuestaFallidaSinOrigenPropio(resp) && intento < MAX_REINTENTOS) {
-                await esperar(BACKOFF_BASE_MS * 2 ** (intento - 1));
+                await esperar(calcularBackoff(intento));
                 continue;
             }
 
@@ -412,7 +418,7 @@ async function sendBatch(bridgeUrl, bridgeApiKey, queries) {
             return resp.results;
         } catch (err) {
             if (esErrorTransitorio(err) && intento < MAX_REINTENTOS) {
-                await esperar(BACKOFF_BASE_MS * 2 ** (intento - 1));
+                await esperar(calcularBackoff(intento));
                 continue;
             }
             throw err;
