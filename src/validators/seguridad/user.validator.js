@@ -78,3 +78,11 @@ export const removeFincaSchema = Joi.object({
   }),
   query: Joi.object({}),
 });
+
+const uuidArray = Joi.array().items(Joi.string().guid({ version: 'uuidv4' })).min(1).required();
+
+export const bulkResetPasswordSchema = Joi.object({
+  body: Joi.object({ uuids: uuidArray }),
+  params: Joi.object({}),
+  query: Joi.object({}),
+});

@@ -3,7 +3,7 @@ import { authController } from '../../controllers/seguridad/auth.controller.js';
 import { auth } from '../../middlewares/auth.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
 import { authRateLimiter } from '../../middlewares/rateLimiter.middleware.js';
-import { loginSchema, refreshSchema, logoutSchema } from '../../validators/seguridad/auth.validator.js';
+import { loginSchema, refreshSchema, logoutSchema, updateProfileSchema, changePasswordSchema } from '../../validators/seguridad/auth.validator.js';
 
 const router = Router();
 
@@ -63,5 +63,7 @@ router.post('/logout', validate(logoutSchema), authController.logout);
  *       200: { description: OK }
  */
 router.get('/me', auth, authController.me);
+router.put('/me', auth, validate(updateProfileSchema), authController.updateProfile);
+router.put('/me/password', auth, validate(changePasswordSchema), authController.changePassword);
 
 export default router;

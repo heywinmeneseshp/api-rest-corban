@@ -33,6 +33,15 @@ export const userController = {
     ApiResponse.send(res, { message: 'Usuario eliminado correctamente' });
   }),
 
+  bulkResetPassword: asyncHandler(async (req, res) => {
+    const results = await userService.bulkResetPassword(req.body.uuids);
+    const okCount = results.filter((r) => r.ok).length;
+    ApiResponse.send(res, {
+      message: `Contraseñas restablecidas para ${okCount} de ${results.length} usuario(s)`,
+      data: results,
+    });
+  }),
+
   listRoles: asyncHandler(async (req, res) => {
     const roles = await userService.listUserRoles(req.params.uuid);
     ApiResponse.send(res, { message: 'Roles del usuario obtenidos correctamente', data: roles });

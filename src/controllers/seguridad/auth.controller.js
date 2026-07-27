@@ -23,6 +23,17 @@ export const authController = {
     const user = await authService.me(req.user.id);
     ApiResponse.send(res, { message: 'Usuario autenticado obtenido correctamente', data: user });
   }),
+
+  updateProfile: asyncHandler(async (req, res) => {
+    const user = await authService.updateProfile(req.user.id, req.body);
+    ApiResponse.send(res, { message: 'Perfil actualizado correctamente', data: user });
+  }),
+
+  changePassword: asyncHandler(async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+    const result = await authService.changePassword(req.user.id, currentPassword, newPassword);
+    ApiResponse.send(res, { message: 'Contraseña actualizada correctamente', data: result });
+  }),
 };
 
 export default authController;

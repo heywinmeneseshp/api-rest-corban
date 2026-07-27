@@ -1,4 +1,6 @@
+import bcrypt from 'bcrypt';
 import { sequelize } from '../../database/connection.js';
+import { User } from '../../database/models/user.model.js';
 import { userRepository } from '../../repositories/seguridad/user.repository.js';
 import { roleRepository } from '../../repositories/seguridad/role.repository.js';
 import { authRepository } from '../../repositories/seguridad/auth.repository.js';
@@ -110,6 +112,35 @@ export const authService = {
     if (!user) throw ApiError.notFound('Usuario no encontrado');
     const fullUser = await userRepository.findByUuid(user.uuid);
     return fullUser;
+  },
+
+  async updateProfile(userId, payload) {
+    const user = await userRepository.findById(userId);
+    if (!user) throw ApiError.notFound('Usuario no encontrado');
+
+    if (payload.email && payload.email !== user.email) {
+      const existing = await userRepository.findByUsuarioOrEmail(null, payload.email);
+      if (existing) throw ApiError.conflict('El email ya está registrado por otro usuario');
+    }
+
+    const updated = await userRepository.update(user, payload);
+    return updated.toSafeJSON();
+  },
+
+  async changePassword(userId, currentPassword, newPassword) {
+    const user = await userRepository.findById(userId);
+    if (!user) throw ApiError.notFound('Usuario no encontrado');
+
+    const fullUser = await User.scope('withPassword').findOne({ where: { uuid: user.uuid } });
+    if (!fullUser) throw ApiError.notFound('Usuario no encontrado');
+
+    const passwordMatches = await fullUser.comparePassword(currentPassword);
+    if (!passwordMatches) {
+      throw ApiError.badRequest('La contraseña actual es incorrecta');
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await userRepository.update(fullUser, { password: hashedPassword });
   },
 };
 

@@ -1,7 +1,9 @@
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 import { sequelize } from '../../database/connection.js';
-import { Role, Finca } from '../../database/associations.js';
+import { User, Role, Finca } from '../../database/associations.js';
 import { userRepository } from '../../repositories/seguridad/user.repository.js';
+import { mailService } from '../sistema/mail.service.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 
@@ -86,6 +88,34 @@ export const userService = {
   async deleteUser(uuid, actorId) {
     const user = await this.getUserByUuid(uuid);
     await userRepository.softDelete(user, actorId);
+  },
+
+  async bulkResetPassword(uuids) {
+    if (!uuids || !Array.isArray(uuids) || uuids.length === 0) {
+      throw ApiError.badRequest('Debes enviar al menos un usuario');
+    }
+
+    const users = await User.findAll({ where: { uuid: uuids } });
+
+    if (users.length === 0) {
+      throw ApiError.notFound('Ningún usuario encontrado');
+    }
+
+    const results = [];
+
+    for (const user of users) {
+      const newPassword = crypto.randomBytes(4).toString('hex');
+      const hashedPassword = await bcrypt.hash(newPassword, SALT_ROUNDS);
+      await user.update({ password: hashedPassword });
+      try {
+        await mailService.sendPasswordReset(user.toSafeJSON(), newPassword);
+        results.push({ uuid: user.uuid, usuario: user.usuario, email: user.email, ok: true });
+      } catch {
+        results.push({ uuid: user.uuid, usuario: user.usuario, email: user.email, ok: false });
+      }
+    }
+
+    return results;
   },
 
   async listUserRoles(uuid) {

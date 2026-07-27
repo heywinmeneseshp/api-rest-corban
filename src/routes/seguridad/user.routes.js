@@ -13,6 +13,7 @@ import {
   removeRoleSchema,
   assignFincaSchema,
   removeFincaSchema,
+  bulkResetPasswordSchema,
 } from '../../validators/seguridad/user.validator.js';
 
 const router = Router();
@@ -40,6 +41,24 @@ router.post(
   permission(PERMISSIONS.USUARIOS_CREAR),
   validate(createUserSchema),
   userController.create,
+);
+
+/**
+ * @openapi
+ * /users/bulk-reset-password:
+ *   post:
+ *     tags: [Usuarios]
+ *     summary: Restablecer contraseñas de múltiples usuarios
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.post(
+  '/bulk-reset-password',
+  auth,
+  permission(PERMISSIONS.USUARIOS_EDITAR),
+  validate(bulkResetPasswordSchema),
+  userController.bulkResetPassword,
 );
 
 /**
