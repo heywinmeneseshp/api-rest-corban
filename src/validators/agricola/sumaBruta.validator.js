@@ -4,7 +4,10 @@ const uuidParam = Joi.string().guid({ version: 'uuidv4' }).required();
 
 const estadioSchema = Joi.object({
   numeroHoja: Joi.number().integer().min(1).required(),
-  estadio: Joi.string().max(20).required(),
+  // La app móvil permite guardar una hoja sin estadio (con confirmación del
+  // usuario) y sincroniza ese valor como '' o null; en vez de rechazar la
+  // evaluación completa, se guarda como '0'.
+  estadio: Joi.string().max(20).allow('', null).empty(['', null]).default('0'),
 });
 
 export const getSumaBrutaSchema = Joi.object({
