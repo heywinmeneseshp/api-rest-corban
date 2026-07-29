@@ -69,6 +69,16 @@ export const precipitacionService = {
       replacements.fincaUuid = query.fincaUuid;
     }
 
+    if (query.fechaDesde) {
+      where += ' AND p.fecha >= :fechaDesde';
+      replacements.fechaDesde = query.fechaDesde;
+    }
+
+    if (query.fechaHasta) {
+      where += ' AND p.fecha <= :fechaHasta';
+      replacements.fechaHasta = query.fechaHasta;
+    }
+
     const [rows] = await sequelize.query(
       `SELECT p.* FROM ${TABLE} p ${where} ORDER BY p.created_at DESC LIMIT :limit OFFSET :offset`,
       { replacements: { ...replacements, limit, offset }, type: 'SELECT' },
