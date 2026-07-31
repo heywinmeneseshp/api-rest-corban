@@ -57,6 +57,12 @@ export const env = {
     authMax: Number(process.env.AUTH_RATE_LIMIT_MAX || 10),
   },
 
+  // Clave dedicada solo para PUT /configuraciones/app-version (usada por el
+  // script de publish-version, no por personas) — a propósito NO es una
+  // cuenta de usuario: si se filtra, el único daño posible es que alguien
+  // cambie el aviso de versión de la app, nada más.
+  appVersionDeployKey: process.env.APP_VERSION_DEPLOY_KEY || '',
+
   seedAdmin: {
     usuario: process.env.ADMIN_USUARIO || 'admin',
     email: process.env.ADMIN_EMAIL || 'hmeneses@banarica.com',

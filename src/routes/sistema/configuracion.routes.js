@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { configuracionController } from '../../controllers/sistema/configuracion.controller.js';
 import { auth } from '../../middlewares/auth.middleware.js';
+import { deployKeyOrAuth } from '../../middlewares/deployKeyOrAuth.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
 import {
   updateBanaricaUrlSchema,
@@ -44,6 +45,9 @@ router.put(
  *   put:
  *     tags: [Configuraciones]
  *     summary: Configurar la versión mínima/última soportada de la app móvil
+ *     description: >
+ *       Acepta login normal (panel admin) o el header `X-Deploy-Key` con la
+ *       clave dedicada del script de publish-version (sin usuario/contraseña).
  *     security: [{ bearerAuth: [] }]
  *     responses:
  *       200: { description: OK }
@@ -53,7 +57,7 @@ router.put(
 router.get('/app-version', configuracionController.getAppVersionInfo);
 router.put(
   '/app-version',
-  auth,
+  deployKeyOrAuth,
   validate(updateAppVersionInfoSchema),
   configuracionController.updateAppVersionInfo,
 );
