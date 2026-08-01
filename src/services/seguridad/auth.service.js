@@ -1,9 +1,11 @@
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 import { sequelize } from '../../database/connection.js';
 import { User } from '../../database/models/user.model.js';
 import { userRepository } from '../../repositories/seguridad/user.repository.js';
 import { roleRepository } from '../../repositories/seguridad/role.repository.js';
 import { authRepository } from '../../repositories/seguridad/auth.repository.js';
+import { mailService } from '../sistema/mail.service.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { logger } from '../../utils/logger.js';
 import { ROLES } from '../../constants/roles.constants.js';
@@ -111,7 +113,15 @@ export const authService = {
     const user = await userRepository.findById(userId);
     if (!user) throw ApiError.notFound('Usuario no encontrado');
     const fullUser = await userRepository.findByUuid(user.uuid);
-    return fullUser;
+
+    // findByUuid trae `roles` como instancias completas del modelo Role
+    // ({id, uuid, nombre, ...}). login/refresh en cambio devuelven `roles`
+    // como array de nombres (strings) — normalizamos acá para que ambos
+    // endpoints tengan la misma forma; si no, el cliente que renderiza
+    // roles.join(', ') muestra "[object Object]" cuando la sesión se
+    // recargó desde /auth/me en vez de login/refresh.
+    const roleNames = (fullUser.roles || []).map((r) => r.nombre);
+    return { ...fullUser.toSafeJSON(), roles: roleNames };
   },
 
   async updateProfile(userId, payload) {
@@ -141,6 +151,30 @@ export const authService = {
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     await userRepository.update(fullUser, { password: hashedPassword });
+  },
+
+  // Sin importar si el usuario/email existe, esta función nunca lanza error
+  // ni distingue el caso en su valor de retorno — el controller siempre
+  // responde el mismo mensaje genérico. Es deliberado: evita que alguien
+  // use este endpoint público para averiguar qué usuarios existen en el
+  // sistema (enumeración de cuentas).
+  async forgotPassword(usuarioOrEmail) {
+    const user = await userRepository.findByUsuarioOrEmail(usuarioOrEmail, usuarioOrEmail);
+    if (!user || !user.estado) {
+      logger.info('Forgot-password: usuario no encontrado o inactivo', { usuarioOrEmail });
+      return;
+    }
+
+    const newPassword = crypto.randomBytes(4).toString('hex');
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await userRepository.update(user, { password: hashedPassword });
+
+    try {
+      await mailService.sendPasswordReset(user.toSafeJSON(), newPassword);
+      logger.info('Forgot-password: correo enviado', { userId: user.id });
+    } catch (err) {
+      logger.error('Forgot-password: fallo al enviar correo', { userId: user.id, error: err.message });
+    }
   },
 };
 
