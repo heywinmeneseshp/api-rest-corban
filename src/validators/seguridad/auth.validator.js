@@ -45,3 +45,11 @@ export const changePasswordSchema = Joi.object({
   params: Joi.object({}),
   query: Joi.object({}),
 });
+
+export const forgotPasswordSchema = Joi.object({
+  body: Joi.object({
+    usuarioOrEmail: Joi.string().required(),
+  }),
+  params: Joi.object({}),
+  query: Joi.object({}),
+});

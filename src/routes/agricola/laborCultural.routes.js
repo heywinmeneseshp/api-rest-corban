@@ -6,5 +6,7 @@ const router = Router();
 
 router.get('/', auth, laborCulturalController.list);
 router.post('/', auth, laborCulturalController.create);
+router.get('/visitas', auth, laborCulturalController.listVisitas);
+router.get('/visitas/:visitaUuid', auth, laborCulturalController.getVisita);
 
 export default router;

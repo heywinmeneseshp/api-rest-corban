@@ -34,6 +34,15 @@ export const authController = {
     const result = await authService.changePassword(req.user.id, currentPassword, newPassword);
     ApiResponse.send(res, { message: 'Contraseña actualizada correctamente', data: result });
   }),
+
+  forgotPassword: asyncHandler(async (req, res) => {
+    await authService.forgotPassword(req.body.usuarioOrEmail);
+    // Mensaje genérico siempre, exista o no el usuario/email — ver el
+    // comentario en authService.forgotPassword.
+    ApiResponse.send(res, {
+      message: 'Si el usuario o correo existe, se enviaron instrucciones para restablecer la contraseña.',
+    });
+  }),
 };
 
 export default authController;

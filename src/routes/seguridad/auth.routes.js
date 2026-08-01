@@ -3,7 +3,14 @@ import { authController } from '../../controllers/seguridad/auth.controller.js';
 import { auth } from '../../middlewares/auth.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
 import { authRateLimiter } from '../../middlewares/rateLimiter.middleware.js';
-import { loginSchema, refreshSchema, logoutSchema, updateProfileSchema, changePasswordSchema } from '../../validators/seguridad/auth.validator.js';
+import {
+  loginSchema,
+  refreshSchema,
+  logoutSchema,
+  updateProfileSchema,
+  changePasswordSchema,
+  forgotPasswordSchema,
+} from '../../validators/seguridad/auth.validator.js';
 
 const router = Router();
 
@@ -40,6 +47,31 @@ router.post('/login', authRateLimiter, validate(loginSchema), authController.log
  *       401: { description: Refresh token inválido o expirado }
  */
 router.post('/refresh', authRateLimiter, validate(refreshSchema), authController.refresh);
+
+/**
+ * @openapi
+ * /auth/forgot-password:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Restablecer contraseña por usuario o email (envía nueva contraseña por correo)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [usuarioOrEmail]
+ *             properties:
+ *               usuarioOrEmail: { type: string }
+ *     responses:
+ *       200: { description: Mensaje genérico, siempre — no revela si el usuario existe }
+ */
+router.post(
+  '/forgot-password',
+  authRateLimiter,
+  validate(forgotPasswordSchema),
+  authController.forgotPassword,
+);
 
 /**
  * @openapi

@@ -28,6 +28,32 @@ export const laborCulturalController = {
       next(error);
     }
   },
+
+  async listVisitas(req, res, next) {
+    try {
+      const result = await laborCulturalService.listVisitas(req.query);
+      ApiResponse.send(res, {
+        statusCode: HTTP_STATUS.OK,
+        message: 'Visitas de labor cultural obtenidas correctamente',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getVisita(req, res, next) {
+    try {
+      const result = await laborCulturalService.getVisita(req.params.visitaUuid);
+      ApiResponse.send(res, {
+        statusCode: HTTP_STATUS.OK,
+        message: 'Visita de labor cultural obtenida correctamente',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
 };
 
 export default laborCulturalController;

@@ -37,7 +37,7 @@ import racimoMovimientoRoutes from './routes/agricola/racimoMovimiento.routes.js
 import produccionSemanalRoutes from './routes/agricola/produccionSemanal.routes.js';
 import dashboardRoutes from './routes/agricola/dashboard.routes.js';
 import laborCulturalRoutes from './routes/agricola/laborCultural.routes.js';
-import precipitacionRoutes from './routes/agricola/precipitacion.routes.js';
+import climaRoutes from './routes/agricola/clima.routes.js';
 
 import configuracionRoutes from './routes/sistema/configuracion.routes.js';
 import resetDatosRoutes from './routes/sistema/resetDatos.routes.js';
@@ -109,7 +109,10 @@ router.use('/racimo-movimientos', racimoMovimientoRoutes);
 router.use('/produccion-semanal', produccionSemanalRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/labores-culturales', laborCulturalRoutes);
-router.use('/precipitaciones', precipitacionRoutes);
+router.use('/clima', climaRoutes);
+// Alias por compatibilidad con builds de la app móvil ya instalados que
+// todavía le pegan a /precipitaciones (nombre anterior del módulo).
+router.use('/precipitaciones', climaRoutes);
 
 router.use('/configuraciones', configuracionRoutes);
 router.use('/sistema', resetDatosRoutes);
