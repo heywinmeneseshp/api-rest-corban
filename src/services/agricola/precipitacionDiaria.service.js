@@ -56,10 +56,23 @@ const ensureTables = async () => {
   tablasVerificadas = true;
 };
 
+// Fecha local (no UTC) como YYYY-MM-DD. Antes se mezclaba getDate()/setDate()
+// (hora local) con toISOString() (UTC) — de noche, con el servidor en una
+// zona horaria detrás de UTC (ej. Colombia, UTC-5), UTC ya había cruzado la
+// medianoche y "ayer" terminaba calculando la fecha de HOY en local.
+const formatearFechaLocal = (d) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dia = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dia}`;
+};
+
+const hoyIso = () => formatearFechaLocal(new Date());
+
 const ayerIso = () => {
   const d = new Date();
   d.setDate(d.getDate() - 1);
-  return d.toISOString().slice(0, 10);
+  return formatearFechaLocal(d);
 };
 
 // Todas las fechas entre desde/hasta (inclusive), como strings YYYY-MM-DD.
@@ -245,7 +258,7 @@ export const precipitacionDiariaService = {
     if (configs.length === 0) return [];
 
     const fincaIdsPermitidas = getFincaIdsPermitidas(user); // null = sin restricción
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = hoyIso();
     const ayer = ayerIso();
 
     // Una finca puede tener más de una config activa (ej. dos roles

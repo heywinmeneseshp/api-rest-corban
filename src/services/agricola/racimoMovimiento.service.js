@@ -168,7 +168,28 @@ export const racimoMovimientoService = {
       fechaHasta,
     });
 
-    return { items: rows, meta: buildPaginationMeta({ page, limit, total: count }) };
+    // Le marca a cada fila si es "histórica" (de una semana anterior a la
+    // última registrada en su finca) — usa exactamente la misma fuente que
+    // create/deleteMovimiento (getUltimaSemanaRegistroPorFinca), para que el
+    // frontend pueda ocultar el botón de eliminar en esas filas sin tener
+    // que adivinar o duplicar la regla. `puedeEliminarHistorico` le dice al
+    // frontend si igual puede actuar sobre esas filas (Administrador o con
+    // el permiso puntual), para no ocultarlas de más.
+    const fincaIdsDeFilas = [...new Set(rows.map((r) => r.fincaId))];
+    const ultimaPorFinca = await racimoMovimientoRepository.getUltimaSemanaRegistroPorFinca(fincaIdsDeFilas);
+    const items = rows.map((r) => {
+      const ultima = ultimaPorFinca.get(r.fincaId);
+      const esHistorico = Boolean(ultima && r.semanaRegistro?.fechaInicio < ultima.fechaInicio);
+      return { ...r.toJSON(), esHistorico };
+    });
+
+    return {
+      items,
+      meta: {
+        ...buildPaginationMeta({ page, limit, total: count }),
+        puedeEliminarHistorico: puedeIgnorarRestriccionSemana(user),
+      },
+    };
   },
 
   async exportMovimientosToExcel(query, user) {
