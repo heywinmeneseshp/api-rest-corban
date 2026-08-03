@@ -77,7 +77,7 @@ export const fincaRepository = {
       where: { fincaId },
       limit,
       offset,
-      order: [['id', 'ASC']],
+      order: [['codigo', 'ASC']],
       // paranoid:false trae también los soft-deleted (junto con los
       // activos) — cada fila expone `deletedAt` para que el frontend
       // pueda distinguirlos.

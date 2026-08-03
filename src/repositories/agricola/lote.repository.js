@@ -15,7 +15,7 @@ export const loteRepository = {
         : {}),
     };
 
-    return Lote.findAndCountAll({ where, limit, offset, order: [['id', 'ASC']] });
+    return Lote.findAndCountAll({ where, limit, offset, order: [['codigo', 'ASC']] });
   },
 
   findByUuid(uuid) {
