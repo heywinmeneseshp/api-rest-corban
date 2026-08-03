@@ -56,23 +56,30 @@ const ensureTables = async () => {
   tablasVerificadas = true;
 };
 
-// Fecha local (no UTC) como YYYY-MM-DD. Antes se mezclaba getDate()/setDate()
-// (hora local) con toISOString() (UTC) — de noche, con el servidor en una
-// zona horaria detrás de UTC (ej. Colombia, UTC-5), UTC ya había cruzado la
-// medianoche y "ayer" terminaba calculando la fecha de HOY en local.
-const formatearFechaLocal = (d) => {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const dia = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${dia}`;
-};
+// Zona horaria del negocio, no la del servidor — en local el servidor corre
+// en hora Colombia (por eso "andaba bien" ahí), pero en producción (Vercel)
+// corre en UTC. Confiar en la hora local del proceso (getDate()/getFullYear())
+// se rompe justo de noche en Colombia, cuando UTC ya cruzó la medianoche y el
+// servidor cree que es un día después. Fijar la zona explícitamente hace que
+// "hoy"/"ayer" den lo mismo sin importar dónde esté físicamente desplegado.
+const ZONA_NEGOCIO = 'America/Bogota';
 
-const hoyIso = () => formatearFechaLocal(new Date());
+const formatearFechaEnZona = (fecha) =>
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: ZONA_NEGOCIO,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(fecha);
+
+const hoyIso = () => formatearFechaEnZona(new Date());
 
 const ayerIso = () => {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return formatearFechaLocal(d);
+  // Colombia no tiene horario de verano (UTC-5 todo el año), así que restar
+  // 24hs exactas a "ahora" y volver a formatear en la misma zona siempre da
+  // el día calendario anterior, sin casos borde.
+  const haceUnDia = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  return formatearFechaEnZona(haceUnDia);
 };
 
 // Todas las fechas entre desde/hasta (inclusive), como strings YYYY-MM-DD.
