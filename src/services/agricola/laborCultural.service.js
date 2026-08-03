@@ -183,7 +183,10 @@ export const laborCulturalService = {
       replacements.fechaHasta = query.fechaHasta;
     }
 
-    const [rows] = await sequelize.query(
+    // sequelize.query con type: 'SELECT' devuelve el array de filas
+    // directo (no [rows, metadata]) — destructurarlo como [rows] tomaba la
+    // primera fila en vez del array completo.
+    const rows = await sequelize.query(
       `SELECT p.* FROM ${TABLE} p ${where} ORDER BY p.created_at DESC LIMIT :limit OFFSET :offset`,
       { replacements: { ...replacements, limit, offset }, type: 'SELECT' },
     );
@@ -222,7 +225,7 @@ export const laborCulturalService = {
       replacements.fechaHasta = query.fechaHasta;
     }
 
-    const [rows] = await sequelize.query(
+    const rows = await sequelize.query(
       `SELECT
          visita_uuid AS visitaUuid,
          finca_uuid AS fincaUuid,
@@ -260,7 +263,7 @@ export const laborCulturalService = {
   async getVisita(visitaUuid) {
     await ensureTable();
 
-    const [rows] = await sequelize.query(
+    const rows = await sequelize.query(
       `SELECT * FROM ${TABLE} WHERE visita_uuid = :visitaUuid ORDER BY lote_nombre ASC`,
       { replacements: { visitaUuid }, type: 'SELECT' },
     );

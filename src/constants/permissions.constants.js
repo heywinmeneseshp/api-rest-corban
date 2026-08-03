@@ -92,6 +92,15 @@ export const PERMISSIONS = {
   PRODUCCION_VER: 'produccion.ver',
   PRODUCCION_CREAR: 'produccion.crear',
 
+  // Captura diaria de precipitación desde app-corbana (distinta del registro
+  // de clima que hace la app móvil): un rol programado debe digitar la
+  // precipitación del día anterior o queda bloqueado con un modal hasta
+  // ponerse al día. VER es para listar/consultar registros y la
+  // configuración; CONFIGURAR es para programar qué rol/finca/semana exige
+  // el registro (solo administración).
+  PRECIPITACION_DIARIA_VER: 'precipitacion_diaria.ver',
+  PRECIPITACION_DIARIA_CONFIGURAR: 'precipitacion_diaria.configurar',
+
   SISTEMA_RESET_DATOS: 'sistema.reset_datos',
 };
 
@@ -184,6 +193,9 @@ export const PERMISSIONS_SEED = [
 
   { codigo: PERMISSIONS.PRODUCCION_VER, nombre: 'Ver producción semanal' },
   { codigo: PERMISSIONS.PRODUCCION_CREAR, nombre: 'Crear producción semanal' },
+
+  { codigo: PERMISSIONS.PRECIPITACION_DIARIA_VER, nombre: 'Ver precipitación diaria y su configuración' },
+  { codigo: PERMISSIONS.PRECIPITACION_DIARIA_CONFIGURAR, nombre: 'Programar captura obligatoria de precipitación diaria' },
 
   { codigo: PERMISSIONS.SISTEMA_RESET_DATOS, nombre: 'Borrar todos los datos que no vienen de los seeders' },
 ];

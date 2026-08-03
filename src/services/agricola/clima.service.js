@@ -126,7 +126,10 @@ export const climaService = {
       replacements.fechaHasta = query.fechaHasta;
     }
 
-    const [rows] = await sequelize.query(
+    // sequelize.query con type: 'SELECT' devuelve el array de filas
+    // directo (no [rows, metadata]) — destructurarlo como [rows] tomaba la
+    // primera fila en vez del array completo.
+    const rows = await sequelize.query(
       `SELECT p.* FROM ${TABLE} p ${where} ORDER BY p.created_at DESC LIMIT :limit OFFSET :offset`,
       { replacements: { ...replacements, limit, offset }, type: 'SELECT' },
     );
@@ -143,11 +146,11 @@ export const climaService = {
   // ya registrado ese día en esa finca, en vez de volver a pedirlo.
   async getByFincaFecha(fincaUuid, fecha) {
     await ensureTable();
-    const [rows] = await sequelize.query(
+    const [row] = await sequelize.query(
       `SELECT * FROM ${TABLE} WHERE finca_uuid = :fincaUuid AND fecha = :fecha ORDER BY created_at DESC LIMIT 1`,
       { replacements: { fincaUuid, fecha }, type: 'SELECT' },
     );
-    return rows[0] || null;
+    return row || null;
   },
 };
 
