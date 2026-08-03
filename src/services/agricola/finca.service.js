@@ -5,6 +5,7 @@ import { logger } from '../../utils/logger.js';
 import { configuracionService } from '../sistema/configuracion.service.js';
 import { parseBulkFile } from '../../utils/bulkFileParser.js';
 import { getFincaIdsPermitidas } from '../../utils/fincaScope.js';
+import { ROLES } from '../../constants/roles.constants.js';
 
 const parseEstado = (value) => {
   if (value === undefined || value === '' || value === null) return true;
@@ -70,7 +71,16 @@ export const fincaService = {
   async listLotes(uuid, query, user) {
     const finca = await this.getFincaByUuid(uuid, user);
     const { page, limit, offset } = getPagination(query);
-    const { rows, count } = await fincaRepository.findLotesByFincaId(finca.id, { limit, offset });
+    // "Ver eliminados" solo aplica si de verdad es Administrador — para
+    // cualquier otro rol el parámetro se ignora en silencio, no hace falta
+    // devolver un error por pedir algo que no le corresponde.
+    const esAdministrador = (user?.roles || []).includes(ROLES.ADMINISTRADOR);
+    const incluirEliminados = esAdministrador && query.incluirEliminados === true;
+    const { rows, count } = await fincaRepository.findLotesByFincaId(finca.id, {
+      limit,
+      offset,
+      incluirEliminados,
+    });
     return { items: rows, meta: buildPaginationMeta({ page, limit, total: count }) };
   },
 

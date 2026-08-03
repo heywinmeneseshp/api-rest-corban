@@ -72,8 +72,17 @@ export const fincaRepository = {
     return finca;
   },
 
-  findLotesByFincaId(fincaId, { limit, offset } = {}) {
-    return Lote.findAndCountAll({ where: { fincaId }, limit, offset, order: [['id', 'ASC']] });
+  findLotesByFincaId(fincaId, { limit, offset, incluirEliminados = false } = {}) {
+    return Lote.findAndCountAll({
+      where: { fincaId },
+      limit,
+      offset,
+      order: [['id', 'ASC']],
+      // paranoid:false trae también los soft-deleted (junto con los
+      // activos) — cada fila expone `deletedAt` para que el frontend
+      // pueda distinguirlos.
+      paranoid: !incluirEliminados,
+    });
   },
 };
 

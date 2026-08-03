@@ -33,6 +33,11 @@ export const loteController = {
     ApiResponse.send(res, { message: 'Lote eliminado correctamente' });
   }),
 
+  restore: asyncHandler(async (req, res) => {
+    const lote = await loteService.restoreLote(req.params.uuid, req.user?.roles);
+    ApiResponse.send(res, { message: 'Lote restaurado correctamente', data: lote });
+  }),
+
   listPlantas: asyncHandler(async (req, res) => {
     const { items, meta } = await loteService.listPlantas(req.params.uuid, req.query, req.user);
     ApiResponse.send(res, { message: 'Plantas del lote obtenidas correctamente', data: { items, meta } });

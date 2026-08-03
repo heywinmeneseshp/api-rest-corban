@@ -24,6 +24,9 @@ export const listFincaLotesSchema = Joi.object({
   query: Joi.object({
     page: Joi.number().integer().min(1),
     limit: Joi.number().integer().min(1).max(100),
+    // Solo tiene efecto si el usuario es Administrador — el service lo
+    // ignora en silencio para cualquier otro rol.
+    incluirEliminados: Joi.boolean(),
   }),
 });
 

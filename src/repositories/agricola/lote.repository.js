@@ -22,6 +22,12 @@ export const loteRepository = {
     return Lote.findOne({ where: { uuid } });
   },
 
+  // Incluye lotes eliminados lógicamente — necesario para poder
+  // encontrarlos y restaurarlos (findByUuid los excluye por ser paranoid).
+  findByUuidIncludingDeleted(uuid) {
+    return Lote.findOne({ where: { uuid }, paranoid: false });
+  },
+
   findById(id) {
     return Lote.findByPk(id);
   },
@@ -87,6 +93,12 @@ export const loteRepository = {
   async softDelete(lote, deletedBy, { transaction } = {}) {
     await lote.update({ deletedBy }, { transaction });
     await lote.destroy({ transaction });
+    return lote;
+  },
+
+  async restore(lote, { transaction } = {}) {
+    await lote.restore({ transaction });
+    await lote.update({ deletedBy: null }, { transaction });
     return lote;
   },
 

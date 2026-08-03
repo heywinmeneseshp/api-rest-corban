@@ -88,6 +88,24 @@ router.delete(
 
 /**
  * @openapi
+ * /lotes/{uuid}/restore:
+ *   post:
+ *     tags: [Lotes]
+ *     summary: Restaurar un lote eliminado (solo Administrador)
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.post(
+  '/:uuid/restore',
+  auth,
+  permission(PERMISSIONS.LOTE_ELIMINAR),
+  validate(getLoteSchema),
+  loteController.restore,
+);
+
+/**
+ * @openapi
  * /lotes/{uuid}/plantas:
  *   get:
  *     tags: [Lotes]

@@ -142,6 +142,19 @@ export const loteService = {
     await loteRepository.softDelete(lote, actorId);
   },
 
+  async restoreLote(uuid, userRoles = []) {
+    if (!userRoles.includes(ROLES.ADMINISTRADOR)) {
+      throw ApiError.forbidden('Solo el administrador puede restaurar lotes');
+    }
+
+    const lote = await loteRepository.findByUuidIncludingDeleted(uuid);
+    if (!lote) throw ApiError.notFound('Lote no encontrado');
+    if (!lote.deletedAt) throw ApiError.conflict('El lote no está eliminado');
+
+    await loteRepository.restore(lote);
+    return lote;
+  },
+
   async listPlantas(uuid, query, user) {
     const lote = await this.getLoteByUuid(uuid, user);
     const { page, limit, offset } = getPagination(query);
