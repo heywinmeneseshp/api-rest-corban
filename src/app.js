@@ -39,6 +39,10 @@ import dashboardRoutes from './routes/agricola/dashboard.routes.js';
 import laborCulturalRoutes from './routes/agricola/laborCultural.routes.js';
 import climaRoutes from './routes/agricola/clima.routes.js';
 import precipitacionDiariaRoutes from './routes/agricola/precipitacionDiaria.routes.js';
+import categoriaLaborRoutes from './routes/agricola/categoriaLabor.routes.js';
+import laborRoutes from './routes/agricola/labor.routes.js';
+import laborSerieRoutes from './routes/agricola/laborSerie.routes.js';
+import laborOcurrenciaRoutes from './routes/agricola/laborOcurrencia.routes.js';
 
 import configuracionRoutes from './routes/sistema/configuracion.routes.js';
 import resetDatosRoutes from './routes/sistema/resetDatos.routes.js';
@@ -115,6 +119,10 @@ router.use('/clima', climaRoutes);
 // todavía le pegan a /precipitaciones (nombre anterior del módulo).
 router.use('/precipitaciones', climaRoutes);
 router.use('/precipitacion-diaria', precipitacionDiariaRoutes);
+router.use('/categorias-labor', categoriaLaborRoutes);
+router.use('/labores', laborRoutes);
+router.use('/labor-series', laborSerieRoutes);
+router.use('/labor-ocurrencias', laborOcurrenciaRoutes);
 
 router.use('/configuraciones', configuracionRoutes);
 router.use('/sistema', resetDatosRoutes);

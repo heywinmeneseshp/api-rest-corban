@@ -23,6 +23,11 @@ import { MotivoRepique } from './models/motivoRepique.model.js';
 import { MotivoRecuse } from './models/motivoRecuse.model.js';
 import { RacimoMovimiento } from './models/racimoMovimiento.model.js';
 import { ProduccionSemanal } from './models/produccionSemanal.model.js';
+import { CategoriaLabor } from './models/categoriaLabor.model.js';
+import { Labor } from './models/labor.model.js';
+import { LaborSerie } from './models/laborSerie.model.js';
+import { LaborSerieLote } from './models/laborSerieLote.model.js';
+import { LaborOcurrencia } from './models/laborOcurrencia.model.js';
 
 const withAuditAssociations = (TargetModel) => {
   TargetModel.belongsTo(User, { as: 'creadoPor', foreignKey: 'createdBy' });
@@ -200,6 +205,47 @@ export const setupAssociations = () => {
   withAuditAssociations(MotivoRecuse);
   withAuditAssociations(RacimoMovimiento);
   withAuditAssociations(ProduccionSemanal);
+
+  // Calendario de Labores: CategoriaLabor -> Labor -> LaborSerie -> (LaborSerieLote | LaborOcurrencia)
+  CategoriaLabor.hasMany(Labor, { foreignKey: 'categoriaLaborId', as: 'labores' });
+  Labor.belongsTo(CategoriaLabor, { foreignKey: 'categoriaLaborId', as: 'categoria' });
+
+  Labor.hasMany(LaborSerie, { foreignKey: 'laborId', as: 'series' });
+  LaborSerie.belongsTo(Labor, { foreignKey: 'laborId', as: 'labor' });
+
+  Finca.hasMany(LaborSerie, { foreignKey: 'fincaId', as: 'laborSeries' });
+  LaborSerie.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+
+  Lote.hasMany(LaborSerie, { foreignKey: 'loteId', as: 'laborSeries' });
+  LaborSerie.belongsTo(Lote, { foreignKey: 'loteId', as: 'lote' });
+
+  User.hasMany(LaborSerie, { foreignKey: 'responsableId', as: 'laborSeriesResponsable' });
+  LaborSerie.belongsTo(User, { foreignKey: 'responsableId', as: 'responsable' });
+
+  LaborSerie.hasMany(LaborSerieLote, { foreignKey: 'laborSerieId', as: 'lotesRotacion' });
+  LaborSerieLote.belongsTo(LaborSerie, { foreignKey: 'laborSerieId', as: 'serie' });
+  Lote.hasMany(LaborSerieLote, { foreignKey: 'loteId', as: 'laborSerieLotes' });
+  LaborSerieLote.belongsTo(Lote, { foreignKey: 'loteId', as: 'lote' });
+
+  LaborSerie.hasMany(LaborOcurrencia, { foreignKey: 'serieId', as: 'ocurrencias' });
+  LaborOcurrencia.belongsTo(LaborSerie, { foreignKey: 'serieId', as: 'serie' });
+
+  Finca.hasMany(LaborOcurrencia, { foreignKey: 'fincaId', as: 'laborOcurrencias' });
+  LaborOcurrencia.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+
+  Lote.hasMany(LaborOcurrencia, { foreignKey: 'loteId', as: 'laborOcurrencias' });
+  LaborOcurrencia.belongsTo(Lote, { foreignKey: 'loteId', as: 'lote' });
+
+  Labor.hasMany(LaborOcurrencia, { foreignKey: 'laborId', as: 'ocurrencias' });
+  LaborOcurrencia.belongsTo(Labor, { foreignKey: 'laborId', as: 'labor' });
+
+  User.hasMany(LaborOcurrencia, { foreignKey: 'responsableId', as: 'laborOcurrenciasResponsable' });
+  LaborOcurrencia.belongsTo(User, { foreignKey: 'responsableId', as: 'responsable' });
+
+  withAuditAssociations(CategoriaLabor);
+  withAuditAssociations(Labor);
+  withAuditAssociations(LaborSerie);
+  withAuditAssociations(LaborOcurrencia);
 };
 
 export {
@@ -229,6 +275,11 @@ export {
   MotivoRecuse,
   RacimoMovimiento,
   ProduccionSemanal,
+  CategoriaLabor,
+  Labor,
+  LaborSerie,
+  LaborSerieLote,
+  LaborOcurrencia,
 };
 
 export default setupAssociations;

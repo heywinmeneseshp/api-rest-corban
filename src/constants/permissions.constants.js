@@ -101,6 +101,21 @@ export const PERMISSIONS = {
   PRECIPITACION_DIARIA_VER: 'precipitacion_diaria.ver',
   PRECIPITACION_DIARIA_CONFIGURAR: 'precipitacion_diaria.configurar',
 
+  CATEGORIA_LABOR_VER: 'categoria_labor.ver',
+  CATEGORIA_LABOR_CREAR: 'categoria_labor.crear',
+  CATEGORIA_LABOR_EDITAR: 'categoria_labor.editar',
+  CATEGORIA_LABOR_ELIMINAR: 'categoria_labor.eliminar',
+
+  LABOR_VER: 'labor.ver',
+  LABOR_CREAR: 'labor.crear',
+  LABOR_EDITAR: 'labor.editar',
+  LABOR_ELIMINAR: 'labor.eliminar',
+
+  LABOR_PROGRAMACION_VER: 'labor_programacion.ver',
+  LABOR_PROGRAMACION_CREAR: 'labor_programacion.crear',
+  LABOR_PROGRAMACION_EDITAR: 'labor_programacion.editar',
+  LABOR_PROGRAMACION_ELIMINAR: 'labor_programacion.eliminar',
+
   SISTEMA_RESET_DATOS: 'sistema.reset_datos',
 };
 
@@ -196,6 +211,21 @@ export const PERMISSIONS_SEED = [
 
   { codigo: PERMISSIONS.PRECIPITACION_DIARIA_VER, nombre: 'Ver precipitación diaria y su configuración' },
   { codigo: PERMISSIONS.PRECIPITACION_DIARIA_CONFIGURAR, nombre: 'Programar captura obligatoria de precipitación diaria' },
+
+  { codigo: PERMISSIONS.CATEGORIA_LABOR_VER, nombre: 'Ver categorías de labor' },
+  { codigo: PERMISSIONS.CATEGORIA_LABOR_CREAR, nombre: 'Crear categorías de labor' },
+  { codigo: PERMISSIONS.CATEGORIA_LABOR_EDITAR, nombre: 'Editar categorías de labor' },
+  { codigo: PERMISSIONS.CATEGORIA_LABOR_ELIMINAR, nombre: 'Eliminar categorías de labor' },
+
+  { codigo: PERMISSIONS.LABOR_VER, nombre: 'Ver labores' },
+  { codigo: PERMISSIONS.LABOR_CREAR, nombre: 'Crear labores' },
+  { codigo: PERMISSIONS.LABOR_EDITAR, nombre: 'Editar labores' },
+  { codigo: PERMISSIONS.LABOR_ELIMINAR, nombre: 'Eliminar labores' },
+
+  { codigo: PERMISSIONS.LABOR_PROGRAMACION_VER, nombre: 'Ver el calendario de labores' },
+  { codigo: PERMISSIONS.LABOR_PROGRAMACION_CREAR, nombre: 'Programar labores (únicas o recurrentes)' },
+  { codigo: PERMISSIONS.LABOR_PROGRAMACION_EDITAR, nombre: 'Editar programaciones de labores' },
+  { codigo: PERMISSIONS.LABOR_PROGRAMACION_ELIMINAR, nombre: 'Eliminar programaciones de labores' },
 
   { codigo: PERMISSIONS.SISTEMA_RESET_DATOS, nombre: 'Borrar todos los datos que no vienen de los seeders' },
 ];
