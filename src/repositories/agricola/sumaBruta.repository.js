@@ -1,4 +1,5 @@
-import { SumaBruta, EstadioHoja } from '../../database/associations.js';
+import { Op } from 'sequelize';
+import { SumaBruta, EstadioHoja, EstadioSigatoka } from '../../database/associations.js';
 
 export const sumaBrutaRepository = {
   findByEvaluacionId(evaluacionId, { transaction } = {}) {
@@ -25,6 +26,16 @@ export const sumaBrutaRepository = {
   async replaceEstadios(sumaBrutaId, estadios, { transaction } = {}) {
     await EstadioHoja.destroy({ where: { sumaBrutaId }, transaction });
     return EstadioHoja.bulkCreate(estadios, { transaction });
+  },
+
+  // Valores activos de la tabla `estadios_sigatoka` para las denominaciones dadas.
+  findEstadiosValuesByNames(estadios, { transaction } = {}) {
+    if (!estadios?.length) return Promise.resolve([]);
+    return EstadioSigatoka.findAll({
+      where: { estadio: { [Op.in]: estadios }, estado: true },
+      attributes: ['estadio', 'valor'],
+      transaction,
+    });
   },
 };
 

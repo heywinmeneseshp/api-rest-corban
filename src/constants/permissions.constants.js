@@ -69,6 +69,14 @@ export const PERMISSIONS = {
   SUMA_BRUTA_CREAR: 'suma_bruta.crear',
   SUMA_BRUTA_EDITAR: 'suma_bruta.editar',
 
+  // Valores numéricos configurables por estadio de Sigatoka (1-, 1+, 2-, …,
+  // 6+, 6-) usados para calcular automáticamente la Suma Bruta de una
+  // evaluación. Solo lo administra un rol de administración.
+  ESTADIO_SIGATOKA_VER: 'estadio_sigatoka.ver',
+  ESTADIO_SIGATOKA_CREAR: 'estadio_sigatoka.crear',
+  ESTADIO_SIGATOKA_EDITAR: 'estadio_sigatoka.editar',
+  ESTADIO_SIGATOKA_ELIMINAR: 'estadio_sigatoka.eliminar',
+
   MOTIVO_REPIQUE_VER: 'motivo_repique.ver',
   MOTIVO_REPIQUE_CREAR: 'motivo_repique.crear',
   MOTIVO_REPIQUE_EDITAR: 'motivo_repique.editar',
@@ -189,6 +197,11 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.SUMA_BRUTA_VER, nombre: 'Ver suma bruta' },
   { codigo: PERMISSIONS.SUMA_BRUTA_CREAR, nombre: 'Crear suma bruta' },
   { codigo: PERMISSIONS.SUMA_BRUTA_EDITAR, nombre: 'Editar suma bruta' },
+
+  { codigo: PERMISSIONS.ESTADIO_SIGATOKA_VER, nombre: 'Ver estadios de Sigatoka' },
+  { codigo: PERMISSIONS.ESTADIO_SIGATOKA_CREAR, nombre: 'Crear estadios de Sigatoka' },
+  { codigo: PERMISSIONS.ESTADIO_SIGATOKA_EDITAR, nombre: 'Editar estadios de Sigatoka' },
+  { codigo: PERMISSIONS.ESTADIO_SIGATOKA_ELIMINAR, nombre: 'Eliminar estadios de Sigatoka' },
 
   { codigo: PERMISSIONS.MOTIVO_REPIQUE_VER, nombre: 'Ver motivos de repique' },
   { codigo: PERMISSIONS.MOTIVO_REPIQUE_CREAR, nombre: 'Crear motivos de repique' },

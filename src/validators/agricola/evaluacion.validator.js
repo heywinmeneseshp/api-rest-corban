@@ -23,6 +23,15 @@ export const getEvaluacionSchema = Joi.object({
   query: Joi.object({}),
 });
 
+export const promedioPorSemanaSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({}),
+  query: Joi.object({
+    fincaUuid: uuidRef,
+    anio: Joi.number().integer().min(2000).max(2100),
+  }),
+});
+
 export const createEvaluacionSchema = Joi.object({
   body: Joi.object({
     plantaUuid: uuidRef.required(),

@@ -28,6 +28,7 @@ import { Labor } from './models/labor.model.js';
 import { LaborSerie } from './models/laborSerie.model.js';
 import { LaborSerieLote } from './models/laborSerieLote.model.js';
 import { LaborOcurrencia } from './models/laborOcurrencia.model.js';
+import { EstadioSigatoka } from './models/estadioSigatoka.model.js';
 
 const withAuditAssociations = (TargetModel) => {
   TargetModel.belongsTo(User, { as: 'creadoPor', foreignKey: 'createdBy' });
@@ -246,6 +247,9 @@ export const setupAssociations = () => {
   withAuditAssociations(Labor);
   withAuditAssociations(LaborSerie);
   withAuditAssociations(LaborOcurrencia);
+
+  // Valores configurables por estadio de Sigatoka para el cálculo de Suma Bruta.
+  withAuditAssociations(EstadioSigatoka);
 };
 
 export {
@@ -280,6 +284,7 @@ export {
   LaborSerie,
   LaborSerieLote,
   LaborOcurrencia,
+  EstadioSigatoka,
 };
 
 export default setupAssociations;

@@ -9,6 +9,7 @@ import {
   getEvaluacionSchema,
   createEvaluacionSchema,
   updateEvaluacionSchema,
+  promedioPorSemanaSchema,
 } from '../../validators/agricola/evaluacion.validator.js';
 
 const router = Router();
@@ -42,6 +43,60 @@ router.post(
   permission(PERMISSIONS.EVALUACION_CREAR),
   validate(createEvaluacionSchema),
   evaluacionController.create,
+);
+
+/**
+ * @openapi
+ * /evaluaciones/suma-bruta-promedio:
+ *   get:
+ *     tags: [Evaluaciones]
+ *     summary: Promedio de suma bruta por semana (todas las fincas o una en particular)
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.get(
+  '/suma-bruta-promedio',
+  auth,
+  permission(PERMISSIONS.SUMA_BRUTA_VER),
+  validate(promedioPorSemanaSchema),
+  evaluacionController.promedioSumaBruta,
+);
+
+/**
+ * @openapi
+ * /evaluaciones/conteo-promedio:
+ *   get:
+ *     tags: [Evaluaciones]
+ *     summary: Promedio de hojas funcionales (conteo de hojas) por semana (todas las fincas o una en particular)
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.get(
+  '/conteo-promedio',
+  auth,
+  permission(PERMISSIONS.CONTEO_HOJAS_VER),
+  validate(promedioPorSemanaSchema),
+  evaluacionController.promedioConteo,
+);
+
+/**
+ * @openapi
+ * /evaluaciones/infeccion-promedio:
+ *   get:
+ *     tags: [Evaluaciones]
+ *     summary: Promedio de YLI, YLS y hojas totales por semana (todas las fincas o una en particular)
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.get(
+  '/infeccion-promedio',
+  auth,
+  permission(PERMISSIONS.INFECCION_VER),
+  validate(promedioPorSemanaSchema),
+  evaluacionController.promedioInfeccion,
 );
 
 /**

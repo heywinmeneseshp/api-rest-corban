@@ -32,6 +32,30 @@ export const evaluacionController = {
     await evaluacionService.deleteEvaluacion(req.params.uuid, req.user?.id, req.user);
     ApiResponse.send(res, { message: 'Evaluación anulada correctamente' });
   }),
+
+  promedioSumaBruta: asyncHandler(async (req, res) => {
+    const items = await evaluacionService.promedioSumaBrutaPorSemana(req.query, req.user);
+    ApiResponse.send(res, {
+      message: 'Promedio de suma bruta por semana obtenido correctamente',
+      data: { items },
+    });
+  }),
+
+  promedioConteo: asyncHandler(async (req, res) => {
+    const items = await evaluacionService.promedioConteoPorSemana(req.query, req.user);
+    ApiResponse.send(res, {
+      message: 'Promedio de conteo de hojas por semana obtenido correctamente',
+      data: { items },
+    });
+  }),
+
+  promedioInfeccion: asyncHandler(async (req, res) => {
+    const items = await evaluacionService.promedioInfeccionPorSemana(req.query, req.user);
+    ApiResponse.send(res, {
+      message: 'Promedio de índice de infección por semana obtenido correctamente',
+      data: { items },
+    });
+  }),
 };
 
 export default evaluacionController;

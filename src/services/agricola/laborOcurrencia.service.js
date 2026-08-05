@@ -19,6 +19,23 @@ const findResponsableId = async (uuid) => {
   return responsable.id;
 };
 
+const pad = (n) => String(n).padStart(2, '0');
+
+// Cuando una labor pasa a COMPLETADA se registra cuándo se ejecutó de verdad
+// (ejecutada_el/ejecutada_hora); si se revierte a otro estado, se limpia.
+const conRegistroEjecucion = (campos, ocurrencia) => {
+  const data = { ...campos };
+  if (data.estado === 'COMPLETADA' && ocurrencia.estado !== 'COMPLETADA') {
+    const ahora = new Date();
+    data.ejecutadaEl = `${ahora.getFullYear()}-${pad(ahora.getMonth() + 1)}-${pad(ahora.getDate())}`;
+    data.ejecutadaHora = `${pad(ahora.getHours())}:${pad(ahora.getMinutes())}:${pad(ahora.getSeconds())}`;
+  } else if (data.estado && data.estado !== 'COMPLETADA' && ocurrencia.estado === 'COMPLETADA') {
+    data.ejecutadaEl = null;
+    data.ejecutadaHora = null;
+  }
+  return data;
+};
+
 export const laborOcurrenciaService = {
   async listPorAnio(fincaUuid, anio, user) {
     const finca = await findFincaOrFail(fincaUuid);
@@ -55,7 +72,7 @@ export const laborOcurrenciaService = {
       return laborSerieService.editarSerieCompleta(ocurrencia, campos, actorId, user);
     }
 
-    const data = { ...campos, modificada: true, updatedBy: actorId };
+    const data = { ...conRegistroEjecucion(campos, ocurrencia), modificada: true, updatedBy: actorId };
     if (campos.laborUuid) {
       const labor = await laborRepository.findByUuid(campos.laborUuid);
       if (!labor) throw ApiError.notFound('Labor no encontrada');

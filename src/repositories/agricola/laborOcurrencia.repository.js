@@ -1,12 +1,13 @@
 import { Op } from 'sequelize';
-import { LaborOcurrencia, Labor, CategoriaLabor, Lote, User, LaborSerie } from '../../database/associations.js';
+import { LaborOcurrencia, Labor, CategoriaLabor, Lote, User, LaborSerie, Finca } from '../../database/associations.js';
 
 // `serie` se incluye para que el frontend sepa si la ocurrencia pertenece a
 // una programación recurrente (y en qué modo_lotes) antes de decidir si
 // ofrece "esta / esta y las siguientes / toda la serie".
 const INCLUDE_COMPLETO = [
   { model: Labor, as: 'labor', include: [{ model: CategoriaLabor, as: 'categoria' }] },
-  { model: Lote, as: 'lote' },
+  { model: Lote, as: 'lote', include: [{ model: Finca, as: 'finca' }] },
+  { model: Finca, as: 'finca' },
   { model: User, as: 'responsable' },
   { model: LaborSerie, as: 'serie' },
 ];

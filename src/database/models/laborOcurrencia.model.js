@@ -13,6 +13,9 @@ LaborOcurrencia.init(
     fecha: { type: DataTypes.DATEONLY, allowNull: false },
     hora: { type: DataTypes.TIME, allowNull: true },
     duracionMinutos: { type: DataTypes.INTEGER, allowNull: true, field: 'duracion_minutos' },
+    // Cuándo se ejecutó de verdad la labor (programada -> completada).
+    ejecutadaEl: { type: DataTypes.DATEONLY, allowNull: true, field: 'ejecutada_el' },
+    ejecutadaHora: { type: DataTypes.TIME, allowNull: true, field: 'ejecutada_hora' },
     // Denormalizado desde la serie al generar la ocurrencia — ver comentario
     // en la migración de esta tabla.
     fincaId: { type: DataTypes.INTEGER, allowNull: false, field: 'finca_id' },

@@ -81,6 +81,41 @@ export const evaluacionRepository = {
     });
   },
 
+  // Evaluaciones con sus asociaciones (incluida la semana) para promedios
+  // por semana. `anio` filtra por el año de la semana; `fincaId`/`fincaIds`
+  // filtran por ubicación.
+  async findAllPorSemana({ fincaId, fincaIds, anio }) {
+    const includes = buildIncludes({ fincaId, fincaIds }).map((inc) => {
+      if (inc.as === 'semana') {
+        return {
+          model: Semana,
+          as: 'semana',
+          attributes: ['id', 'uuid', 'codigo', 'numeroSemana', 'anio', 'fechaInicio', 'color'],
+          where: anio ? { anio } : undefined,
+        };
+      }
+      if (inc.as === 'conteoHojas') {
+        return {
+          model: ConteoHojas,
+          as: 'conteoHojas',
+          include: [
+            {
+              model: Semana,
+              as: 'semanaEmbolse',
+              attributes: ['id', 'uuid', 'codigo', 'numeroSemana', 'anio', 'fechaInicio'],
+            },
+          ],
+        };
+      }
+      return inc;
+    });
+
+    return Evaluacion.findAll({
+      include: includes,
+      order: [[{ model: Semana, as: 'semana' }, 'fechaInicio', 'ASC']],
+    });
+  },
+
   findById(id) {
     return Evaluacion.findByPk(id);
   },

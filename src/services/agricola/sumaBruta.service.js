@@ -2,13 +2,15 @@ import { sequelize } from '../../database/connection.js';
 import { sumaBrutaRepository } from '../../repositories/agricola/sumaBruta.repository.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { findEvaluacionByUuidOrFail } from './evaluacionLookup.js';
+import { adjuntarTotales } from './sumaBrutaTotal.js';
 
 export const sumaBrutaService = {
   async getSumaBrutaByEvaluacionUuid(evaluacionUuid, user) {
     const evaluacion = await findEvaluacionByUuidOrFail(evaluacionUuid, user);
     const sumaBruta = await sumaBrutaRepository.findByEvaluacionId(evaluacion.id);
     if (!sumaBruta) throw ApiError.notFound('La evaluación no tiene suma bruta registrada');
-    return sumaBruta;
+    const [plano] = await adjuntarTotales([sumaBruta]);
+    return plano;
   },
 
   async createSumaBruta(evaluacionUuid, payload, actorId, user) {
@@ -41,7 +43,9 @@ export const sumaBrutaService = {
         );
       }
 
-      return sumaBrutaRepository.findByEvaluacionId(evaluacion.id, { transaction });
+      const resultado = await sumaBrutaRepository.findByEvaluacionId(evaluacion.id, { transaction });
+      const [plano] = await adjuntarTotales([resultado]);
+      return plano;
     });
   },
 
@@ -71,7 +75,9 @@ export const sumaBrutaService = {
         );
       }
 
-      return sumaBrutaRepository.findByEvaluacionId(evaluacion.id, { transaction });
+      const resultado = await sumaBrutaRepository.findByEvaluacionId(evaluacion.id, { transaction });
+      const [plano] = await adjuntarTotales([resultado]);
+      return plano;
     });
   },
 };
