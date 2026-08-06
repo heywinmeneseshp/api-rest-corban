@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { sequelize } from '../../database/connection.js';
 import { Finca, Role, Semana } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
-import { getFincaIdsPermitidas } from '../../utils/fincaScope.js';
+import { getFincaIdsPermitidas, expandirFincaUuids } from '../../utils/fincaScope.js';
 
 // Dos tablas nuevas, separadas del "clima" que registra la app móvil:
 // - precipitacion_diaria_config: qué rol debe capturar la precipitación de
@@ -223,8 +223,10 @@ export const precipitacionDiariaService = {
     const replacements = {};
     let where = 'WHERE 1=1';
     if (query.fincaUuid) {
-      where += ' AND finca_uuid = :fincaUuid';
-      replacements.fincaUuid = query.fincaUuid;
+      // Se expande a las fincas hermanas de su Grupo de Finca (ver
+      // utils/fincaScope.js), si tiene uno asignado.
+      where += ' AND finca_uuid IN (:fincaUuids)';
+      replacements.fincaUuids = await expandirFincaUuids([query.fincaUuid]);
     }
     if (query.fechaDesde) {
       where += ' AND fecha >= :fechaDesde';

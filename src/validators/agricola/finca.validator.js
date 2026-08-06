@@ -27,6 +27,10 @@ export const listFincaLotesSchema = Joi.object({
     // Solo tiene efecto si el usuario es Administrador — el service lo
     // ignora en silencio para cualquier otro rol.
     incluirEliminados: Joi.boolean(),
+    // Opt-in: trae también los lotes de las fincas hermanas de Grupo de
+    // Finca. Por defecto false para no romper la sincronización de la app
+    // móvil, que asume que esta respuesta nunca trae lotes de otra finca.
+    incluirGrupo: Joi.boolean(),
   }),
 });
 
@@ -35,6 +39,7 @@ export const createFincaSchema = Joi.object({
     codigo: Joi.string().min(1).max(20).required(),
     nombre: Joi.string().min(2).max(150).required(),
     estado: Joi.boolean(),
+    grupoFincaUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null),
   }),
   params: Joi.object({}),
   query: Joi.object({}),
@@ -45,6 +50,7 @@ export const updateFincaSchema = Joi.object({
     codigo: Joi.string().min(1).max(20),
     nombre: Joi.string().min(2).max(150),
     estado: Joi.boolean(),
+    grupoFincaUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null),
   }).min(1),
   params: Joi.object({ uuid: uuidParam }),
   query: Joi.object({}),

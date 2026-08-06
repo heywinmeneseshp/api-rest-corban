@@ -5,6 +5,7 @@ import { User } from '../../database/models/user.model.js';
 import { userRepository } from '../../repositories/seguridad/user.repository.js';
 import { roleRepository } from '../../repositories/seguridad/role.repository.js';
 import { authRepository } from '../../repositories/seguridad/auth.repository.js';
+import { expandirFincaIds } from '../../utils/fincaScope.js';
 import { mailService } from '../sistema/mail.service.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { logger } from '../../utils/logger.js';
@@ -38,7 +39,16 @@ const buildTokenPair = async (user) => {
   // restricción, ve todas las fincas". Para cualquier otro usuario, un
   // arreglo vacío significa que no ve ningún dato hasta que se le asignen
   // fincas explícitamente.
-  const fincaIds = esAdmin ? null : await userRepository.findFincaIdsByUserId(user.id);
+  //
+  // Se expande por Grupo de Finca (fincas que operativamente son una sola,
+  // ver utils/fincaScope.js) UNA SOLA VEZ acá, al emitir el token — así el
+  // resto del código (getFincaIdsPermitidas/assertFincaPermitida, usadas
+  // sincrónicamente en decenas de lugares) no necesita saber nada de grupos.
+  // Trade-off: una sesión activa no ve un cambio de agrupamiento hasta que
+  // el access token expire y se refresque (JWT_EXPIRES_IN), igual que ya
+  // pasa hoy con cambios de rol/permisos.
+  const fincaIdsAsignados = esAdmin ? null : await userRepository.findFincaIdsByUserId(user.id);
+  const fincaIds = fincaIdsAsignados === null ? null : await expandirFincaIds(fincaIdsAsignados);
 
   const accessToken = signAccessToken({
     id: user.id,

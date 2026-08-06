@@ -27,6 +27,14 @@ export const PERMISSIONS = {
   FINCA_EDITAR: 'finca.editar',
   FINCA_ELIMINAR: 'finca.eliminar',
 
+  // Fincas que operativamente son una sola dividida en varios registros (ej.
+  // "María Margarita" / "Marbella"): agruparlas expande tanto los lotes
+  // visibles al elegir cualquiera de ellas como el acceso por finca asignada.
+  GRUPO_FINCA_VER: 'grupo_finca.ver',
+  GRUPO_FINCA_CREAR: 'grupo_finca.crear',
+  GRUPO_FINCA_EDITAR: 'grupo_finca.editar',
+  GRUPO_FINCA_ELIMINAR: 'grupo_finca.eliminar',
+
   LOTE_VER: 'lote.ver',
   LOTE_CREAR: 'lote.crear',
   LOTE_EDITAR: 'lote.editar',
@@ -124,6 +132,11 @@ export const PERMISSIONS = {
   LABOR_PROGRAMACION_EDITAR: 'labor_programacion.editar',
   LABOR_PROGRAMACION_ELIMINAR: 'labor_programacion.eliminar',
 
+  // Reporte de visitas de sanidad/labor cultural registradas desde la app
+  // móvil (Sanidad Vegetal › Evaluación de Labores). Antes reutilizaba
+  // labor.ver (el maestro de Labores), lo que impedía asignarlo aparte.
+  LABOR_EVALUACION_VER: 'labor_evaluacion.ver',
+
   SISTEMA_RESET_DATOS: 'sistema.reset_datos',
 };
 
@@ -155,6 +168,11 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.FINCA_CREAR, nombre: 'Crear fincas' },
   { codigo: PERMISSIONS.FINCA_EDITAR, nombre: 'Editar fincas' },
   { codigo: PERMISSIONS.FINCA_ELIMINAR, nombre: 'Eliminar fincas' },
+
+  { codigo: PERMISSIONS.GRUPO_FINCA_VER, nombre: 'Ver grupos de finca' },
+  { codigo: PERMISSIONS.GRUPO_FINCA_CREAR, nombre: 'Crear grupos de finca' },
+  { codigo: PERMISSIONS.GRUPO_FINCA_EDITAR, nombre: 'Editar grupos de finca' },
+  { codigo: PERMISSIONS.GRUPO_FINCA_ELIMINAR, nombre: 'Eliminar grupos de finca' },
 
   { codigo: PERMISSIONS.LOTE_VER, nombre: 'Ver lotes' },
   { codigo: PERMISSIONS.LOTE_CREAR, nombre: 'Crear lotes' },
@@ -239,6 +257,8 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.LABOR_PROGRAMACION_CREAR, nombre: 'Programar labores (únicas o recurrentes)' },
   { codigo: PERMISSIONS.LABOR_PROGRAMACION_EDITAR, nombre: 'Editar programaciones de labores' },
   { codigo: PERMISSIONS.LABOR_PROGRAMACION_ELIMINAR, nombre: 'Eliminar programaciones de labores' },
+
+  { codigo: PERMISSIONS.LABOR_EVALUACION_VER, nombre: 'Ver evaluación de labores (visitas de sanidad/labor cultural)' },
 
   { codigo: PERMISSIONS.SISTEMA_RESET_DATOS, nombre: 'Borrar todos los datos que no vienen de los seeders' },
 ];

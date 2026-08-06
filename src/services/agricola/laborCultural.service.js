@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { sequelize } from '../../database/connection.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { climaService } from './clima.service.js';
+import { expandirFincaUuids } from '../../utils/fincaScope.js';
 
 const TABLE = 'labores_culturales';
 
@@ -169,8 +170,10 @@ export const laborCulturalService = {
     let where = 'WHERE 1=1';
 
     if (query.fincaUuid) {
-      where += ' AND p.finca_uuid = :fincaUuid';
-      replacements.fincaUuid = query.fincaUuid;
+      // Se expande a las fincas hermanas de su Grupo de Finca (ver
+      // utils/fincaScope.js), si tiene uno asignado.
+      where += ' AND p.finca_uuid IN (:fincaUuids)';
+      replacements.fincaUuids = await expandirFincaUuids([query.fincaUuid]);
     }
 
     if (query.fechaDesde) {
@@ -213,8 +216,10 @@ export const laborCulturalService = {
     let where = 'WHERE visita_uuid IS NOT NULL';
 
     if (query.fincaUuid) {
-      where += ' AND finca_uuid = :fincaUuid';
-      replacements.fincaUuid = query.fincaUuid;
+      // Se expande a las fincas hermanas de su Grupo de Finca (ver
+      // utils/fincaScope.js), si tiene uno asignado.
+      where += ' AND finca_uuid IN (:fincaUuids)';
+      replacements.fincaUuids = await expandirFincaUuids([query.fincaUuid]);
     }
     if (query.fechaDesde) {
       where += ' AND fecha >= :fechaDesde';

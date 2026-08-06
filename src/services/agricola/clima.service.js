@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { sequelize } from '../../database/connection.js';
 import { ApiError } from '../../utils/ApiError.js';
+import { expandirFincaUuids } from '../../utils/fincaScope.js';
 
 // Antes era solo "precipitaciones" (columna mm); ahora es el módulo de
 // Clima completo (precipitación + temperatura + humedad relativa) — se
@@ -112,8 +113,10 @@ export const climaService = {
     let where = 'WHERE 1=1';
 
     if (query.fincaUuid) {
-      where += ' AND p.finca_uuid = :fincaUuid';
-      replacements.fincaUuid = query.fincaUuid;
+      // Se expande a las fincas hermanas de su Grupo de Finca (ver
+      // utils/fincaScope.js), si tiene uno asignado.
+      where += ' AND p.finca_uuid IN (:fincaUuids)';
+      replacements.fincaUuids = await expandirFincaUuids([query.fincaUuid]);
     }
 
     if (query.fechaDesde) {

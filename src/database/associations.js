@@ -6,6 +6,7 @@ import { RefreshToken } from './models/refreshToken.model.js';
 import { UsuarioRol, RolPermiso, UsuarioFinca } from './models/pivotModels.js';
 
 import { Finca } from './models/finca.model.js';
+import { GrupoFinca } from './models/grupoFinca.model.js';
 import { Lote } from './models/lote.model.js';
 import { Planta } from './models/planta.model.js';
 import { CategoriaPlanta } from './models/categoriaPlanta.model.js';
@@ -118,6 +119,12 @@ export const setupAssociations = () => {
   Finca.hasMany(Lote, { foreignKey: 'fincaId', as: 'lotes' });
   Lote.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
 
+  // Grupo de Finca: fincas registradas por separado que operativamente son
+  // una sola (ver utils/fincaScope.js). Opt-in: grupoFincaId nulo = sin
+  // agrupar, comportamiento idéntico al de antes de esta feature.
+  GrupoFinca.hasMany(Finca, { foreignKey: 'grupoFincaId', as: 'fincas' });
+  Finca.belongsTo(GrupoFinca, { foreignKey: 'grupoFincaId', as: 'grupoFinca' });
+
   Lote.hasMany(Planta, { foreignKey: 'loteId', as: 'plantas' });
   Planta.belongsTo(Lote, { foreignKey: 'loteId', as: 'lote' });
 
@@ -191,6 +198,7 @@ export const setupAssociations = () => {
 
   // Auditoría — Fase 2 (maestras con deleted_by, transaccionales sin deleted_by)
   withAuditAssociations(Finca);
+  withAuditAssociations(GrupoFinca);
   withAuditAssociations(Lote);
   withAuditAssociations(Planta);
   withAuditAssociations(CategoriaPlanta);
@@ -262,6 +270,7 @@ export {
   RolPermiso,
   UsuarioFinca,
   Finca,
+  GrupoFinca,
   Lote,
   Planta,
   CategoriaPlanta,

@@ -3,7 +3,7 @@ import { parseBulkFile } from '../../utils/bulkFileParser.js';
 import { produccionSemanalRepository } from '../../repositories/agricola/produccionSemanal.repository.js';
 import { Finca, Semana } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
-import { getFincaIdsPermitidas, assertFincaPermitida } from '../../utils/fincaScope.js';
+import { getFincaIdsPermitidas, assertFincaPermitida, expandirFincaIds } from '../../utils/fincaScope.js';
 import { env } from '../../config/env.config.js';
 import mysqlHttpBridge from '../../database/mysqlHttpBridge.cjs';
 
@@ -52,12 +52,15 @@ export const produccionSemanalService = {
       ? (await Finca.findOne({ where: { uuid: query.fincaUuid } }))?.id
       : undefined;
     if (fincaId) assertFincaPermitida(user, fincaId);
+    // Si pidió una finca puntual, se expande a su Grupo de Finca (ver
+    // utils/fincaScope.js); si no, se usa el alcance normal del usuario.
+    const fincaIds = fincaId ? await expandirFincaIds([fincaId]) : getFincaIdsPermitidas(user);
     const semanaId = query.semanaUuid
       ? (await Semana.findOne({ where: { uuid: query.semanaUuid } }))?.id
       : undefined;
 
     const { rows, count } = await produccionSemanalRepository.findAndCountAll({
-      limit, offset, fincaId, fincaIds: getFincaIdsPermitidas(user), semanaId,
+      limit, offset, fincaIds, semanaId,
     });
 
     return {

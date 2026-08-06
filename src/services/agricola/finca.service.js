@@ -1,11 +1,22 @@
 import { fincaRepository } from '../../repositories/agricola/finca.repository.js';
+import { GrupoFinca } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { logger } from '../../utils/logger.js';
 import { configuracionService } from '../sistema/configuracion.service.js';
 import { parseBulkFile } from '../../utils/bulkFileParser.js';
-import { getFincaIdsPermitidas } from '../../utils/fincaScope.js';
+import { getFincaIdsPermitidas, expandirFincaIds } from '../../utils/fincaScope.js';
 import { ROLES } from '../../constants/roles.constants.js';
+
+// `grupoFincaUuid` es opcional y puede venir como `null` explícito (para
+// desagrupar). `undefined` significa "no tocar el campo".
+const resolverGrupoFincaId = async (grupoFincaUuid) => {
+  if (grupoFincaUuid === undefined) return undefined;
+  if (grupoFincaUuid === null) return null;
+  const grupo = await GrupoFinca.findOne({ where: { uuid: grupoFincaUuid } });
+  if (!grupo) throw ApiError.notFound('Grupo de finca no encontrado');
+  return grupo.id;
+};
 
 const parseEstado = (value) => {
   if (value === undefined || value === '' || value === null) return true;
@@ -46,6 +57,7 @@ export const fincaService = {
       codigo: payload.codigo,
       nombre: payload.nombre,
       estado: payload.estado ?? true,
+      grupoFincaId: await resolverGrupoFincaId(payload.grupoFincaUuid),
       createdBy: actorId,
     });
   },
@@ -60,7 +72,12 @@ export const fincaService = {
       }
     }
 
-    return fincaRepository.update(finca, { ...payload, updatedBy: actorId });
+    const { grupoFincaUuid, ...resto } = payload;
+    const data = { ...resto, updatedBy: actorId };
+    const grupoFincaId = await resolverGrupoFincaId(grupoFincaUuid);
+    if (grupoFincaId !== undefined) data.grupoFincaId = grupoFincaId;
+
+    return fincaRepository.update(finca, data);
   },
 
   async deleteFinca(uuid, actorId, user) {
@@ -68,6 +85,12 @@ export const fincaService = {
     await fincaRepository.softDelete(finca, actorId);
   },
 
+  // Trae los lotes de la finca pedida y, SOLO si `incluirGrupo` viene en
+  // true, también los de sus fincas hermanas de Grupo de Finca (ver
+  // utils/fincaScope.js). Opt-in explícito: la app móvil sincroniza sus
+  // lotes locales finca-por-finca asumiendo que esta respuesta nunca trae
+  // lotes de otra finca (ver app-movil/src/services/sync.service.ts) — traer
+  // el grupo completo por defecto le rompería la sincronización.
   async listLotes(uuid, query, user) {
     const finca = await this.getFincaByUuid(uuid, user);
     const { page, limit, offset } = getPagination(query);
@@ -76,7 +99,8 @@ export const fincaService = {
     // devolver un error por pedir algo que no le corresponde.
     const esAdministrador = (user?.roles || []).includes(ROLES.ADMINISTRADOR);
     const incluirEliminados = esAdministrador && query.incluirEliminados === true;
-    const { rows, count } = await fincaRepository.findLotesByFincaId(finca.id, {
+    const fincaIds = query.incluirGrupo === true ? await expandirFincaIds([finca.id]) : [finca.id];
+    const { rows, count } = await fincaRepository.findLotesByFincaIds(fincaIds, {
       limit,
       offset,
       incluirEliminados,

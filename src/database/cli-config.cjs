@@ -43,7 +43,16 @@ const bridgeConfig = {
   define: commonDefine,
 };
 
-const common = mode === 'bridge' ? bridgeConfig : directConfig;
+const common = {
+  ...(mode === 'bridge' ? bridgeConfig : directConfig),
+  // Sin esto, sequelize-cli usa storage 'none' para seeders (a diferencia de
+  // migraciones, que sí usan 'sequelize' por default) y `db:seed:all` nunca
+  // sabe cuáles ya corrieron: reintenta TODOS desde el primero en cada
+  // corrida y revienta con duplicate-key contra datos ya sembrados. Con esto
+  // queda trackeado igual que las migraciones, en la tabla `SequelizeData`.
+  seederStorage: 'sequelize',
+  seederStorageTableName: 'SequelizeData',
+};
 
 module.exports = {
   development: common,

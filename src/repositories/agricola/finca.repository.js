@@ -1,5 +1,7 @@
-import { Op } from 'sequelize';
-import { Finca, Lote } from '../../database/associations.js';
+import { Op, literal } from 'sequelize';
+import { Finca, Lote, GrupoFinca } from '../../database/associations.js';
+
+const INCLUDE_GRUPO = [{ model: GrupoFinca, as: 'grupoFinca' }];
 
 export const fincaRepository = {
   async findAndCountAll({ limit, offset, search, fincaIdsPermitidas }) {
@@ -15,11 +17,11 @@ export const fincaRepository = {
       ...(fincaIdsPermitidas ? { id: { [Op.in]: fincaIdsPermitidas } } : {}),
     };
 
-    return Finca.findAndCountAll({ where, limit, offset, order: [['id', 'ASC']] });
+    return Finca.findAndCountAll({ where, limit, offset, order: [['id', 'ASC']], include: INCLUDE_GRUPO });
   },
 
   findByUuid(uuid) {
-    return Finca.findOne({ where: { uuid } });
+    return Finca.findOne({ where: { uuid }, include: INCLUDE_GRUPO });
   },
 
   findById(id) {
@@ -72,12 +74,22 @@ export const fincaRepository = {
     return finca;
   },
 
-  findLotesByFincaId(fincaId, { limit, offset, incluirEliminados = false } = {}) {
+  // `fincaIds`: arreglo (puede ser un solo elemento, o varios si la finca
+  // pertenece a un Grupo de Finca — ver utils/fincaScope.js).
+  findLotesByFincaIds(fincaIds, { limit, offset, incluirEliminados = false } = {}) {
     return Lote.findAndCountAll({
-      where: { fincaId },
+      where: { fincaId: { [Op.in]: fincaIds } },
       limit,
       offset,
-      order: [['codigo', 'ASC']],
+      // `codigo` es un identificador interno (prefijo de finca + correlativo
+      // de creación, ej. "513-07") que no coincide con el número de lote
+      // real que ve el usuario (`nombre`, ej. "7") — ordenar por `codigo`
+      // deja los lotes fuera de orden numérico, más notorio todavía cuando
+      // se combinan lotes de varias fincas de un mismo Grupo de Finca. Se
+      // ordena por `nombre` interpretado como número (CAST numérico), con
+      // `codigo` como desempate estable para nombres repetidos (ej. lotes
+      // resembrados que reusan el mismo número).
+      order: [[literal('CAST(`Lote`.`nombre` AS UNSIGNED)'), 'ASC'], ['codigo', 'ASC']],
       // paranoid:false trae también los soft-deleted (junto con los
       // activos) — cada fila expone `deletedAt` para que el frontend
       // pueda distinguirlos.

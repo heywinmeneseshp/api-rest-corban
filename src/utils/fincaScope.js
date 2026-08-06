@@ -1,6 +1,7 @@
 import { Op } from 'sequelize';
 import { ROLES } from '../constants/roles.constants.js';
 import { ApiError } from './ApiError.js';
+import { Finca } from '../database/associations.js';
 
 // Helper compartido para restringir qué fincas puede ver/administrar cada
 // usuario. Administrador se salta esta restricción por completo (igual que
@@ -12,6 +13,32 @@ import { ApiError } from './ApiError.js';
 // Regla: un usuario SIN ninguna finca asignada ve todas (sin restricción,
 // igual que antes de que existiera esta feature) — la restricción solo se
 // activa una vez que se le asigna al menos una finca puntual.
+
+// Grupo de Finca: fincas registradas por separado que operativamente son una
+// sola (ej. "María Margarita" / "Marbella"). Expande un arreglo de ids/uuids
+// de finca para incluir también las demás fincas que comparten su
+// `grupoFincaId`. Sin grupo asignado, no hace ninguna consulta extra y
+// devuelve la entrada tal cual — opt-in, igual que el resto de este archivo.
+export const expandirFincaIds = async (fincaIds) => {
+  if (!fincaIds || fincaIds.length === 0) return fincaIds;
+  const fincas = await Finca.findAll({ where: { id: { [Op.in]: fincaIds } }, attributes: ['id', 'grupoFincaId'] });
+  const grupoIds = [...new Set(fincas.map((f) => f.grupoFincaId).filter(Boolean))];
+  if (grupoIds.length === 0) return fincaIds;
+  const hermanas = await Finca.findAll({ where: { grupoFincaId: { [Op.in]: grupoIds } }, attributes: ['id'] });
+  return [...new Set([...fincaIds, ...hermanas.map((f) => f.id)])];
+};
+
+// Misma expansión, pero por uuid — para los servicios que filtran por la
+// columna denormalizada `finca_uuid` en SQL crudo (clima, precipitación
+// diaria, labor cultural) en vez de por `fincaId` numérico.
+export const expandirFincaUuids = async (fincaUuids) => {
+  if (!fincaUuids || fincaUuids.length === 0) return fincaUuids;
+  const fincas = await Finca.findAll({ where: { uuid: { [Op.in]: fincaUuids } }, attributes: ['uuid', 'grupoFincaId'] });
+  const grupoIds = [...new Set(fincas.map((f) => f.grupoFincaId).filter(Boolean))];
+  if (grupoIds.length === 0) return fincaUuids;
+  const hermanas = await Finca.findAll({ where: { grupoFincaId: { [Op.in]: grupoIds } }, attributes: ['uuid'] });
+  return [...new Set([...fincaUuids, ...hermanas.map((f) => f.uuid)])];
+};
 
 // true si el usuario NO es Administrador (está sujeto a restricción).
 export const tieneRestriccionDeFincas = (user) => !(user?.roles || []).includes(ROLES.ADMINISTRADOR);
@@ -59,4 +86,6 @@ export default {
   getFincaIdsPermitidas,
   assertFincaPermitida,
   aplicarScopeFinca,
+  expandirFincaIds,
+  expandirFincaUuids,
 };

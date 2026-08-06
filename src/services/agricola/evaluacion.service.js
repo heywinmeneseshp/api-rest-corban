@@ -3,8 +3,9 @@ import { Planta, User, TipoEvaluacion, Semana, Finca, Lote } from '../../databas
 import { evaluacionRepository } from '../../repositories/agricola/evaluacion.repository.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
-import { getFincaIdsPermitidas, assertFincaPermitida } from '../../utils/fincaScope.js';
+import { getFincaIdsPermitidas, assertFincaPermitida, expandirFincaIds } from '../../utils/fincaScope.js';
 import { adjuntarTotales } from './sumaBrutaTotal.js';
+import { calcularIndiceInfeccion } from './indiceInfeccion.js';
 
 // Semanas de diferencia entre dos fechas de inicio de semana (mismo sistema
 // ISO). Devuelve null si alguna fecha es inválida.
@@ -59,6 +60,9 @@ export const evaluacionService = {
 
     const fincaId = query.fincaUuid ? (await findFincaByUuidOrFail(query.fincaUuid)).id : undefined;
     if (fincaId) assertFincaPermitida(user, fincaId);
+    // Si pidió una finca puntual, se expande a su Grupo de Finca (ver
+    // utils/fincaScope.js); si no, se usa el alcance normal del usuario.
+    const fincaIds = fincaId ? await expandirFincaIds([fincaId]) : getFincaIdsPermitidas(user);
     const loteId = query.loteUuid ? (await findLoteByUuidOrFail(query.loteUuid)).id : undefined;
     const tipoEvaluacionId = query.tipoEvaluacionUuid
       ? (await findTipoEvaluacionByUuidOrFail(query.tipoEvaluacionUuid)).id
@@ -69,8 +73,7 @@ export const evaluacionService = {
       offset,
       fechaDesde: query.fechaDesde,
       fechaHasta: query.fechaHasta,
-      fincaId,
-      fincaIds: getFincaIdsPermitidas(user),
+      fincaIds,
       loteId,
       tipoEvaluacionId,
     });
@@ -86,6 +89,9 @@ export const evaluacionService = {
         const idx = sumasBruta.indexOf(ev.sumaBruta);
         if (idx !== -1) plano.sumaBruta = hidratadas[idx];
       }
+      if (plano.infeccion) {
+        plano.infeccion.indiceInfeccion = calcularIndiceInfeccion(plano.infeccion.hojas);
+      }
       return plano;
     });
     return { items, meta: buildPaginationMeta({ page, limit, total: count }) };
@@ -99,6 +105,9 @@ export const evaluacionService = {
     if (plano.sumaBruta) {
       const [hidratada] = await adjuntarTotales([evaluacion.sumaBruta]);
       plano.sumaBruta = hidratada;
+    }
+    if (plano.infeccion) {
+      plano.infeccion.indiceInfeccion = calcularIndiceInfeccion(plano.infeccion.hojas);
     }
     return plano;
   },
@@ -162,11 +171,11 @@ export const evaluacionService = {
   async promedioSumaBrutaPorSemana(query, user) {
     const fincaId = query.fincaUuid ? (await findFincaByUuidOrFail(query.fincaUuid)).id : undefined;
     if (fincaId) assertFincaPermitida(user, fincaId);
+    const fincaIds = fincaId ? await expandirFincaIds([fincaId]) : getFincaIdsPermitidas(user);
     const anio = query.anio ? Number(query.anio) : undefined;
 
     const evaluaciones = await evaluacionRepository.findAllPorSemana({
-      fincaId,
-      fincaIds: getFincaIdsPermitidas(user),
+      fincaIds,
       anio,
     });
 
@@ -198,11 +207,11 @@ export const evaluacionService = {
   async promedioConteoPorSemana(query, user) {
     const fincaId = query.fincaUuid ? (await findFincaByUuidOrFail(query.fincaUuid)).id : undefined;
     if (fincaId) assertFincaPermitida(user, fincaId);
+    const fincaIds = fincaId ? await expandirFincaIds([fincaId]) : getFincaIdsPermitidas(user);
     const anio = query.anio ? Number(query.anio) : undefined;
 
     const evaluaciones = await evaluacionRepository.findAllPorSemana({
-      fincaId,
-      fincaIds: getFincaIdsPermitidas(user),
+      fincaIds,
       anio,
     });
 
@@ -239,15 +248,18 @@ export const evaluacionService = {
       .sort((a, b) => a.anio - b.anio || a.numeroSemana - b.numeroSemana);
   },
 
-  // Promedio de YLI, YLS y hojas totales (Índice de Infección) por semana.
+  // Promedio de YLI, YLS, hojas totales e Índice de Infección por semana.
+  // El promedio del índice se calcula aparte (sumaIndice/nIndice): solo
+  // cuentan las evaluaciones que tienen al menos una hoja evaluada, así una
+  // evaluación sin datos de hojas no arrastra el promedio hacia abajo.
   async promedioInfeccionPorSemana(query, user) {
     const fincaId = query.fincaUuid ? (await findFincaByUuidOrFail(query.fincaUuid)).id : undefined;
     if (fincaId) assertFincaPermitida(user, fincaId);
+    const fincaIds = fincaId ? await expandirFincaIds([fincaId]) : getFincaIdsPermitidas(user);
     const anio = query.anio ? Number(query.anio) : undefined;
 
     const evaluaciones = await evaluacionRepository.findAllPorSemana({
-      fincaId,
-      fincaIds: getFincaIdsPermitidas(user),
+      fincaIds,
       anio,
     });
 
@@ -262,11 +274,18 @@ export const evaluacionService = {
         sumaYli: 0,
         sumaYls: 0,
         sumaHojas: 0,
+        sumaIndice: 0,
+        nIndice: 0,
         n: 0,
       };
       entry.sumaYli += Number(ev.infeccion.yli) || 0;
       entry.sumaYls += Number(ev.infeccion.yls) || 0;
       entry.sumaHojas += Number(ev.infeccion.hojasTotales) || 0;
+      const indice = calcularIndiceInfeccion(ev.infeccion.hojas);
+      if (indice !== null) {
+        entry.sumaIndice += indice;
+        entry.nIndice += 1;
+      }
       entry.n += 1;
       porSemana.set(semana.id, entry);
     });
@@ -279,6 +298,7 @@ export const evaluacionService = {
         promedioYli: Number((e.sumaYli / e.n).toFixed(2)),
         promedioYls: Number((e.sumaYls / e.n).toFixed(2)),
         promedioHojasTotales: Number((e.sumaHojas / e.n).toFixed(2)),
+        promedioIndiceInfeccion: e.nIndice > 0 ? Number((e.sumaIndice / e.nIndice).toFixed(2)) : null,
         n: e.n,
       }))
       .sort((a, b) => a.anio - b.anio || a.numeroSemana - b.numeroSemana);

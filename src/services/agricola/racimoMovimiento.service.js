@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { Op } from 'sequelize';
 import { sequelize } from '../../database/connection.js';
 import { Finca, Lote, Semana, MotivoRepique, MotivoRecuse } from '../../database/associations.js';
 import { racimoMovimientoRepository } from '../../repositories/agricola/racimoMovimiento.repository.js';
@@ -10,7 +11,7 @@ import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { logger } from '../../utils/logger.js';
 import { bulkProgress } from '../../utils/bulkProgress.js';
 import { bulkValidationCache } from '../../utils/bulkValidationCache.js';
-import { getFincaIdsPermitidas, assertFincaPermitida } from '../../utils/fincaScope.js';
+import { getFincaIdsPermitidas, assertFincaPermitida, expandirFincaIds } from '../../utils/fincaScope.js';
 import { ROLES } from '../../constants/roles.constants.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import { env } from '../../config/env.config.js';
@@ -136,6 +137,9 @@ export const racimoMovimientoService = {
 
     const fincaId = query.fincaUuid ? (await findFincaByUuidOrFail(query.fincaUuid)).id : undefined;
     if (fincaId) assertFincaPermitida(user, fincaId);
+    // Si pidió una finca puntual, se expande a su Grupo de Finca (ver
+    // utils/fincaScope.js); si no, se usa el alcance normal del usuario.
+    const fincaIds = fincaId ? await expandirFincaIds([fincaId]) : getFincaIdsPermitidas(user);
     const loteId = query.loteUuid ? (await findLoteByUuidOrFail(query.loteUuid)).id : undefined;
     const semanaEmbolseId = query.semanaEmbolseUuid
       ? (await findSemanaByUuidOrFail(query.semanaEmbolseUuid)).id
@@ -158,8 +162,7 @@ export const racimoMovimientoService = {
     const { rows, count } = await racimoMovimientoRepository.findAndCountAll({
       limit,
       offset,
-      fincaId,
-      fincaIds: getFincaIdsPermitidas(user),
+      fincaIds,
       loteId,
       semanaEmbolseId,
       semanaRegistroId,
@@ -813,6 +816,9 @@ export const racimoMovimientoService = {
   async getReporteSaldos(query, user) {
     const finca = query.fincaUuid ? await findFincaByUuidOrFail(query.fincaUuid) : null;
     if (finca) assertFincaPermitida(user, finca.id);
+    // Si pidió una finca puntual, se expande a su Grupo de Finca (ver
+    // utils/fincaScope.js); si no, se usa el alcance normal del usuario.
+    const fincaIdsFiltro = finca ? await expandirFincaIds([finca.id]) : getFincaIdsPermitidas(user);
 
     const cantidadSemanas = Number(query.cantidadSemanas) || 13;
     const anioReal = new Date().getFullYear();
@@ -835,8 +841,7 @@ export const racimoMovimientoService = {
     // finca puntual, o de todas si no se filtra ninguna)
     const movimientos = await racimoMovimientoRepository.findConFincaYLote({
       semanaEmbolseIds,
-      fincaId: finca?.id,
-      fincaIds: getFincaIdsPermitidas(user),
+      fincaIds: fincaIdsFiltro,
     });
 
     // Invertir orden: semana actual primero (izquierda), más antigua al final (derecha)
@@ -864,7 +869,7 @@ export const racimoMovimientoService = {
     // distintas, así que en ese caso solo se muestran los totales.
     const todosLosLotes = finca
       ? await Lote.findAll({
-          where: { fincaId: finca.id },
+          where: { fincaId: { [Op.in]: fincaIdsFiltro } },
           attributes: ['id', 'uuid', 'codigo', 'nombre'],
           order: [['codigo', 'ASC']],
         })
@@ -926,6 +931,7 @@ export const racimoMovimientoService = {
   async getReporteEmbolses(query, user) {
     const finca = query.fincaUuid ? await findFincaByUuidOrFail(query.fincaUuid) : null;
     if (finca) assertFincaPermitida(user, finca.id);
+    const fincaIdsFiltro = finca ? await expandirFincaIds([finca.id]) : getFincaIdsPermitidas(user);
     const hoy = new Date();
 
     const anios = query.anios
@@ -939,8 +945,7 @@ export const racimoMovimientoService = {
 
         const totalesPorSemana = await racimoMovimientoRepository.getEmbolsePorSemana({
           semanaIds: semanas.map((s) => s.id),
-          fincaId: finca?.id,
-          fincaIds: getFincaIdsPermitidas(user),
+          fincaIds: fincaIdsFiltro,
         });
 
         const puntos = semanas.map((s) => {
@@ -1000,6 +1005,7 @@ export const racimoMovimientoService = {
   async getInventario(query, user) {
     const fincaId = query.fincaUuid ? (await findFincaByUuidOrFail(query.fincaUuid)).id : undefined;
     if (fincaId) assertFincaPermitida(user, fincaId);
+    const fincaIds = fincaId ? await expandirFincaIds([fincaId]) : getFincaIdsPermitidas(user);
     const loteId = query.loteUuid ? (await findLoteByUuidOrFail(query.loteUuid)).id : undefined;
 
     const semanaActual = query.semanaActualUuid
@@ -1012,8 +1018,7 @@ export const racimoMovimientoService = {
     const semanaEmbolseIds = semanasEmbolse.map((s) => s.id);
 
     const movimientos = await racimoMovimientoRepository.findMovimientosParaInventario({
-      fincaId,
-      fincaIds: getFincaIdsPermitidas(user),
+      fincaIds,
       loteId,
       semanaEmbolseIds,
     });

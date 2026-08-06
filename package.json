@@ -17,7 +17,8 @@
     "db:migrate:undo": "sequelize-cli db:migrate:undo --config src/database/cli-config.cjs --migrations-path src/database/migrations --seeders-path src/database/seeders",
     "db:migrate:undo:all": "sequelize-cli db:migrate:undo:all --config src/database/cli-config.cjs --migrations-path src/database/migrations --seeders-path src/database/seeders",
     "db:seed": "sequelize-cli db:seed:all --config src/database/cli-config.cjs --migrations-path src/database/migrations --seeders-path src/database/seeders",
-    "db:seed:undo": "sequelize-cli db:seed:undo:all --config src/database/cli-config.cjs --migrations-path src/database/migrations --seeders-path src/database/seeders"
+    "db:seed:undo": "sequelize-cli db:seed:undo:all --config src/database/cli-config.cjs --migrations-path src/database/migrations --seeders-path src/database/seeders",
+    "db:seed:reconcile": "node scripts/reconcile-seeders.cjs"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",

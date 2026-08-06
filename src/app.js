@@ -22,6 +22,7 @@ import permisoRoutes from './routes/seguridad/permiso.routes.js';
 import menuRoutes from './routes/seguridad/menuItem.routes.js';
 
 import fincaRoutes from './routes/agricola/finca.routes.js';
+import grupoFincaRoutes from './routes/agricola/grupoFinca.routes.js';
 import loteRoutes from './routes/agricola/lote.routes.js';
 import plantaRoutes from './routes/agricola/planta.routes.js';
 import categoriaPlantaRoutes from './routes/agricola/categoriaPlanta.routes.js';
@@ -96,6 +97,7 @@ router.use('/permisos', permisoRoutes);
 router.use('/menu', menuRoutes);
 
 router.use('/fincas', fincaRoutes);
+router.use('/grupos-finca', grupoFincaRoutes);
 router.use('/lotes', loteRoutes);
 router.use('/plantas', plantaRoutes);
 router.use('/categorias-planta', categoriaPlantaRoutes);

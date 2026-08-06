@@ -2,7 +2,7 @@ import { Op, fn, col } from 'sequelize';
 import { Finca, ProduccionSemanal, RacimoMovimiento, Semana } from '../../database/associations.js';
 import { semanaRepository } from '../../repositories/agricola/semana.repository.js';
 import { ApiError } from '../../utils/ApiError.js';
-import { getFincaIdsPermitidas } from '../../utils/fincaScope.js';
+import { getFincaIdsPermitidas, expandirFincaIds } from '../../utils/fincaScope.js';
 
 // `fincaIds` vacío/undefined = sin filtro (ve todo). `fincaIds: []` con
 // `restringido: true` = el usuario está scoped a un conjunto vacío de
@@ -18,8 +18,11 @@ function fincaWhere(fincaIds, restringido = false) {
 export const dashboardService = {
   async getResumen(query, user) {
     const cantidadSemanas = Number(query.cantidadSemanas) || 14;
+    // Se expande cada finca elegida a su Grupo de Finca (ver
+    // utils/fincaScope.js) antes de intersectar con lo que el usuario puede
+    // ver, así elegir una finca agrupada trae también la de su hermana.
     const fincaIdsElegidas = query.fincas
-      ? query.fincas.split(',').map(Number).filter((id) => id > 0)
+      ? await expandirFincaIds(query.fincas.split(',').map(Number).filter((id) => id > 0))
       : [];
 
     // El usuario puede elegir qué fincas mostrar en el dashboard (selector

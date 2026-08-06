@@ -4,7 +4,7 @@ import { laborRepository } from '../../repositories/agricola/labor.repository.js
 import { userRepository } from '../../repositories/seguridad/user.repository.js';
 import { laborSerieService } from './laborSerie.service.js';
 import { ApiError } from '../../utils/ApiError.js';
-import { assertFincaPermitida } from '../../utils/fincaScope.js';
+import { assertFincaPermitida, expandirFincaIds } from '../../utils/fincaScope.js';
 
 const findFincaOrFail = async (uuid) => {
   const finca = await Finca.findOne({ where: { uuid } });
@@ -37,10 +37,13 @@ const conRegistroEjecucion = (campos, ocurrencia) => {
 };
 
 export const laborOcurrenciaService = {
+  // Trae las ocurrencias de la finca pedida y, si pertenece a un Grupo de
+  // Finca (ver utils/fincaScope.js), también las de sus fincas hermanas.
   async listPorAnio(fincaUuid, anio, user) {
     const finca = await findFincaOrFail(fincaUuid);
     assertFincaPermitida(user, finca.id);
-    const items = await laborOcurrenciaRepository.findByFincaAndAnio(finca.id, anio);
+    const fincaIds = await expandirFincaIds([finca.id]);
+    const items = await laborOcurrenciaRepository.findByFincaAndAnio(fincaIds, anio);
     return { items };
   },
 

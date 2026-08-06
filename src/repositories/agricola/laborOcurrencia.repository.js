@@ -17,10 +17,12 @@ export const laborOcurrenciaRepository = {
     return LaborOcurrencia.bulkCreate(rows, { transaction });
   },
 
-  findByFincaAndAnio(fincaId, anio) {
+  // `fincaIds`: arreglo (uno o varios, si la finca pertenece a un Grupo de
+  // Finca — ver utils/fincaScope.js).
+  findByFincaAndAnio(fincaIds, anio) {
     return LaborOcurrencia.findAll({
       where: {
-        fincaId,
+        fincaId: { [Op.in]: fincaIds },
         fecha: { [Op.between]: [`${anio}-01-01`, `${anio}-12-31`] },
       },
       order: [['fecha', 'ASC']],
