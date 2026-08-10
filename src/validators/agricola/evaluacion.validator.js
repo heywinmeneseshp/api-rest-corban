@@ -13,6 +13,8 @@ export const listEvaluacionesSchema = Joi.object({
     fechaHasta: Joi.date().iso().raw(),
     fincaUuid: uuidRef,
     loteUuid: uuidRef,
+    semanaUuid: uuidRef,
+    usuarioUuid: uuidRef,
     tipoEvaluacionUuid: uuidRef,
   }),
 });

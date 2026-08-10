@@ -77,6 +77,15 @@ const puedeIgnorarRestriccionSemana = (user) =>
   (user?.roles || []).includes(ROLES.ADMINISTRADOR) ||
   (user?.permissions || []).includes(PERMISSIONS.RACIMO_MOVIMIENTO_EDITAR_HISTORICO);
 
+// Igual que puedeIgnorarRestriccionSemana: no solo Administrador, cualquier
+// rol al que se le haya asignado este permiso puntual (desde Roles →
+// Permisos) puede confirmar que un movimiento deje el saldo de una cohorte
+// en negativo. Se usa tanto en el registro manual (crearMovimientosEnLote)
+// como en el cargue masivo por archivo (bulkCreateMovimientos).
+export const puedeForzarSaldoNegativo = (user) =>
+  (user?.roles || []).includes(ROLES.ADMINISTRADOR) ||
+  (user?.permissions || []).includes(PERMISSIONS.RACIMO_MOVIMIENTO_FORZAR_SALDO_NEGATIVO);
+
 const TIPOS_VALIDOS = ['EMBOLSE', 'REPIQUE', 'RECUSE', 'PROCESADO'];
 
 // Tope de filas por cargue masivo — ver comentario en bulkCreateMovimientos.
@@ -446,6 +455,131 @@ export const racimoMovimientoService = {
     );
   },
 
+  // Registra varias líneas de una sola vez (usado por las pantallas
+  // "Registrar Embolse/Repiques/Corte", que arman varias filas antes de
+  // guardar) en UNA sola transacción: si cualquier línea falla la
+  // validación, no se escribe NINGUNA — a diferencia de mandar un POST por
+  // fila desde el frontend (como se hacía antes), que podía dejar las
+  // primeras filas ya guardadas y solo la fila que falló sin guardar, sin
+  // forma clara de saber cuáles quedaron a medias.
+  //
+  // `movimientos` comparte fincaUuid/semanaRegistroUuid/fecha (vienen una
+  // sola vez de la sección "Información principal" del formulario) y cada
+  // línea trae lo propio: tipo, loteUuid, semanaEmbolseUuid, motivo,
+  // cantidad — el tipo va por línea (no compartido) porque la pantalla
+  // "Registrar Corte" mezcla PROCESADO y RECUSE en un mismo envío y ambos
+  // deben quedar en la misma transacción todo-o-nada.
+  // El saldo se valida de forma acumulada dentro del mismo lote: si dos
+  // líneas afectan la misma cohorte (finca+lote+semana de embolse), la
+  // segunda ve el saldo ya descontado por la primera, no el de la base
+  // antes de procesar el lote.
+  async crearMovimientosEnLote(payload, actorId, user) {
+    const { fincaUuid, semanaRegistroUuid, fecha, movimientos, forzarSaldoNegativo = false } = payload;
+    if (!Array.isArray(movimientos) || movimientos.length === 0) {
+      throw ApiError.badRequest('Debes incluir al menos una línea');
+    }
+
+    const finca = await findFincaByUuidOrFail(fincaUuid);
+    assertFincaPermitida(user, finca.id);
+    const semanaRegistro = await findSemanaByUuidOrFail(semanaRegistroUuid);
+
+    if (!puedeIgnorarRestriccionSemana(user)) {
+      const ultimaPorFinca = await racimoMovimientoRepository.getUltimaSemanaRegistroPorFinca([finca.id]);
+      const ultima = ultimaPorFinca.get(finca.id);
+      if (ultima && semanaRegistro.fechaInicio < ultima.fechaInicio) {
+        throw ApiError.forbidden(
+          `Solo un administrador (o alguien con permiso de editar histórico) puede registrar movimientos de semanas anteriores a la última semana registrada en esta finca (${ultima.codigo})`,
+        );
+      }
+    }
+
+    // Si el usuario tiene el permiso de forzar saldo negativo, una línea que
+    // supera el saldo disponible no bloquea de una: se junta como
+    // advertencia y, si no vino `forzarSaldoNegativo=true` en el payload, se
+    // devuelve la lista de advertencias SIN insertar nada para que el
+    // frontend le muestre al usuario qué quedaría en negativo y le pida
+    // confirmar. Si confirma, reenvía el mismo payload con
+    // `forzarSaldoNegativo=true` y ahí sí se inserta todo. Quien no tiene el
+    // permiso sigue viendo el bloqueo duro de siempre.
+    const puedeForzar = puedeForzarSaldoNegativo(user);
+    const saldoBDCache = new Map();
+    const saldoSimulado = new Map();
+    const filasParaCrear = [];
+    const advertencias = [];
+
+    for (let i = 0; i < movimientos.length; i++) {
+      const m = movimientos[i];
+      const nro = i + 1;
+      try {
+        if (!TIPOS_VALIDOS.includes(m.tipo)) {
+          throw new Error(`Tipo inválido '${m.tipo}'`);
+        }
+        const lote = await findLoteByUuidOrFail(m.loteUuid);
+        const semanaEmbolse = await findSemanaByUuidOrFail(m.semanaEmbolseUuid);
+        const { motivoRepiqueId, motivoRecuseId } = await resolveMotivos(m.tipo, m);
+
+        if (!Number.isInteger(m.cantidad) || m.cantidad <= 0) {
+          throw new Error('La cantidad debe ser un número entero mayor que 0');
+        }
+
+        if (m.tipo !== 'EMBOLSE') {
+          const cohorteKey = `${lote.id}-${semanaEmbolse.id}`;
+          if (!saldoBDCache.has(cohorteKey)) {
+            saldoBDCache.set(
+              cohorteKey,
+              await racimoMovimientoRepository.getSaldoCohorte({
+                fincaId: finca.id,
+                loteId: lote.id,
+                semanaEmbolseId: semanaEmbolse.id,
+              }),
+            );
+          }
+          const saldoDisponible = saldoBDCache.get(cohorteKey) + (saldoSimulado.get(cohorteKey) || 0);
+          if (m.cantidad > saldoDisponible) {
+            if (!puedeForzar) {
+              throw new Error(`La cantidad (${m.cantidad}) supera el saldo disponible de esa cohorte (${saldoDisponible})`);
+            }
+            advertencias.push({
+              linea: nro,
+              mensaje: `Línea ${nro}: la cantidad (${m.cantidad}) supera el saldo disponible de esa cohorte (${saldoDisponible}) y quedará en negativo`,
+            });
+          }
+          saldoSimulado.set(cohorteKey, (saldoSimulado.get(cohorteKey) || 0) - m.cantidad);
+        }
+
+        filasParaCrear.push({
+          fincaId: finca.id,
+          loteId: lote.id,
+          semanaEmbolseId: semanaEmbolse.id,
+          semanaRegistroId: semanaRegistro.id,
+          tipo: m.tipo,
+          motivoRepiqueId,
+          motivoRecuseId,
+          cantidad: m.cantidad,
+          fecha,
+          observacion: m.observacion,
+          createdBy: actorId,
+        });
+      } catch (error) {
+        throw ApiError.badRequest(`Línea ${nro}: ${error.message}`);
+      }
+    }
+
+    if (advertencias.length > 0 && !forzarSaldoNegativo) {
+      return { requiereConfirmacion: true, advertencias, movimientos: [] };
+    }
+
+    const creados = await sequelize.transaction(async (transaction) => {
+      const filas = [];
+      for (const fila of filasParaCrear) {
+        filas.push(await racimoMovimientoRepository.create(fila, { transaction }));
+      }
+      return filas;
+    });
+
+    return { requiereConfirmacion: false, advertencias, movimientos: creados };
+  },
+
   // Cargue masivo de movimientos históricos desde un .csv/.xlsx. Columnas
   // esperadas: fincaCodigo, loteCodigo, tipo, semanaEmbolseCodigo,
   // semanaRegistroCodigo (opcional, por defecto = semanaEmbolseCodigo),
@@ -512,8 +646,9 @@ export const racimoMovimientoService = {
 
   async _procesarBulkMovimientos(rows, actorId, { dryRun, mode, progressToken, forceNegativeSaldos, esAdmin, user }) {
     const fincaIdsPermitidas = getFincaIdsPermitidas(user);
-    // Distinto de `esAdmin` (que solo gobierna forzar saldo negativo, más
-    // abajo): esto también deja pasar a quien tenga el permiso puntual
+    // Distinto de `esAdmin` (que en realidad ahora significa "tiene el
+    // permiso racimo_movimiento.forzar_saldo_negativo", ver más abajo):
+    // esto deja pasar a quien tenga el permiso puntual
     // racimo_movimiento.editar_historico, sin ser Administrador.
     const puedeSaltarRestriccionSemana = puedeIgnorarRestriccionSemana(user);
     logger.info(`Precargando catálogos (${rows.length} filas por procesar)...`);
@@ -714,7 +849,8 @@ export const racimoMovimientoService = {
           const saldoBD = saldoBDCache.has(cohorteKey) ? saldoBDCache.get(cohorteKey) : 0;
           const saldoDisponible = saldoBD + (saldoSimulado.get(cohorteKey) || 0);
           if (cantidad > saldoDisponible) {
-            // Solo un administrador puede llegar a forzar esto (ver el
+            // Solo quien tenga el permiso racimo_movimiento.forzar_saldo_negativo
+            // (o sea Administrador) puede llegar a forzar esto (ver el
             // permission check en el controller); para todos los demás
             // sigue siendo un error duro que descarta la fila.
             if (esAdmin) {
@@ -746,12 +882,12 @@ export const racimoMovimientoService = {
       return { totalFilas: rows.length, movimientosCreados: 0, errores, warnings };
     }
 
-    // Si hay advertencias de saldo negativo (solo posibles para un admin,
-    // ver el filtro esAdmin más arriba) y aún no confirmó, se pide
-    // confirmación antes de insertar nada. Esto tiene prioridad sobre
-    // mode="auto": aunque el archivo tenga OTROS errores duros sin relación
-    // (columnas faltantes, etc.), el admin igual debe poder decidir si
-    // fuerza o no las filas de saldo negativo — los errores duros se
+    // Si hay advertencias de saldo negativo (solo posibles para quien tenga
+    // el permiso de forzarlo, ver el filtro esAdmin más arriba) y aún no
+    // confirmó, se pide confirmación antes de insertar nada. Esto tiene
+    // prioridad sobre mode="auto": aunque el archivo tenga OTROS errores
+    // duros sin relación (columnas faltantes, etc.), igual debe poder
+    // decidir si fuerza o no las filas de saldo negativo — los errores duros se
     // devuelven junto con las advertencias para que los vea, pero de todas
     // formas nunca se insertan (quedan fuera de filasValidas). Se cachean
     // las filas ya validadas (por progressToken) para que, si confirma, no

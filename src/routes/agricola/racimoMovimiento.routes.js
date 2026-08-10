@@ -9,6 +9,7 @@ import {
   listRacimoMovimientosSchema,
   getRacimoMovimientoSchema,
   createRacimoMovimientoSchema,
+  createRacimoMovimientosEnLoteSchema,
   inventarioRacimosSchema,
   resumenCohorteSchema,
   reporteSaldosSchema,
@@ -96,6 +97,24 @@ router.post(
   permission(PERMISSIONS.RACIMO_MOVIMIENTO_CREAR),
   validate(createRacimoMovimientoSchema),
   racimoMovimientoController.create,
+);
+
+/**
+ * @openapi
+ * /racimo-movimientos/lote:
+ *   post:
+ *     tags: [Movimientos de Racimos]
+ *     summary: Registrar varios movimientos de racimos en una sola transacción (todo o nada)
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       201: { description: Creado }
+ */
+router.post(
+  '/lote',
+  auth,
+  permission(PERMISSIONS.RACIMO_MOVIMIENTO_CREAR),
+  validate(createRacimoMovimientosEnLoteSchema),
+  racimoMovimientoController.crearEnLote,
 );
 
 /**

@@ -25,7 +25,9 @@ export const estadioSigatokaService = {
 
     return estadioSigatokaRepository.create({
       estadio: payload.estadio,
-      valor: payload.valor ?? 0,
+      valorL3: payload.valorL3 ?? 0,
+      valorL4: payload.valorL4 ?? 0,
+      valorL5: payload.valorL5 ?? 0,
       orden: payload.orden ?? 0,
       estado: payload.estado ?? true,
       createdBy: actorId,

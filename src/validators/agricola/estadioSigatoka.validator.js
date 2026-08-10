@@ -26,7 +26,9 @@ export const getEstadioSigatokaSchema = Joi.object({
 export const createEstadioSigatokaSchema = Joi.object({
   body: Joi.object({
     estadio: estadioPattern.required(),
-    valor: Joi.number().min(0),
+    valorL3: Joi.number().min(0),
+    valorL4: Joi.number().min(0),
+    valorL5: Joi.number().min(0),
     orden: Joi.number().integer().min(0),
     estado: Joi.boolean(),
   }),
@@ -37,7 +39,9 @@ export const createEstadioSigatokaSchema = Joi.object({
 export const updateEstadioSigatokaSchema = Joi.object({
   body: Joi.object({
     estadio: estadioPattern,
-    valor: Joi.number().min(0),
+    valorL3: Joi.number().min(0),
+    valorL4: Joi.number().min(0),
+    valorL5: Joi.number().min(0),
     orden: Joi.number().integer().min(0),
     estado: Joi.boolean(),
   }).min(1),

@@ -104,6 +104,12 @@ export const PERMISSIONS = {
   // semanas anteriores a la última semana registrada en esa finca, sin
   // necesidad de ser Administrador ni heredar sus demás poderes.
   RACIMO_MOVIMIENTO_EDITAR_HISTORICO: 'racimo_movimiento.editar_historico',
+  // Permiso aparte (no lo tiene nadie por defecto salvo Administrador, mismo
+  // criterio que RACIMO_MOVIMIENTO_EDITAR_HISTORICO): permite confirmar el
+  // registro de un movimiento aunque deje el saldo de una cohorte en
+  // negativo, tanto en el registro manual (Repique/Corte) como en el
+  // cargue masivo por archivo.
+  RACIMO_MOVIMIENTO_FORZAR_SALDO_NEGATIVO: 'racimo_movimiento.forzar_saldo_negativo',
 
   PRODUCCION_VER: 'produccion.ver',
   PRODUCCION_CREAR: 'produccion.crear',
@@ -252,6 +258,7 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.RACIMO_MOVIMIENTO_EDITAR, nombre: 'Editar movimientos de racimos' },
   { codigo: PERMISSIONS.RACIMO_MOVIMIENTO_ELIMINAR, nombre: 'Eliminar movimientos de racimos' },
   { codigo: PERMISSIONS.RACIMO_MOVIMIENTO_EDITAR_HISTORICO, nombre: 'Crear/eliminar movimientos de semanas anteriores' },
+  { codigo: PERMISSIONS.RACIMO_MOVIMIENTO_FORZAR_SALDO_NEGATIVO, nombre: 'Forzar registro de movimientos con saldo negativo' },
 
   { codigo: PERMISSIONS.PRODUCCION_VER, nombre: 'Ver producción semanal' },
   { codigo: PERMISSIONS.PRODUCCION_CREAR, nombre: 'Crear producción semanal' },

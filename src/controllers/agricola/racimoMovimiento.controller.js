@@ -1,9 +1,8 @@
-import { racimoMovimientoService } from '../../services/agricola/racimoMovimiento.service.js';
+import { racimoMovimientoService, puedeForzarSaldoNegativo } from '../../services/agricola/racimoMovimiento.service.js';
 import { ApiResponse } from '../../utils/ApiResponse.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { HTTP_STATUS } from '../../constants/httpStatus.constants.js';
-import { ROLES } from '../../constants/roles.constants.js';
 import { bulkProgress } from '../../utils/bulkProgress.js';
 
 export const racimoMovimientoController = {
@@ -23,6 +22,21 @@ export const racimoMovimientoController = {
       statusCode: HTTP_STATUS.CREATED,
       message: 'Movimiento de racimos registrado correctamente',
       data: movimiento,
+    });
+  }),
+
+  crearEnLote: asyncHandler(async (req, res) => {
+    const resultado = await racimoMovimientoService.crearMovimientosEnLote(req.body, req.user?.id, req.user);
+    if (resultado.requiereConfirmacion) {
+      return ApiResponse.send(res, {
+        message: 'Hay líneas que dejarían el saldo de una cohorte en negativo; confirma para continuar',
+        data: resultado,
+      });
+    }
+    ApiResponse.send(res, {
+      statusCode: HTTP_STATUS.CREATED,
+      message: `${resultado.movimientos.length} movimiento(s) de racimos registrados correctamente`,
+      data: resultado,
     });
   }),
 
@@ -56,11 +70,10 @@ export const racimoMovimientoController = {
     const mode = req.body?.mode;
     const progressToken = req.body?.progressToken;
     const forceNegativeSaldos = req.body?.forceNegativeSaldos === 'true';
-    const userRoles = req.user?.roles || [];
-    const esAdmin = userRoles.includes(ROLES.ADMINISTRADOR);
+    const puedeForzar = puedeForzarSaldoNegativo(req.user);
 
-    if (forceNegativeSaldos && !esAdmin) {
-      throw ApiError.forbidden('Solo un administrador puede forzar la carga con saldos negativos');
+    if (forceNegativeSaldos && !puedeForzar) {
+      throw ApiError.forbidden('No tienes permiso para forzar la carga con saldos negativos');
     }
 
     const resultado = await racimoMovimientoService.bulkCreateMovimientos(req.file, req.user?.id, {
@@ -68,7 +81,7 @@ export const racimoMovimientoController = {
       mode,
       progressToken,
       forceNegativeSaldos,
-      esAdmin,
+      esAdmin: puedeForzar,
       user: req.user,
     });
     if (progressToken) bulkProgress.remove(progressToken);

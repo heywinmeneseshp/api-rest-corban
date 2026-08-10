@@ -221,6 +221,20 @@ export const laborCulturalService = {
       where += ' AND finca_uuid IN (:fincaUuids)';
       replacements.fincaUuids = await expandirFincaUuids([query.fincaUuid]);
     }
+    if (query.loteUuid) {
+      // Filtra a nivel de fila: solo entran al GROUP BY las visitas que
+      // tengan al menos una fila de ese lote.
+      where += ' AND lote_uuid = :loteUuid';
+      replacements.loteUuid = query.loteUuid;
+    }
+    if (query.semanaUuid) {
+      where += ' AND semana_uuid = :semanaUuid';
+      replacements.semanaUuid = query.semanaUuid;
+    }
+    if (query.usuarioUuid) {
+      where += ' AND usuario_uuid = :usuarioUuid';
+      replacements.usuarioUuid = query.usuarioUuid;
+    }
     if (query.fechaDesde) {
       where += ' AND fecha >= :fechaDesde';
       replacements.fechaDesde = query.fechaDesde;

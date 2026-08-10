@@ -64,6 +64,8 @@ export const evaluacionService = {
     // utils/fincaScope.js); si no, se usa el alcance normal del usuario.
     const fincaIds = fincaId ? await expandirFincaIds([fincaId]) : getFincaIdsPermitidas(user);
     const loteId = query.loteUuid ? (await findLoteByUuidOrFail(query.loteUuid)).id : undefined;
+    const semanaId = query.semanaUuid ? (await findSemanaByUuidOrFail(query.semanaUuid)).id : undefined;
+    const usuarioId = query.usuarioUuid ? (await findUsuarioByUuidOrFail(query.usuarioUuid)).id : undefined;
     const tipoEvaluacionId = query.tipoEvaluacionUuid
       ? (await findTipoEvaluacionByUuidOrFail(query.tipoEvaluacionUuid)).id
       : undefined;
@@ -75,6 +77,8 @@ export const evaluacionService = {
       fechaHasta: query.fechaHasta,
       fincaIds,
       loteId,
+      semanaId,
+      usuarioId,
       tipoEvaluacionId,
     });
 

@@ -33,7 +33,7 @@ export const sumaBrutaRepository = {
     if (!estadios?.length) return Promise.resolve([]);
     return EstadioSigatoka.findAll({
       where: { estadio: { [Op.in]: estadios }, estado: true },
-      attributes: ['estadio', 'valor'],
+      attributes: ['estadio', 'valorL3', 'valorL4', 'valorL5'],
       transaction,
     });
   },

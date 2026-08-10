@@ -46,6 +46,31 @@ export const createRacimoMovimientoSchema = Joi.object({
   query: Joi.object({}),
 });
 
+export const createRacimoMovimientosEnLoteSchema = Joi.object({
+  body: Joi.object({
+    fincaUuid: uuidRef.required(),
+    semanaRegistroUuid: uuidRef.required(),
+    fecha: Joi.date().iso().raw().required(),
+    forzarSaldoNegativo: Joi.boolean().default(false),
+    movimientos: Joi.array()
+      .items(
+        Joi.object({
+          tipo: Joi.string().valid(...TIPOS).required(),
+          loteUuid: uuidRef.required(),
+          semanaEmbolseUuid: uuidRef.required(),
+          motivoRepiqueUuid: uuidRef,
+          motivoRecuseUuid: uuidRef,
+          cantidad: Joi.number().integer().min(1).required(),
+          observacion: Joi.string().max(255).allow('', null),
+        }),
+      )
+      .min(1)
+      .required(),
+  }),
+  params: Joi.object({}),
+  query: Joi.object({}),
+});
+
 export const resumenCohorteSchema = Joi.object({
   body: Joi.object({}),
   params: Joi.object({}),

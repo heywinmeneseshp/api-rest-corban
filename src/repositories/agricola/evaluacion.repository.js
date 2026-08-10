@@ -54,10 +54,24 @@ const buildIncludes = ({ fincaId, fincaIds, loteId } = {}) => {
 };
 
 export const evaluacionRepository = {
-  async findAndCountAll({ limit, offset, plantaId, fechaDesde, fechaHasta, fincaId, fincaIds, loteId, tipoEvaluacionId }) {
+  async findAndCountAll({
+    limit,
+    offset,
+    plantaId,
+    fechaDesde,
+    fechaHasta,
+    fincaId,
+    fincaIds,
+    loteId,
+    semanaId,
+    usuarioId,
+    tipoEvaluacionId,
+  }) {
     const where = {};
     if (plantaId) where.plantaId = plantaId;
     if (tipoEvaluacionId) where.tipoEvaluacionId = tipoEvaluacionId;
+    if (semanaId) where.semanaId = semanaId;
+    if (usuarioId) where.usuarioId = usuarioId;
     if (fechaDesde || fechaHasta) {
       where.fecha = {};
       if (fechaDesde) where.fecha[Op.gte] = fechaDesde;

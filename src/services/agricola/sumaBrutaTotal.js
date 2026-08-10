@@ -1,10 +1,21 @@
 import { sumaBrutaRepository } from '../../repositories/agricola/sumaBruta.repository.js';
 
-const valorPorEstadio = (valores) => new Map(valores.map((v) => [v.estadio, Number(v.valor)]));
+const valorPorEstadio = (valores) => new Map(valores.map((v) => [v.estadio, v]));
 
 // La app móvil envía cadena vacía para "sin estadio"; en la tabla esa opción
 // es el estadio "0" (configurable, default 0).
 const normalizar = (estadio) => (estadio === '' ? '0' : estadio);
+
+// El mismo código de estadio pesa distinto según de cuál de las tres hojas
+// evaluadas (3, 4 o 5) venga — `estadios_sigatoka` guarda un valor por hoja
+// en vez de uno solo.
+const CAMPO_VALOR_POR_HOJA = { 3: 'valorL3', 4: 'valorL4', 5: 'valorL5' };
+
+function valorDeHoja(estadioRow, numeroHoja) {
+  if (!estadioRow) return 0;
+  const campo = CAMPO_VALOR_POR_HOJA[numeroHoja];
+  return campo ? Number(estadioRow[campo] ?? 0) : 0;
+}
 
 // Suma los valores configurables (tabla `estadios_sigatoka`) de los estadios
 // registrados en cada hoja. Se calcula SIEMPRE al leer, consultando la tabla
@@ -17,7 +28,7 @@ export async function calcularTotal(estadios, { transaction } = {}) {
   const valores = await sumaBrutaRepository.findEstadiosValuesByNames(denominaciones, { transaction });
   const porEstadio = valorPorEstadio(valores);
 
-  return estadios.reduce((acc, e) => acc + (porEstadio.get(normalizar(e.estadio)) ?? 0), 0);
+  return estadios.reduce((acc, e) => acc + valorDeHoja(porEstadio.get(normalizar(e.estadio)), e.numeroHoja), 0);
 }
 
 // Adjunta `total` (calculado en el momento) a un conjunto de registros de
@@ -37,7 +48,7 @@ export async function adjuntarTotales(sumasBruta, { transaction } = {}) {
     const porEstadio = valorPorEstadio(valores);
 
     for (const s of conEstadios) {
-      s.total = s.estadios.reduce((acc, e) => acc + (porEstadio.get(normalizar(e.estadio)) ?? 0), 0);
+      s.total = s.estadios.reduce((acc, e) => acc + valorDeHoja(porEstadio.get(normalizar(e.estadio)), e.numeroHoja), 0);
     }
   }
 
