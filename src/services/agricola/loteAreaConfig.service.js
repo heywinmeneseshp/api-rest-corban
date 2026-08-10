@@ -1,4 +1,4 @@
-import { Op } from 'sequelize';
+import { Op, literal } from 'sequelize';
 import { sequelize } from '../../database/connection.js';
 import { Finca, Role, Lote, LoteAreaProduccion } from '../../database/associations.js';
 import { loteAreaConfigRepository } from '../../repositories/agricola/loteAreaConfig.repository.js';
@@ -91,7 +91,12 @@ export const loteAreaConfigService = {
     const pendientesPorFinca = [];
     for (const config of porFinca.values()) {
       const fincaIds = await expandirFincaIds([config.fincaId]);
-      const lotes = await Lote.findAll({ where: { fincaId: { [Op.in]: fincaIds }, estado: true } });
+      // Mismo orden natural por nombre (1, 2, 3, ... 10, 11) que el resto de
+      // listados de lotes, con `codigo` como desempate estable.
+      const lotes = await Lote.findAll({
+        where: { fincaId: { [Op.in]: fincaIds }, estado: true },
+        order: [[literal('CAST(`Lote`.`nombre` AS UNSIGNED)'), 'ASC'], ['codigo', 'ASC']],
+      });
       if (lotes.length === 0) continue;
 
       const loteIds = lotes.map((l) => l.id);

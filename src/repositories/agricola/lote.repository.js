@@ -1,5 +1,9 @@
-import { Op } from 'sequelize';
+import { Op, literal } from 'sequelize';
 import { Lote, Planta } from '../../database/associations.js';
+
+// Orden natural por `nombre` (1, 2, 3, ... 10, 11) en vez del alfabético
+// (1, 11, 12, ..., 2). `codigo` desempata nombres repetidos.
+const ORDEN_NUMERICO = [[literal('CAST(`Lote`.`nombre` AS UNSIGNED)'), 'ASC'], ['codigo', 'ASC']];
 
 export const loteRepository = {
   async findAndCountAll({ limit, offset, search, fincaId, fincaIdsPermitidas }) {
@@ -15,7 +19,7 @@ export const loteRepository = {
         : {}),
     };
 
-    return Lote.findAndCountAll({ where, limit, offset, order: [['codigo', 'ASC']] });
+    return Lote.findAndCountAll({ where, limit, offset, order: ORDEN_NUMERICO });
   },
 
   findByUuid(uuid) {
