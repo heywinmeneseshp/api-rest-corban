@@ -107,6 +107,12 @@ export const PERMISSIONS = {
 
   PRODUCCION_VER: 'produccion.ver',
   PRODUCCION_CREAR: 'produccion.crear',
+  PRODUCCION_ELIMINAR: 'produccion.eliminar',
+  // Permiso aparte (no lo tiene nadie por defecto salvo Administrador, mismo
+  // criterio que RACIMO_MOVIMIENTO_EDITAR_HISTORICO): sobrescribe cajas ya
+  // cargadas de una finca+semana en vez de solo agregar filas nuevas, así
+  // que puede corregir en bloque un cargue masivo con errores.
+  PRODUCCION_ACTUALIZAR_MASIVO: 'produccion.actualizar_masivo',
 
   PRONOSTICO_VER: 'pronostico.ver',
 
@@ -249,6 +255,8 @@ export const PERMISSIONS_SEED = [
 
   { codigo: PERMISSIONS.PRODUCCION_VER, nombre: 'Ver producción semanal' },
   { codigo: PERMISSIONS.PRODUCCION_CREAR, nombre: 'Crear producción semanal' },
+  { codigo: PERMISSIONS.PRODUCCION_ELIMINAR, nombre: 'Eliminar producción semanal' },
+  { codigo: PERMISSIONS.PRODUCCION_ACTUALIZAR_MASIVO, nombre: 'Actualizar en bloque producción semanal ya cargada' },
 
   { codigo: PERMISSIONS.PRONOSTICO_VER, nombre: 'Ver pronóstico de cajas' },
 

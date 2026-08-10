@@ -148,15 +148,30 @@ export const racimoMovimientoService = {
       ? (await findSemanaByUuidOrFail(query.semanaRegistroUuid)).id
       : undefined;
 
-    // Rango de semanas de registro: se traduce al rango de fechas que cubren
-    // esas semanas (de lunes de la primera a domingo de la última).
+    // Rango de semanas de registro: filtra por el campo `semanaRegistroId`
+    // guardado en cada movimiento (no por su `fecha` real) — un movimiento
+    // puede tener una fecha que cae en otra semana calendario que la semana
+    // de registro que se le asignó (ej. cargues masivos donde la semana de
+    // registro se dejó igual a la de embolse), así que filtrar por fecha
+    // podía traer/perder filas que no coinciden con lo que se ve en la
+    // columna "Semana Registro" de la tabla.
     let fechaDesde = query.fechaDesde;
     let fechaHasta = query.fechaHasta;
-    if (query.semanaRegistroDesdeUuid) {
-      fechaDesde = (await findSemanaByUuidOrFail(query.semanaRegistroDesdeUuid)).fechaInicio;
-    }
-    if (query.semanaRegistroHastaUuid) {
-      fechaHasta = (await findSemanaByUuidOrFail(query.semanaRegistroHastaUuid)).fechaFin;
+    let semanaRegistroIds;
+    if (query.semanaRegistroDesdeUuid && query.semanaRegistroHastaUuid) {
+      const [semanaDesde, semanaHasta] = await Promise.all([
+        findSemanaByUuidOrFail(query.semanaRegistroDesdeUuid),
+        findSemanaByUuidOrFail(query.semanaRegistroHastaUuid),
+      ]);
+      const semanas = await semanaRepository.findEntreSemanas(semanaDesde, semanaHasta);
+      semanaRegistroIds = semanas.map((s) => s.id);
+    } else {
+      if (query.semanaRegistroDesdeUuid) {
+        fechaDesde = (await findSemanaByUuidOrFail(query.semanaRegistroDesdeUuid)).fechaInicio;
+      }
+      if (query.semanaRegistroHastaUuid) {
+        fechaHasta = (await findSemanaByUuidOrFail(query.semanaRegistroHastaUuid)).fechaFin;
+      }
     }
 
     const { rows, count } = await racimoMovimientoRepository.findAndCountAll({
@@ -166,6 +181,7 @@ export const racimoMovimientoService = {
       loteId,
       semanaEmbolseId,
       semanaRegistroId,
+      semanaRegistroIds,
       tipo: query.tipo,
       fechaDesde,
       fechaHasta,
@@ -211,18 +227,30 @@ export const racimoMovimientoService = {
       ? (await findSemanaByUuidOrFail(query.semanaEmbolseUuid)).id
       : undefined;
 
+    // Mismo criterio que listMovimientos: filtra por `semanaRegistroId`
+    // guardado, no por la `fecha` real del movimiento (ver comentario ahí).
     let fechaDesde = query.fechaDesde;
     let fechaHasta = query.fechaHasta;
-    if (query.semanaRegistroDesdeUuid) {
-      fechaDesde = (await findSemanaByUuidOrFail(query.semanaRegistroDesdeUuid)).fechaInicio;
-    }
-    if (query.semanaRegistroHastaUuid) {
-      fechaHasta = (await findSemanaByUuidOrFail(query.semanaRegistroHastaUuid)).fechaFin;
+    let semanaRegistroIds;
+    if (query.semanaRegistroDesdeUuid && query.semanaRegistroHastaUuid) {
+      const [semanaDesde, semanaHasta] = await Promise.all([
+        findSemanaByUuidOrFail(query.semanaRegistroDesdeUuid),
+        findSemanaByUuidOrFail(query.semanaRegistroHastaUuid),
+      ]);
+      const semanas = await semanaRepository.findEntreSemanas(semanaDesde, semanaHasta);
+      semanaRegistroIds = semanas.map((s) => s.id);
+    } else {
+      if (query.semanaRegistroDesdeUuid) {
+        fechaDesde = (await findSemanaByUuidOrFail(query.semanaRegistroDesdeUuid)).fechaInicio;
+      }
+      if (query.semanaRegistroHastaUuid) {
+        fechaHasta = (await findSemanaByUuidOrFail(query.semanaRegistroHastaUuid)).fechaFin;
+      }
     }
 
     const rows = await racimoMovimientoRepository.findAllForExport({
       fincaId, fincaIds: getFincaIdsPermitidas(user), loteId, semanaEmbolseId,
-      tipo: query.tipo, fechaDesde, fechaHasta,
+      semanaRegistroIds, tipo: query.tipo, fechaDesde, fechaHasta,
     });
 
     const FILAS_POR_HOJA = 50000;

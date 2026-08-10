@@ -8,6 +8,20 @@ export const semanaRepository = {
     });
   },
 
+  // Todas las semanas entre `desde` y `hasta` (inclusive), en orden
+  // cronológico real — por `fechaInicio`, no por `id` (ver comentario en
+  // findUltimasN: el id interno solo refleja el orden de creación de la
+  // fila, no el orden cronológico real de la semana). Se usa para resolver
+  // un filtro "semana de registro desde/hasta" a la lista exacta de ids a
+  // filtrar, en vez de convertirlo a un rango de fechas (que puede no
+  // coincidir con la semana de registro guardada en cada movimiento).
+  findEntreSemanas(semanaDesde, semanaHasta) {
+    return Semana.findAll({
+      where: { fechaInicio: { [Op.gte]: semanaDesde.fechaInicio, [Op.lte]: semanaHasta.fechaInicio } },
+      order: [['fecha_inicio', 'ASC']],
+    });
+  },
+
   // Última semana registrada de un año (para reportes de un año ya cerrado,
   // que no es el año en curso).
   findUltimaDelAnio(anio) {

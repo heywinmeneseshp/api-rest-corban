@@ -36,6 +36,7 @@ export const racimoMovimientoRepository = {
     loteId,
     semanaEmbolseId,
     semanaRegistroId,
+    semanaRegistroIds,
     tipo,
     fechaDesde,
     fechaHasta,
@@ -44,7 +45,7 @@ export const racimoMovimientoRepository = {
       ...(fincaId ? { fincaId } : fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
       ...(loteId ? { loteId } : {}),
       ...(semanaEmbolseId ? { semanaEmbolseId } : {}),
-      ...(semanaRegistroId ? { semanaRegistroId } : {}),
+      ...(semanaRegistroIds ? { semanaRegistroId: { [Op.in]: semanaRegistroIds } } : semanaRegistroId ? { semanaRegistroId } : {}),
       ...(tipo ? { tipo } : {}),
       ...(fechaDesde || fechaHasta
         ? {
@@ -219,12 +220,22 @@ export const racimoMovimientoRepository = {
     return movimiento;
   },
 
-  async findAllForExport({ fincaId, fincaIds, loteId, semanaEmbolseId, semanaRegistroId, tipo, fechaDesde, fechaHasta }) {
+  async findAllForExport({
+    fincaId,
+    fincaIds,
+    loteId,
+    semanaEmbolseId,
+    semanaRegistroId,
+    semanaRegistroIds,
+    tipo,
+    fechaDesde,
+    fechaHasta,
+  }) {
     const where = {
       ...(fincaId ? { fincaId } : fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
       ...(loteId ? { loteId } : {}),
       ...(semanaEmbolseId ? { semanaEmbolseId } : {}),
-      ...(semanaRegistroId ? { semanaRegistroId } : {}),
+      ...(semanaRegistroIds ? { semanaRegistroId: { [Op.in]: semanaRegistroIds } } : semanaRegistroId ? { semanaRegistroId } : {}),
       ...(tipo ? { tipo } : {}),
       ...(fechaDesde || fechaHasta
         ? {

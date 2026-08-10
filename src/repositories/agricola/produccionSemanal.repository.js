@@ -35,6 +35,27 @@ export const produccionSemanalRepository = {
     return ProduccionSemanal.bulkCreate(dataArray, { transaction });
   },
 
+  // Inserta las que no existen y sobrescribe `cajas20kg` de las que ya
+  // existen para esa finca+semana (mismo índice único que usa el cargue
+  // normal para detectar duplicados) — una sola sentencia, sin transacción
+  // aparte porque ya es atómica a nivel de esa sentencia.
+  bulkUpsert(dataArray, { transaction } = {}) {
+    return ProduccionSemanal.bulkCreate(dataArray, {
+      updateOnDuplicate: ['cajas20kg', 'updatedBy'],
+      transaction,
+    });
+  },
+
+  findByUuid(uuid) {
+    return ProduccionSemanal.findOne({ where: { uuid }, include: listIncludes });
+  },
+
+  async softDelete(registro, deletedBy, { transaction } = {}) {
+    await registro.update({ deletedBy }, { transaction });
+    await registro.destroy({ transaction });
+    return registro;
+  },
+
   async findAllBySemanaYFinca({ semanaIds, fincaIds }) {
     return ProduccionSemanal.findAll({
       where: {

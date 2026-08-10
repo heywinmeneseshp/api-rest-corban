@@ -42,4 +42,39 @@ router.post(
   produccionSemanalController.bulkUpload,
 );
 
+/**
+ * @openapi
+ * /produccion-semanal/bulk-update:
+ *   post:
+ *     tags: [Producción Semanal]
+ *     summary: Actualización masiva desde archivo .csv/.xlsx — sobrescribe cajas de finca+semana ya cargadas (solo Administrador)
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.post(
+  '/bulk-update',
+  auth,
+  permission(PERMISSIONS.PRODUCCION_ACTUALIZAR_MASIVO),
+  uploadBulkFile,
+  produccionSemanalController.bulkUpdate,
+);
+
+/**
+ * @openapi
+ * /produccion-semanal/{uuid}:
+ *   delete:
+ *     tags: [Producción Semanal]
+ *     summary: Eliminar un registro de producción semanal (soft delete)
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.delete(
+  '/:uuid',
+  auth,
+  permission(PERMISSIONS.PRODUCCION_ELIMINAR),
+  produccionSemanalController.remove,
+);
+
 export default router;

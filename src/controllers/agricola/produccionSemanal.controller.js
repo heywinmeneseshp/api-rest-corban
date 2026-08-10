@@ -12,6 +12,16 @@ export const produccionSemanalController = {
     const resultado = await produccionSemanalService.bulkCreateProduccion(req.file, req.user?.id, req.user);
     ApiResponse.send(res, { message: 'Cargue masivo de producción procesado', data: resultado });
   }),
+
+  bulkUpdate: asyncHandler(async (req, res) => {
+    const resultado = await produccionSemanalService.bulkUpdateProduccion(req.file, req.user?.id, req.user);
+    ApiResponse.send(res, { message: 'Actualización masiva de producción procesada', data: resultado });
+  }),
+
+  remove: asyncHandler(async (req, res) => {
+    await produccionSemanalService.deleteProduccion(req.params.uuid, req.user?.id, req.user);
+    ApiResponse.send(res, { message: 'Registro de producción eliminado correctamente' });
+  }),
 };
 
 export default produccionSemanalController;
