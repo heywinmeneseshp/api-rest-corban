@@ -327,7 +327,9 @@ export const racimoMovimientoService = {
         Semana: pad2(semana.numeroSemana),
         Año: semana.anio,
         Finca: g.finca?.codigo || '',
-        Lote: pad2(g.lote?.nombre),
+        // A diferencia de Semana/Edad, el Lote va sin cero a la izquierda
+        // (pedido explícito — antes también se le pedía con cero).
+        Lote: String(g.lote?.nombre ?? '').trim(),
       };
       if (tipo !== 'EMBOLSE') {
         const semanasTranscurridas = Math.round(
