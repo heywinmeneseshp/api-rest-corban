@@ -20,6 +20,7 @@ import { SumaBruta } from './models/sumaBruta.model.js';
 import { EstadioHoja } from './models/estadioHoja.model.js';
 import { Configuracion } from './models/configuracion.model.js';
 import { LoteAreaProduccion } from './models/loteAreaProduccion.model.js';
+import { LoteAreaConfig } from './models/loteAreaConfig.model.js';
 import { MotivoRepique } from './models/motivoRepique.model.js';
 import { MotivoRecuse } from './models/motivoRecuse.model.js';
 import { RacimoMovimiento } from './models/racimoMovimiento.model.js';
@@ -133,6 +134,14 @@ export const setupAssociations = () => {
   LoteAreaProduccion.belongsTo(Lote, { foreignKey: 'loteId', as: 'lote' });
   LoteAreaProduccion.belongsTo(User, { foreignKey: 'createdBy', as: 'creadoPor' });
 
+  // Configuración de campaña de Área de Lotes: qué rol debe confirmar el
+  // área total y en producción de todos los lotes de una finca, a partir de
+  // qué fecha (ver services/agricola/loteAreaConfig.service.js).
+  Finca.hasMany(LoteAreaConfig, { foreignKey: 'fincaId', as: 'areaLoteConfigs' });
+  LoteAreaConfig.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+  Role.hasMany(LoteAreaConfig, { foreignKey: 'rolId', as: 'areaLoteConfigs' });
+  LoteAreaConfig.belongsTo(Role, { foreignKey: 'rolId', as: 'rol' });
+
   CategoriaPlanta.hasMany(Planta, { foreignKey: 'categoriaPlantaId', as: 'plantas' });
   Planta.belongsTo(CategoriaPlanta, { foreignKey: 'categoriaPlantaId', as: 'categoriaPlanta' });
 
@@ -200,6 +209,7 @@ export const setupAssociations = () => {
   withAuditAssociations(Finca);
   withAuditAssociations(GrupoFinca);
   withAuditAssociations(Lote);
+  withAuditAssociations(LoteAreaConfig);
   withAuditAssociations(Planta);
   withAuditAssociations(CategoriaPlanta);
   withAuditAssociations(TipoEvaluacion);
@@ -284,6 +294,7 @@ export {
   EstadioHoja,
   Configuracion,
   LoteAreaProduccion,
+  LoteAreaConfig,
   MotivoRepique,
   MotivoRecuse,
   RacimoMovimiento,

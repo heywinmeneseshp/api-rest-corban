@@ -132,6 +132,82 @@ export const racimoMovimientoRepository = {
     return map;
   },
 
+  // Racimos cosechados (= cortados) por finca y semana de registro: la
+  // regla de negocio es PROCESADO + RECUSE sumados, nunca PROCESADO solo
+  // (un racimo cortado puede terminar recusado en vez de procesado, pero
+  // igual salió del campo en el corte). Formaliza el mismo cálculo que hoy
+  // vive inline en dashboard.service.js, para reutilizarlo en Pronóstico.
+  async getCosechadoPorFincaYSemana({ fincaIds, semanaRegistroIds }) {
+    if (semanaRegistroIds.length === 0) return new Map();
+
+    const results = await RacimoMovimiento.findAll({
+      where: {
+        tipo: { [Op.in]: ['PROCESADO', 'RECUSE'] },
+        semanaRegistroId: { [Op.in]: semanaRegistroIds },
+        ...(fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
+      },
+      attributes: ['fincaId', 'semanaRegistroId', [fn('SUM', col('cantidad')), 'total']],
+      group: ['fincaId', 'semanaRegistroId'],
+      raw: true,
+    });
+
+    const map = new Map();
+    for (const r of results) map.set(`${r.fincaId}-${r.semanaRegistroId}`, Number(r.total));
+    return map;
+  },
+
+  // Cosechado (PROCESADO+RECUSE) agrupado por su cohorte de ORIGEN real
+  // (finca + semana de embolse + semana de registro donde se cortó) — a
+  // diferencia de getCosechadoPorFincaYSemana, esto no asume a qué edad
+  // pertenece cada racimo cortado: cada movimiento de corte/recuse ya trae
+  // su propio `semanaEmbolseId`, así que la edad real se puede calcular
+  // exacta (semanaRegistro − semanaEmbolse) en vez de repartir el total
+  // cortado de una semana entre varias edades candidatas. Usado para medir
+  // la tasa histórica de cosecha por edad sin sobre-contar.
+  async getCosechadoPorFincaCohorte({ fincaIds, semanaEmbolseIds }) {
+    if (semanaEmbolseIds.length === 0) return [];
+
+    const results = await RacimoMovimiento.findAll({
+      where: {
+        tipo: { [Op.in]: ['PROCESADO', 'RECUSE'] },
+        semanaEmbolseId: { [Op.in]: semanaEmbolseIds },
+        ...(fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
+      },
+      attributes: ['fincaId', 'semanaEmbolseId', 'semanaRegistroId', [fn('SUM', col('cantidad')), 'total']],
+      group: ['fincaId', 'semanaEmbolseId', 'semanaRegistroId'],
+      raw: true,
+    });
+
+    return results.map((r) => ({
+      fincaId: r.fincaId,
+      semanaEmbolseId: r.semanaEmbolseId,
+      semanaRegistroId: r.semanaRegistroId,
+      total: Number(r.total),
+    }));
+  },
+
+  // Igual que getEmbolsePorSemana, pero agrupado también por finca — el
+  // pronóstico necesita el pipeline de embolses por edad de cada finca por
+  // separado, no solo el total agregado.
+  async getEmbolsePorFincaYSemana({ fincaIds, semanaEmbolseIds }) {
+    if (semanaEmbolseIds.length === 0) return new Map();
+
+    const results = await RacimoMovimiento.findAll({
+      where: {
+        tipo: 'EMBOLSE',
+        semanaEmbolseId: { [Op.in]: semanaEmbolseIds },
+        ...(fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
+      },
+      attributes: ['fincaId', 'semanaEmbolseId', [fn('SUM', col('cantidad')), 'total']],
+      group: ['fincaId', 'semanaEmbolseId'],
+      raw: true,
+    });
+
+    const map = new Map();
+    for (const r of results) map.set(`${r.fincaId}-${r.semanaEmbolseId}`, Number(r.total));
+    return map;
+  },
+
   async update(movimiento, data, { transaction } = {}) {
     await movimiento.update(data, { transaction });
     return movimiento;

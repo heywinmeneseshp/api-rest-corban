@@ -1,4 +1,4 @@
-import { Op } from 'sequelize';
+import { Op, fn, col } from 'sequelize';
 import { ProduccionSemanal, Finca, Semana } from '../../database/associations.js';
 
 const listIncludes = [
@@ -44,6 +44,27 @@ export const produccionSemanalRepository = {
       include: listIncludes,
       raw: false,
     });
+  },
+
+  // Cajas 20kg agregadas por finca y semana, para el pronóstico y para
+  // calcular el ratio histórico real (cajas ÷ racimos cosechados). No existe
+  // hoy ningún método que agregue esto entre varias fincas a la vez.
+  async getCajasPorFincaYSemana({ fincaIds, semanaIds }) {
+    if (semanaIds.length === 0) return new Map();
+
+    const results = await ProduccionSemanal.findAll({
+      where: {
+        semanaId: { [Op.in]: semanaIds },
+        ...(fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
+      },
+      attributes: ['fincaId', 'semanaId', [fn('SUM', col('cajas_20kg')), 'total']],
+      group: ['fincaId', 'semanaId'],
+      raw: true,
+    });
+
+    const map = new Map();
+    for (const r of results) map.set(`${r.fincaId}-${r.semanaId}`, Number(r.total));
+    return map;
   },
 };
 

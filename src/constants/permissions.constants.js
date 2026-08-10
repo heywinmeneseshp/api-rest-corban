@@ -108,6 +108,8 @@ export const PERMISSIONS = {
   PRODUCCION_VER: 'produccion.ver',
   PRODUCCION_CREAR: 'produccion.crear',
 
+  PRONOSTICO_VER: 'pronostico.ver',
+
   // Captura diaria de precipitación desde app-corbana (distinta del registro
   // de clima que hace la app móvil): un rol programado debe digitar la
   // precipitación del día anterior o queda bloqueado con un modal hasta
@@ -116,6 +118,14 @@ export const PERMISSIONS = {
   // el registro (solo administración).
   PRECIPITACION_DIARIA_VER: 'precipitacion_diaria.ver',
   PRECIPITACION_DIARIA_CONFIGURAR: 'precipitacion_diaria.configurar',
+
+  // Igual patrón que Precipitación Diaria, pero para el área total y en
+  // producción de los lotes: VER es para consultar la configuración,
+  // CONFIGURAR para programar qué rol/finca/fecha exige el registro (solo
+  // administración). El registro en sí (desde el modal bloqueante) no exige
+  // ningún permiso puntual — ver loteAreaConfig.routes.js.
+  AREA_LOTE_VER: 'area_lote.ver',
+  AREA_LOTE_CONFIGURAR: 'area_lote.configurar',
 
   CATEGORIA_LABOR_VER: 'categoria_labor.ver',
   CATEGORIA_LABOR_CREAR: 'categoria_labor.crear',
@@ -240,8 +250,13 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.PRODUCCION_VER, nombre: 'Ver producción semanal' },
   { codigo: PERMISSIONS.PRODUCCION_CREAR, nombre: 'Crear producción semanal' },
 
+  { codigo: PERMISSIONS.PRONOSTICO_VER, nombre: 'Ver pronóstico de cajas' },
+
   { codigo: PERMISSIONS.PRECIPITACION_DIARIA_VER, nombre: 'Ver precipitación diaria y su configuración' },
   { codigo: PERMISSIONS.PRECIPITACION_DIARIA_CONFIGURAR, nombre: 'Programar captura obligatoria de precipitación diaria' },
+
+  { codigo: PERMISSIONS.AREA_LOTE_VER, nombre: 'Ver configuración de área de lotes' },
+  { codigo: PERMISSIONS.AREA_LOTE_CONFIGURAR, nombre: 'Programar captura obligatoria de área de lotes' },
 
   { codigo: PERMISSIONS.CATEGORIA_LABOR_VER, nombre: 'Ver categorías de labor' },
   { codigo: PERMISSIONS.CATEGORIA_LABOR_CREAR, nombre: 'Crear categorías de labor' },
