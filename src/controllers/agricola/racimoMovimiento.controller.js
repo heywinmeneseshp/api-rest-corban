@@ -45,6 +45,11 @@ export const racimoMovimientoController = {
     ApiResponse.send(res, { message: 'Movimiento de racimos eliminado correctamente' });
   }),
 
+  eliminarEnLote: asyncHandler(async (req, res) => {
+    const cantidad = await racimoMovimientoService.deleteMovimientosEnLote(req.body.uuids, req.user?.id, req.user);
+    ApiResponse.send(res, { message: `${cantidad} movimiento(s) de racimos eliminados correctamente` });
+  }),
+
   inventario: asyncHandler(async (req, res) => {
     const data = await racimoMovimientoService.getInventario(req.query, req.user);
     ApiResponse.send(res, { message: 'Inventario de racimos obtenido correctamente', data });

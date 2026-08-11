@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { Op } from 'sequelize';
 import { sequelize } from '../../database/connection.js';
-import { Finca, Lote, Semana, MotivoRepique, MotivoRecuse } from '../../database/associations.js';
+import { Finca, Lote, Semana, MotivoRepique, MotivoRecuse, User } from '../../database/associations.js';
 import { racimoMovimientoRepository } from '../../repositories/agricola/racimoMovimiento.repository.js';
 import { semanaRepository } from '../../repositories/agricola/semana.repository.js';
 import { calcularColorSemana } from '../../utils/semanaColor.js';
@@ -109,6 +109,12 @@ const findSemanaByUuidOrFail = async (uuid) => {
   return semana;
 };
 
+const findUsuarioByUuidOrFail = async (uuid) => {
+  const usuario = await User.findOne({ where: { uuid } });
+  if (!usuario) throw ApiError.notFound('Usuario no encontrado');
+  return usuario;
+};
+
 const findMotivoRepiqueByUuidOrFail = async (uuid) => {
   const motivo = await MotivoRepique.findOne({ where: { uuid } });
   if (!motivo) throw ApiError.notFound('Motivo de repique no encontrado');
@@ -156,6 +162,7 @@ export const racimoMovimientoService = {
     const semanaRegistroId = query.semanaRegistroUuid
       ? (await findSemanaByUuidOrFail(query.semanaRegistroUuid)).id
       : undefined;
+    const usuarioId = query.usuarioUuid ? (await findUsuarioByUuidOrFail(query.usuarioUuid)).id : undefined;
 
     // Rango de semanas de registro: filtra por el campo `semanaRegistroId`
     // guardado en cada movimiento (no por su `fecha` real) — un movimiento
@@ -191,6 +198,7 @@ export const racimoMovimientoService = {
       semanaEmbolseId,
       semanaRegistroId,
       semanaRegistroIds,
+      usuarioId,
       tipo: query.tipo,
       fechaDesde,
       fechaHasta,
@@ -235,6 +243,7 @@ export const racimoMovimientoService = {
     const semanaEmbolseId = query.semanaEmbolseUuid
       ? (await findSemanaByUuidOrFail(query.semanaEmbolseUuid)).id
       : undefined;
+    const usuarioId = query.usuarioUuid ? (await findUsuarioByUuidOrFail(query.usuarioUuid)).id : undefined;
 
     // Mismo criterio que listMovimientos: filtra por `semanaRegistroId`
     // guardado, no por la `fecha` real del movimiento (ver comentario ahí).
@@ -259,7 +268,7 @@ export const racimoMovimientoService = {
 
     const rows = await racimoMovimientoRepository.findAllForExport({
       fincaId, fincaIds: getFincaIdsPermitidas(user), loteId, semanaEmbolseId,
-      semanaRegistroIds, tipo: query.tipo, fechaDesde, fechaHasta,
+      semanaRegistroIds, usuarioId, tipo: query.tipo, fechaDesde, fechaHasta,
     });
 
     const FILAS_POR_HOJA = 50000;
@@ -1163,6 +1172,47 @@ export const racimoMovimientoService = {
     }
 
     await racimoMovimientoRepository.softDelete(movimiento, actorId);
+  },
+
+  // Elimina varios movimientos de una sola vez (checkboxes en la tabla de
+  // Movimientos, solo visibles con el permiso racimo_movimiento.eliminar_masivo
+  // — admin por defecto). Todo o nada: si CUALQUIER fila no se puede
+  // eliminar (no existe, no es de una finca permitida, o es histórica sin
+  // permiso para tocar histórico), no se borra NINGUNA — misma lógica que
+  // crearMovimientosEnLote, para no dejar un borrado a medias sin que quede
+  // claro cuáles filas sí se fueron.
+  async deleteMovimientosEnLote(uuids, actorId, user) {
+    if (!Array.isArray(uuids) || uuids.length === 0) {
+      throw ApiError.badRequest('Debes indicar al menos un movimiento');
+    }
+
+    const movimientos = [];
+    for (let i = 0; i < uuids.length; i++) {
+      const nro = i + 1;
+      try {
+        const movimiento = await this.getMovimientoByUuid(uuids[i], user);
+        if (!puedeIgnorarRestriccionSemana(user)) {
+          const ultimaPorFinca = await racimoMovimientoRepository.getUltimaSemanaRegistroPorFinca([movimiento.fincaId]);
+          const ultima = ultimaPorFinca.get(movimiento.fincaId);
+          if (ultima && movimiento.semanaRegistro.fechaInicio < ultima.fechaInicio) {
+            throw new Error(
+              `Solo un administrador (o alguien con permiso de editar histórico) puede eliminar movimientos de semanas anteriores a la última semana registrada en esta finca (${ultima.codigo})`,
+            );
+          }
+        }
+        movimientos.push(movimiento);
+      } catch (error) {
+        throw ApiError.badRequest(`Línea ${nro}: ${error.message}`);
+      }
+    }
+
+    await sequelize.transaction(async (transaction) => {
+      for (const movimiento of movimientos) {
+        await racimoMovimientoRepository.softDelete(movimiento, actorId, { transaction });
+      }
+    });
+
+    return movimientos.length;
   },
 
   // Inventario por cohorte (finca + lote + semana de embolse): totales de

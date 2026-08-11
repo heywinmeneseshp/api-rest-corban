@@ -23,10 +23,13 @@ const parseEstado = (value) => {
 export const loteService = {
   async listLotes(query, user) {
     const { page, limit, offset } = getPagination(query);
+    const fincaId = query.fincaUuid ? (await findFincaByUuidOrFail(query.fincaUuid)).id : undefined;
+    if (fincaId) assertFincaPermitida(user, fincaId);
     const { rows, count } = await loteRepository.findAndCountAll({
       limit,
       offset,
       search: query.search,
+      fincaId,
       fincaIdsPermitidas: getFincaIdsPermitidas(user),
     });
     return { items: rows, meta: buildPaginationMeta({ page, limit, total: count }) };

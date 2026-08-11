@@ -10,13 +10,17 @@ export const listRacimoMovimientosSchema = Joi.object({
   params: Joi.object({}),
   query: Joi.object({
     page: Joi.number().integer().min(1),
-    limit: Joi.number().integer().min(1).max(100),
+    // Tope alto a propósito: la tabla de Movimientos permite subir el
+    // límite de la página para poder seleccionar y eliminar en bloque
+    // varias filas a la vez, sin tener que ir página por página.
+    limit: Joi.number().integer().min(1).max(500),
     fincaUuid: uuidRef,
     loteUuid: uuidRef,
     semanaEmbolseUuid: uuidRef,
     semanaRegistroUuid: uuidRef,
     semanaRegistroDesdeUuid: uuidRef,
     semanaRegistroHastaUuid: uuidRef,
+    usuarioUuid: uuidRef,
     tipo: Joi.string().valid(...TIPOS),
     fechaDesde: Joi.date().iso().raw(),
     fechaHasta: Joi.date().iso().raw(),
@@ -26,6 +30,14 @@ export const listRacimoMovimientosSchema = Joi.object({
 export const getRacimoMovimientoSchema = Joi.object({
   body: Joi.object({}),
   params: Joi.object({ uuid: uuidParam }),
+  query: Joi.object({}),
+});
+
+export const deleteRacimoMovimientosEnLoteSchema = Joi.object({
+  body: Joi.object({
+    uuids: Joi.array().items(uuidRef).min(1).max(500).required(),
+  }),
+  params: Joi.object({}),
   query: Joi.object({}),
 });
 
@@ -110,6 +122,7 @@ export const exportarMovimientosSchema = Joi.object({
     semanaEmbolseUuid: uuidRef,
     semanaRegistroDesdeUuid: uuidRef,
     semanaRegistroHastaUuid: uuidRef,
+    usuarioUuid: uuidRef,
     tipo: Joi.string().valid(...TIPOS),
     fechaDesde: Joi.date().iso().raw(),
     fechaHasta: Joi.date().iso().raw(),

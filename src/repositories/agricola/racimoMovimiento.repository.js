@@ -37,6 +37,7 @@ export const racimoMovimientoRepository = {
     semanaEmbolseId,
     semanaRegistroId,
     semanaRegistroIds,
+    usuarioId,
     tipo,
     fechaDesde,
     fechaHasta,
@@ -46,6 +47,7 @@ export const racimoMovimientoRepository = {
       ...(loteId ? { loteId } : {}),
       ...(semanaEmbolseId ? { semanaEmbolseId } : {}),
       ...(semanaRegistroIds ? { semanaRegistroId: { [Op.in]: semanaRegistroIds } } : semanaRegistroId ? { semanaRegistroId } : {}),
+      ...(usuarioId ? { createdBy: usuarioId } : {}),
       ...(tipo ? { tipo } : {}),
       ...(fechaDesde || fechaHasta
         ? {
@@ -227,6 +229,7 @@ export const racimoMovimientoRepository = {
     semanaEmbolseId,
     semanaRegistroId,
     semanaRegistroIds,
+    usuarioId,
     tipo,
     fechaDesde,
     fechaHasta,
@@ -236,6 +239,7 @@ export const racimoMovimientoRepository = {
       ...(loteId ? { loteId } : {}),
       ...(semanaEmbolseId ? { semanaEmbolseId } : {}),
       ...(semanaRegistroIds ? { semanaRegistroId: { [Op.in]: semanaRegistroIds } } : semanaRegistroId ? { semanaRegistroId } : {}),
+      ...(usuarioId ? { createdBy: usuarioId } : {}),
       ...(tipo ? { tipo } : {}),
       ...(fechaDesde || fechaHasta
         ? {

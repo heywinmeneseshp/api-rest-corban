@@ -10,6 +10,7 @@ import {
   getRacimoMovimientoSchema,
   createRacimoMovimientoSchema,
   createRacimoMovimientosEnLoteSchema,
+  deleteRacimoMovimientosEnLoteSchema,
   inventarioRacimosSchema,
   resumenCohorteSchema,
   reporteSaldosSchema,
@@ -205,6 +206,24 @@ router.get(
   permission(PERMISSIONS.RACIMO_MOVIMIENTO_VER),
   validate(exportarReporteSemanalSchema),
   racimoMovimientoController.exportarReporteSemanal,
+);
+
+/**
+ * @openapi
+ * /racimo-movimientos/eliminar-en-lote:
+ *   post:
+ *     tags: [Movimientos de Racimos]
+ *     summary: Eliminar varios movimientos de racimos de una sola vez (todo o nada)
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.post(
+  '/eliminar-en-lote',
+  auth,
+  permission(PERMISSIONS.RACIMO_MOVIMIENTO_ELIMINAR_MASIVO),
+  validate(deleteRacimoMovimientosEnLoteSchema),
+  racimoMovimientoController.eliminarEnLote,
 );
 
 /**
