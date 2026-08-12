@@ -9,6 +9,7 @@ import {
   toggleConfigSchema,
   uuidParamSchema,
   registrarSchema,
+  resolverInconsistenciaSchema,
 } from '../../validators/agricola/precipitacionDiaria.validator.js';
 
 const router = Router();
@@ -48,6 +49,22 @@ router.delete(
   permission(PERMISSIONS.PRECIPITACION_DIARIA_CONFIGURAR),
   validate(uuidParamSchema),
   precipitacionDiariaController.eliminarConfig,
+);
+
+// Reporte de inconsistencias entre precipitacion_diaria y clima — mismo
+// permiso que ver/configurar la precipitación diaria (no un módulo aparte).
+router.get(
+  '/inconsistencias',
+  auth,
+  permission(PERMISSIONS.PRECIPITACION_DIARIA_VER),
+  precipitacionDiariaController.listInconsistencias,
+);
+router.put(
+  '/inconsistencias/:uuid',
+  auth,
+  permission(PERMISSIONS.PRECIPITACION_DIARIA_CONFIGURAR),
+  validate(resolverInconsistenciaSchema),
+  precipitacionDiariaController.resolverInconsistencia,
 );
 
 export default router;

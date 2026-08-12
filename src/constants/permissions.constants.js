@@ -135,6 +135,13 @@ export const PERMISSIONS = {
   PRECIPITACION_DIARIA_VER: 'precipitacion_diaria.ver',
   PRECIPITACION_DIARIA_CONFIGURAR: 'precipitacion_diaria.configurar',
 
+  // El registro individual de Clima (POST /clima, un día/finca a la vez) no
+  // exige permiso puntual — lo usa cualquier usuario autenticado desde la
+  // app móvil o el modal de Precipitación Diaria. Este permiso es solo para
+  // el cargue masivo por archivo (varios días/fincas de una vez), que sí es
+  // una acción de oficina/administración.
+  CLIMA_CREAR: 'clima.crear',
+
   // Igual patrón que Precipitación Diaria, pero para el área total y en
   // producción de los lotes: VER es para consultar la configuración,
   // CONFIGURAR para programar qué rol/finca/fecha exige el registro (solo
@@ -164,6 +171,55 @@ export const PERMISSIONS = {
   LABOR_EVALUACION_VER: 'labor_evaluacion.ver',
 
   SISTEMA_RESET_DATOS: 'sistema.reset_datos',
+
+  // ─── Menú / navegación ───
+  // Capa nueva, separada de los permisos granulares de arriba: controla
+  // únicamente qué botón del menú lateral se ve y a qué pantalla se puede
+  // entrar (bloquea también por URL directa, igual que cualquier otro
+  // RequirePermission). Los permisos granulares existentes (finca.ver,
+  // infeccion.crear, precipitacion_diaria.configurar, etc.) siguen
+  // controlando el backend y las acciones puntuales dentro de cada
+  // pantalla — esto no los reemplaza. MENU_<seccion> es el botón de
+  // primer nivel (ej. "Maestros"); MENU_<seccion>_<sub> es cada link
+  // puntual dentro de esa sección ya visible.
+  MENU_MAESTROS: 'menu.maestros',
+  MENU_MAESTROS_FINCAS: 'menu.maestros.fincas',
+  MENU_MAESTROS_GRUPOS_FINCA: 'menu.maestros.grupos_finca',
+  MENU_MAESTROS_AREA_LOTES: 'menu.maestros.area_lotes',
+  MENU_MAESTROS_USUARIOS: 'menu.maestros.usuarios',
+  MENU_MAESTROS_ROLES: 'menu.maestros.roles',
+  MENU_MAESTROS_SEMANAS: 'menu.maestros.semanas',
+  MENU_MAESTROS_CALENDARIO: 'menu.maestros.calendario',
+  MENU_MAESTROS_MOTIVOS_REPIQUE: 'menu.maestros.motivos_repique',
+  MENU_MAESTROS_MOTIVOS_RECUSE: 'menu.maestros.motivos_recuse',
+  MENU_MAESTROS_CATEGORIAS_LABOR: 'menu.maestros.categorias_labor',
+  MENU_MAESTROS_LABORES: 'menu.maestros.labores',
+  MENU_MAESTROS_ESTADIOS_SIGATOKA: 'menu.maestros.estadios_sigatoka',
+  MENU_MAESTROS_VERSION_APP: 'menu.maestros.version_app',
+
+  MENU_RACIMOS: 'menu.racimos',
+  MENU_RACIMOS_MOVIMIENTOS: 'menu.racimos.movimientos',
+  // Cubre los 3 links (Embolse/Repique/Corte), que hoy ya comparten un solo
+  // permiso granular (racimo_movimiento.crear) — se mantiene esa agrupación.
+  MENU_RACIMOS_REGISTRAR: 'menu.racimos.registrar',
+  MENU_RACIMOS_SALDOS_LOTES_CINTAS: 'menu.racimos.saldos_lotes_cintas',
+  MENU_RACIMOS_REPORTE_EMBOLSES: 'menu.racimos.reporte_embolses',
+
+  MENU_LABORES: 'menu.labores',
+  MENU_LABORES_CALENDARIO: 'menu.labores.calendario',
+  MENU_LABORES_ESTADOS: 'menu.labores.estados',
+
+  MENU_SANIDAD_VEGETAL: 'menu.sanidad_vegetal',
+  MENU_SANIDAD_VEGETAL_EVALUACIONES: 'menu.sanidad_vegetal.evaluaciones',
+  MENU_SANIDAD_VEGETAL_GRAFICOS: 'menu.sanidad_vegetal.graficos',
+  MENU_SANIDAD_VEGETAL_LABORES: 'menu.sanidad_vegetal.labores',
+
+  // Ítems planos del menú (hoy sin submenú propio, un solo código cada uno).
+  MENU_PRECIPITACION_DIARIA: 'menu.precipitacion_diaria',
+  MENU_PRODUCCION_SEMANAL: 'menu.produccion_semanal',
+  MENU_PRONOSTICO: 'menu.pronostico',
+  MENU_CARGUE_MASIVO: 'menu.cargue_masivo',
+  MENU_REPORTES: 'menu.reportes',
 };
 
 export const PERMISSIONS_SEED = [
@@ -274,6 +330,7 @@ export const PERMISSIONS_SEED = [
 
   { codigo: PERMISSIONS.PRECIPITACION_DIARIA_VER, nombre: 'Ver precipitación diaria y su configuración' },
   { codigo: PERMISSIONS.PRECIPITACION_DIARIA_CONFIGURAR, nombre: 'Programar captura obligatoria de precipitación diaria' },
+  { codigo: PERMISSIONS.CLIMA_CREAR, nombre: 'Cargue masivo de clima (precipitación/temperatura/humedad)' },
 
   { codigo: PERMISSIONS.AREA_LOTE_VER, nombre: 'Ver configuración de área de lotes' },
   { codigo: PERMISSIONS.AREA_LOTE_CONFIGURAR, nombre: 'Programar captura obligatoria de área de lotes' },
@@ -296,4 +353,40 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.LABOR_EVALUACION_VER, nombre: 'Ver evaluación de labores (visitas de sanidad/labor cultural)' },
 
   { codigo: PERMISSIONS.SISTEMA_RESET_DATOS, nombre: 'Borrar todos los datos que no vienen de los seeders' },
+
+  { codigo: PERMISSIONS.MENU_MAESTROS, nombre: 'Ver sección Maestros en el menú' },
+  { codigo: PERMISSIONS.MENU_MAESTROS_FINCAS, nombre: 'Ver submenú Fincas' },
+  { codigo: PERMISSIONS.MENU_MAESTROS_GRUPOS_FINCA, nombre: 'Ver submenú Grupos de Finca' },
+  { codigo: PERMISSIONS.MENU_MAESTROS_AREA_LOTES, nombre: 'Ver submenú Área de Lotes' },
+  { codigo: PERMISSIONS.MENU_MAESTROS_USUARIOS, nombre: 'Ver submenú Usuarios' },
+  { codigo: PERMISSIONS.MENU_MAESTROS_ROLES, nombre: 'Ver submenú Roles' },
+  { codigo: PERMISSIONS.MENU_MAESTROS_SEMANAS, nombre: 'Ver submenú Semanas' },
+  { codigo: PERMISSIONS.MENU_MAESTROS_CALENDARIO, nombre: 'Ver submenú Calendario' },
+  { codigo: PERMISSIONS.MENU_MAESTROS_MOTIVOS_REPIQUE, nombre: 'Ver submenú Motivos de Repique' },
+  { codigo: PERMISSIONS.MENU_MAESTROS_MOTIVOS_RECUSE, nombre: 'Ver submenú Motivos de Recuse' },
+  { codigo: PERMISSIONS.MENU_MAESTROS_CATEGORIAS_LABOR, nombre: 'Ver submenú Categorías de Labor' },
+  { codigo: PERMISSIONS.MENU_MAESTROS_LABORES, nombre: 'Ver submenú Labores' },
+  { codigo: PERMISSIONS.MENU_MAESTROS_ESTADIOS_SIGATOKA, nombre: 'Ver submenú Estadios de Sigatoka' },
+  { codigo: PERMISSIONS.MENU_MAESTROS_VERSION_APP, nombre: 'Ver submenú Versión App Móvil' },
+
+  { codigo: PERMISSIONS.MENU_RACIMOS, nombre: 'Ver sección Racimos en el menú' },
+  { codigo: PERMISSIONS.MENU_RACIMOS_MOVIMIENTOS, nombre: 'Ver submenú Movimientos' },
+  { codigo: PERMISSIONS.MENU_RACIMOS_REGISTRAR, nombre: 'Ver submenús Registrar Embolse/Repique/Corte' },
+  { codigo: PERMISSIONS.MENU_RACIMOS_SALDOS_LOTES_CINTAS, nombre: 'Ver submenú Saldos × Lotes y Cintas' },
+  { codigo: PERMISSIONS.MENU_RACIMOS_REPORTE_EMBOLSES, nombre: 'Ver submenú Reporte de Embolses' },
+
+  { codigo: PERMISSIONS.MENU_LABORES, nombre: 'Ver sección Labores en el menú' },
+  { codigo: PERMISSIONS.MENU_LABORES_CALENDARIO, nombre: 'Ver submenú Calendario de Labores' },
+  { codigo: PERMISSIONS.MENU_LABORES_ESTADOS, nombre: 'Ver submenú Estados de Labores' },
+
+  { codigo: PERMISSIONS.MENU_SANIDAD_VEGETAL, nombre: 'Ver sección Sanidad Vegetal en el menú' },
+  { codigo: PERMISSIONS.MENU_SANIDAD_VEGETAL_EVALUACIONES, nombre: 'Ver submenú Evaluaciones' },
+  { codigo: PERMISSIONS.MENU_SANIDAD_VEGETAL_GRAFICOS, nombre: 'Ver submenú Gráficos' },
+  { codigo: PERMISSIONS.MENU_SANIDAD_VEGETAL_LABORES, nombre: 'Ver submenú Evaluación de Labores' },
+
+  { codigo: PERMISSIONS.MENU_PRECIPITACION_DIARIA, nombre: 'Ver ítem de menú Precipitación Diaria' },
+  { codigo: PERMISSIONS.MENU_PRODUCCION_SEMANAL, nombre: 'Ver ítem de menú Producción Semanal' },
+  { codigo: PERMISSIONS.MENU_PRONOSTICO, nombre: 'Ver ítem de menú Pronóstico de Cajas' },
+  { codigo: PERMISSIONS.MENU_CARGUE_MASIVO, nombre: 'Ver ítem de menú Cargue Masivo' },
+  { codigo: PERMISSIONS.MENU_REPORTES, nombre: 'Ver ítem de menú Reportes' },
 ];

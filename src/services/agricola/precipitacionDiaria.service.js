@@ -1,8 +1,10 @@
 import crypto from 'crypto';
+import { Op } from 'sequelize';
 import { sequelize } from '../../database/connection.js';
 import { Finca, Role, Semana } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getFincaIdsPermitidas, expandirFincaUuids } from '../../utils/fincaScope.js';
+import { climaService } from './clima.service.js';
 
 // Dos tablas nuevas, separadas del "clima" que registra la app móvil:
 // - precipitacion_diaria_config: qué rol debe capturar la precipitación de
@@ -53,7 +55,26 @@ const ensureTables = async () => {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
 
+  // Marca si el mm de este registro coincide con el que haya en `clima`
+  // para la misma finca+fecha — NULL = todavía no comparado (registros
+  // viejos antes de que existiera esta columna, hasta que corra el backfill).
+  try {
+    await sequelize.query(`ALTER TABLE ${TABLE_REGISTRO} ADD COLUMN coincide_clima TINYINT(1) NULL`);
+  } catch (err) {
+    if (err.original?.errno !== 1060) throw err; // 1060 = la columna ya existe
+  }
+
   tablasVerificadas = true;
+};
+
+// Compara el mm de un registro de precipitacion_diaria contra el `clima` de
+// la misma finca+fecha. No existe fila en clima, o el mm no coincide → false;
+// mm igual (comparado como número, no como string) → true. Nunca escribe en
+// `clima` — las dos tablas siguen siendo independientes, esto solo lee.
+const calcularCoincide = async (fincaUuid, fecha, mm) => {
+  const registroClima = await climaService.getByFincaFecha(fincaUuid, fecha);
+  if (!registroClima || registroClima.mm === null) return false; // sin dato real en clima aún
+  return Number(registroClima.mm) === Number(mm);
 };
 
 // Zona horaria del negocio, no la del servidor — en local el servidor corre
@@ -190,10 +211,11 @@ export const precipitacionDiariaService = {
       }
       const finca = await resolverFinca(r.fincaUuid);
       const uuid = crypto.randomUUID();
+      const coincide = await calcularCoincide(finca.uuid, r.fecha, r.mm);
       await sequelize.query(
-        `INSERT INTO ${TABLE_REGISTRO} (uuid, finca_id, finca_uuid, finca_nombre, fecha, mm, usuario_id, usuario_nombre)
-         VALUES (:uuid, :fincaId, :fincaUuid, :fincaNombre, :fecha, :mm, :usuarioId, :usuarioNombre)
-         ON DUPLICATE KEY UPDATE mm = VALUES(mm), usuario_id = VALUES(usuario_id), usuario_nombre = VALUES(usuario_nombre)`,
+        `INSERT INTO ${TABLE_REGISTRO} (uuid, finca_id, finca_uuid, finca_nombre, fecha, mm, usuario_id, usuario_nombre, coincide_clima)
+         VALUES (:uuid, :fincaId, :fincaUuid, :fincaNombre, :fecha, :mm, :usuarioId, :usuarioNombre, :coincide)
+         ON DUPLICATE KEY UPDATE mm = VALUES(mm), usuario_id = VALUES(usuario_id), usuario_nombre = VALUES(usuario_nombre), coincide_clima = VALUES(coincide_clima)`,
         {
           replacements: {
             uuid,
@@ -204,10 +226,11 @@ export const precipitacionDiariaService = {
             mm: r.mm,
             usuarioId: actorId || null,
             usuarioNombre: actorNombre || null,
+            coincide: coincide ? 1 : 0,
           },
         },
       );
-      resultados.push({ fincaUuid: finca.uuid, fecha: r.fecha, mm: r.mm });
+      resultados.push({ fincaUuid: finca.uuid, fecha: r.fecha, mm: r.mm, coincideClima: coincide });
     }
 
     return resultados;
@@ -235,6 +258,10 @@ export const precipitacionDiariaService = {
     if (query.fechaHasta) {
       where += ' AND fecha <= :fechaHasta';
       replacements.fechaHasta = query.fechaHasta;
+    }
+    if (query.usuarioId) {
+      where += ' AND usuario_id = :usuarioId';
+      replacements.usuarioId = query.usuarioId;
     }
 
     const rows = await sequelize.query(
@@ -303,6 +330,129 @@ export const precipitacionDiariaService = {
     }
 
     return pendientesPorFinca;
+  },
+
+  // ─── Inconsistencias contra `clima` ───
+
+  // Recalcula coincide_clima para TODOS los registros existentes (los que
+  // quedaron en NULL por haberse creado antes de que existiera esta
+  // comparación). Se corre una vez; después cada `registrar()` ya calcula
+  // el flag al vuelo, así que este método puede volver a llamarse sin
+  // problema — es idempotente.
+  async recalcularCoincidencias() {
+    await ensureTables();
+    const registros = await sequelize.query(
+      `SELECT uuid, finca_uuid, fecha, mm FROM ${TABLE_REGISTRO}`,
+      { type: 'SELECT' },
+    );
+
+    let actualizados = 0;
+    for (const r of registros) {
+      const fecha = r.fecha instanceof Date ? r.fecha.toISOString().slice(0, 10) : String(r.fecha);
+      const coincide = await calcularCoincide(r.finca_uuid, fecha, r.mm);
+      await sequelize.query(
+        `UPDATE ${TABLE_REGISTRO} SET coincide_clima = :coincide WHERE uuid = :uuid`,
+        { replacements: { coincide: coincide ? 1 : 0, uuid: r.uuid } },
+      );
+      actualizados += 1;
+    }
+
+    return { revisados: actualizados };
+  },
+
+  // Lista los registros marcados como no-coincidentes, junto con el valor
+  // que tenga (si tiene) el `clima` de esa misma finca+fecha, para que el
+  // usuario decida cuál tomar como definitivo.
+  async listInconsistencias() {
+    await ensureTables();
+    const registros = await sequelize.query(
+      `SELECT * FROM ${TABLE_REGISTRO} WHERE coincide_clima = 0 ORDER BY fecha DESC`,
+      { type: 'SELECT' },
+    );
+
+    const resultado = [];
+    for (const r of registros) {
+      const fecha = r.fecha instanceof Date ? r.fecha.toISOString().slice(0, 10) : String(r.fecha);
+      const registroClima = await climaService.getByFincaFecha(r.finca_uuid, fecha);
+      resultado.push({
+        uuid: r.uuid,
+        fincaUuid: r.finca_uuid,
+        fincaNombre: r.finca_nombre,
+        fecha,
+        precipitacionDiaria: { mm: Number(r.mm) },
+        clima: registroClima
+          ? { uuid: registroClima.uuid, mm: registroClima.mm === null ? null : Number(registroClima.mm) }
+          : null,
+      });
+    }
+    return resultado;
+  },
+
+  // Resuelve una inconsistencia puntual: el usuario elige cuál de los dos
+  // valores es el correcto y ESE overwrite explícito es el único momento en
+  // que estas dos tablas se escriben cruzadas entre sí.
+  async resolverInconsistencia(uuid, fuente, actorId, actorNombre) {
+    await ensureTables();
+    if (!['precipitacion_diaria', 'clima'].includes(fuente)) {
+      throw ApiError.badRequest('fuente debe ser "precipitacion_diaria" o "clima"');
+    }
+
+    const [registro] = await sequelize.query(
+      `SELECT * FROM ${TABLE_REGISTRO} WHERE uuid = :uuid`,
+      { replacements: { uuid }, type: 'SELECT' },
+    );
+    if (!registro) throw ApiError.notFound('Registro no encontrado');
+
+    const fecha = registro.fecha instanceof Date ? registro.fecha.toISOString().slice(0, 10) : String(registro.fecha);
+    const registroClima = await climaService.getByFincaFecha(registro.finca_uuid, fecha);
+
+    if (fuente === 'clima') {
+      if (!registroClima || registroClima.mm === null) {
+        throw ApiError.badRequest('No hay un valor de clima cargado todavía para tomar como definitivo');
+      }
+      await sequelize.query(
+        `UPDATE ${TABLE_REGISTRO} SET mm = :mm, coincide_clima = 1 WHERE uuid = :uuid`,
+        { replacements: { mm: registroClima.mm, uuid } },
+      );
+    } else if (registroClima && registroClima.mm !== null) {
+      // Ya había un valor real en clima, y difería — se sobreescribe con el
+      // de Precipitación Diaria, que se toma como el correcto.
+      await sequelize.query(
+        `UPDATE clima SET mm = :mm WHERE uuid = :uuid`,
+        { replacements: { mm: registro.mm, uuid: registroClima.uuid } },
+      );
+      await sequelize.query(
+        `UPDATE ${TABLE_REGISTRO} SET coincide_clima = 1 WHERE uuid = :uuid`,
+        { replacements: { uuid } },
+      );
+    } else if (!registroClima) {
+      // No existe fila en clima para ese día: se crea una vacía (sin mm,
+      // sin temperatura/humedad) como "placeholder" — no se copia el mm de
+      // Precipitación Diaria, porque ese dato lo tiene que digitar quien
+      // corresponda desde la app móvil. Como sigue sin haber un mm real que
+      // comparar, la inconsistencia NO se marca como resuelta todavía (queda
+      // coincide_clima = 0, así sigue apareciendo en el reporte hasta que
+      // alguien cargue el dato real en clima).
+      const semana = await Semana.findOne({
+        where: { fechaInicio: { [Op.lte]: fecha }, fechaFin: { [Op.gte]: fecha } },
+      });
+      await climaService.create(
+        {
+          fincaUuid: registro.finca_uuid,
+          fincaNombre: registro.finca_nombre,
+          semanaUuid: semana?.uuid,
+          semanaCodigo: semana?.codigo,
+          fecha,
+          mm: null,
+          usuarioNombre: actorNombre,
+        },
+        actorId,
+      );
+    }
+    // else: registroClima existe pero mm ya es null (placeholder previo) —
+    // no hay nada que hacer, sigue esperando el dato real.
+
+    return { uuid, fuente };
   },
 };
 

@@ -40,28 +40,40 @@ export const dashboardService = {
     }
     const fw = fincaWhere(fincaIds, fincaIdsPermitidas !== null);
 
-    // Ordenar por `semanaId` (el id interno de la tabla semanas) NO es
-    // confiable: ese id solo refleja el orden en que se CREÓ cada fila de
-    // semana, no el orden cronológico real — una carga histórica tardía
-    // (ej. producción de 2023 subida recién ahora) puede terminar con un id
-    // más alto que semanas más recientes. Hay que ordenar por año y número
-    // de semana de verdad.
-    const ultimaProduccion = await ProduccionSemanal.findOne({
-      include: [{ model: Semana, as: 'semana', attributes: [] }],
-      order: [
-        [{ model: Semana, as: 'semana' }, 'anio', 'DESC'],
-        [{ model: Semana, as: 'semana' }, 'numeroSemana', 'DESC'],
-      ],
-      attributes: ['semanaId'],
-    });
+    // `semanaUuid` (opcional): el usuario puede elegir una semana puntual
+    // desde el selector de Inicio en vez de ver siempre la última con
+    // datos. Se usa como ancla tanto para las tarjetas de arriba como para
+    // el rango de la tabla de cohortes (ver más abajo, reemplaza también a
+    // `semanaActual`) — "ver el dashboard como si esa fuera la semana
+    // vigente", no solo cambiar un número suelto.
+    let ultimaSemana;
+    if (query.semanaUuid) {
+      ultimaSemana = await Semana.findOne({ where: { uuid: query.semanaUuid } });
+      if (!ultimaSemana) throw ApiError.notFound('Semana no encontrada');
+    } else {
+      // Ordenar por `semanaId` (el id interno de la tabla semanas) NO es
+      // confiable: ese id solo refleja el orden en que se CREÓ cada fila de
+      // semana, no el orden cronológico real — una carga histórica tardía
+      // (ej. producción de 2023 subida recién ahora) puede terminar con un id
+      // más alto que semanas más recientes. Hay que ordenar por año y número
+      // de semana de verdad.
+      const ultimaProduccion = await ProduccionSemanal.findOne({
+        include: [{ model: Semana, as: 'semana', attributes: [] }],
+        order: [
+          [{ model: Semana, as: 'semana' }, 'anio', 'DESC'],
+          [{ model: Semana, as: 'semana' }, 'numeroSemana', 'DESC'],
+        ],
+        attributes: ['semanaId'],
+      });
 
-    if (!ultimaProduccion) {
-      throw ApiError.notFound('No hay registros de producción semanal');
-    }
+      if (!ultimaProduccion) {
+        throw ApiError.notFound('No hay registros de producción semanal');
+      }
 
-    const ultimaSemana = await Semana.findByPk(ultimaProduccion.semanaId);
-    if (!ultimaSemana) {
-      throw ApiError.notFound('Semana no encontrada');
+      ultimaSemana = await Semana.findByPk(ultimaProduccion.semanaId);
+      if (!ultimaSemana) {
+        throw ApiError.notFound('Semana no encontrada');
+      }
     }
 
     const [cajasRow] = await ProduccionSemanal.findAll({
@@ -79,7 +91,9 @@ export const dashboardService = {
     const racimosCortados = Number(cortesRow?.total || 0);
     const ratio = racimosCortados > 0 ? Math.round((cajasProducidas / racimosCortados) * 100) / 100 : 0;
 
-    const semanaActual = await semanaRepository.findByFecha(new Date().toISOString().slice(0, 10));
+    const semanaActual = query.semanaUuid
+      ? ultimaSemana
+      : await semanaRepository.findByFecha(new Date().toISOString().slice(0, 10));
     const semanasEmbolse = semanaActual ? await semanaRepository.findUltimasN(semanaActual.id, cantidadSemanas) : [];
     semanasEmbolse.reverse();
     const semanaEmbolseIds = semanasEmbolse.map((s) => s.id);

@@ -46,6 +46,21 @@ export const precipitacionDiariaController = {
     await precipitacionDiariaService.eliminarConfig(req.params.uuid);
     ApiResponse.send(res, { message: 'Configuración eliminada correctamente' });
   }),
+
+  listInconsistencias: asyncHandler(async (req, res) => {
+    const result = await precipitacionDiariaService.listInconsistencias();
+    ApiResponse.send(res, { message: 'Inconsistencias obtenidas correctamente', data: result });
+  }),
+
+  resolverInconsistencia: asyncHandler(async (req, res) => {
+    const result = await precipitacionDiariaService.resolverInconsistencia(
+      req.params.uuid,
+      req.body.fuente,
+      req.user?.id,
+      req.user?.usuario,
+    );
+    ApiResponse.send(res, { message: 'Inconsistencia resuelta correctamente', data: result });
+  }),
 };
 
 export default precipitacionDiariaController;

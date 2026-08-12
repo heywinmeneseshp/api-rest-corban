@@ -28,6 +28,16 @@ export const uuidParamSchema = Joi.object({
   query: Joi.object({}),
 });
 
+export const resolverInconsistenciaSchema = Joi.object({
+  body: Joi.object({
+    fuente: Joi.string().valid('precipitacion_diaria', 'clima').required(),
+  }),
+  params: Joi.object({
+    uuid: Joi.string().uuid().required(),
+  }),
+  query: Joi.object({}),
+});
+
 export const registrarSchema = Joi.object({
   body: Joi.object({
     registros: Joi.array()
