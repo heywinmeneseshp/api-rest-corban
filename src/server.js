@@ -18,7 +18,7 @@ const start = async () => {
     // los bloqueos del firewall del hosting. Acá se corre solo si se pide
     // explícitamente con AUTO_MIGRATE=true; para migrar/sembrar en local
     // usá `npm run db:migrate` / `npm run db:seed` a mano.
-    if (process.env.AUTO_MIGRATE === 'true') {
+    if (process.env.AUTO_MIGRATE === 'false') {
       await runPendingMigrationsAndSeeders();
     }
 
