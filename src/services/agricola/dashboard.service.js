@@ -197,21 +197,54 @@ export const dashboardService = {
     const primeraSemanaEmbolse = primeraEmbolse
       ? semanasAnio.find((s) => s.id === primeraEmbolse.semanaEmbolseId) : null;
 
-    const cajasAnual = todasSemanaIds.length > 0 ? await ProduccionSemanal.findAll({
+    // Para el Ratio se agrupa por finca+semana (no solo por semana) — una
+    // finca que esa semana solo tenga cajas (sin cosecha registrada) o solo
+    // cosecha (sin cajas registradas) se excluye de esa semana por
+    // completo, en vez de sumarse igual y distorsionar el ratio con datos
+    // de un solo lado. Ver conversación: dos módulos independientes que no
+    // siempre se cargan juntos.
+    const cajasAnualPorFinca = todasSemanaIds.length > 0 ? await ProduccionSemanal.findAll({
       where: { semanaId: { [Op.in]: todasSemanaIds }, ...fw },
-      attributes: ['semanaId', [fn('SUM', col('cajas_20kg')), 'total']],
-      group: ['semanaId'],
+      attributes: ['semanaId', 'fincaId', [fn('SUM', col('cajas_20kg')), 'total']],
+      group: ['semanaId', 'fincaId'],
       raw: true,
     }) : [];
-    const cajasAnualMap = new Map(cajasAnual.map((r) => [r.semanaId, Number(r.total)]));
 
-    const cortesAnual = todasSemanaIds.length > 0 ? await RacimoMovimiento.findAll({
+    const cortesAnualPorFinca = todasSemanaIds.length > 0 ? await RacimoMovimiento.findAll({
       where: { tipo: { [Op.in]: ['RECUSE', 'PROCESADO'] }, semanaRegistroId: { [Op.in]: todasSemanaIds }, ...fw },
-      attributes: ['semanaRegistroId', [fn('SUM', col('cantidad')), 'total']],
-      group: ['semanaRegistroId'],
+      attributes: ['semanaRegistroId', 'fincaId', [fn('SUM', col('cantidad')), 'total']],
+      group: ['semanaRegistroId', 'fincaId'],
       raw: true,
     }) : [];
-    const cortesAnualMap = new Map(cortesAnual.map((r) => [r.semanaRegistroId, Number(r.total)]));
+
+    // Mapas anidados semanaId -> fincaId -> total, para poder cruzar cuáles
+    // fincas tienen AMBOS datos esa semana antes de sumar.
+    const cajasPorSemanaYFinca = new Map();
+    for (const r of cajasAnualPorFinca) {
+      if (!cajasPorSemanaYFinca.has(r.semanaId)) cajasPorSemanaYFinca.set(r.semanaId, new Map());
+      cajasPorSemanaYFinca.get(r.semanaId).set(r.fincaId, Number(r.total));
+    }
+    const cortesPorSemanaYFinca = new Map();
+    for (const r of cortesAnualPorFinca) {
+      if (!cortesPorSemanaYFinca.has(r.semanaRegistroId)) cortesPorSemanaYFinca.set(r.semanaRegistroId, new Map());
+      cortesPorSemanaYFinca.get(r.semanaRegistroId).set(r.fincaId, Number(r.total));
+    }
+
+    const cajasAnualMap = new Map();
+    const cortesAnualMap = new Map();
+    for (const semanaId of todasSemanaIds) {
+      const cajasFincas = cajasPorSemanaYFinca.get(semanaId) || new Map();
+      const cortesFincas = cortesPorSemanaYFinca.get(semanaId) || new Map();
+      let totalCajas = 0;
+      let totalCortes = 0;
+      for (const fincaId of cajasFincas.keys()) {
+        if (!cortesFincas.has(fincaId)) continue; // sin cosecha esa semana: se excluye
+        totalCajas += cajasFincas.get(fincaId);
+        totalCortes += cortesFincas.get(fincaId);
+      }
+      if (totalCajas > 0) cajasAnualMap.set(semanaId, totalCajas);
+      if (totalCortes > 0) cortesAnualMap.set(semanaId, totalCortes);
+    }
 
     const embolseRows = todasSemanaIds.length > 0 ? await RacimoMovimiento.findAll({
       where: { tipo: 'EMBOLSE', semanaEmbolseId: { [Op.in]: todasSemanaIds }, ...fw },
@@ -294,7 +327,10 @@ export const dashboardService = {
         semanaCodigo: semana.codigo,
         cajas: esFutura || sinDatos ? null : cajasSem,
         racimosCortados: esFutura || sinDatos ? null : cortesSem,
-        ratio: esFutura || sinDatos ? null : (cortesSem > 0 ? Math.round((cajasSem / cortesSem) * 100) / 100 : 0),
+        // Sin racimos cortados el ratio no está definido (no es "0", es que
+        // falta cargar el corte de esa semana) — antes se mostraba como 0 y
+        // se veía como una caída real en el gráfico aunque sí hubiera cajas.
+        ratio: esFutura || sinDatos || cortesSem === 0 ? null : Math.round((cajasSem / cortesSem) * 100) / 100,
       };
     });
 

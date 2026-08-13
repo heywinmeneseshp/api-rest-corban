@@ -27,6 +27,16 @@ export const climaController = {
     const result = await climaService.promedioSemanal(req.query);
     ApiResponse.send(res, { message: 'Promedio semanal de clima obtenido correctamente', data: result });
   }),
+
+  detalleSemanaPorFinca: asyncHandler(async (req, res) => {
+    const result = await climaService.detalleSemanaPorFinca(req.params.semanaUuid, req.query);
+    ApiResponse.send(res, { message: 'Detalle por finca obtenido correctamente', data: result });
+  }),
+
+  serie: asyncHandler(async (req, res) => {
+    const result = await climaService.serieClima(req.query);
+    ApiResponse.send(res, { message: 'Serie de clima obtenida correctamente', data: result });
+  }),
 };
 
 export default climaController;

@@ -192,7 +192,18 @@ export const produccionSemanalService = {
     const existentes = await produccionSemanalRepository.findAllBySemanaYFinca({ semanaIds, fincaIds });
     const existenteSet = new Set(existentes.map((e) => `${e.semanaId}-${e.fincaId}`));
 
-    const aInsertar = filasValidas.filter((f) => !existenteSet.has(`${f.semanaId}-${f.fincaId}`));
+    // También descarta duplicados DENTRO del mismo archivo (dos filas para
+    // la misma finca+semana) — si no, ambas pasan el chequeo contra la BD
+    // (ninguna está ahí todavía) y la segunda revienta el INSERT contra el
+    // índice único, mostrando un error crudo de SQL en vez de omitirse
+    // prolijamente como cualquier otro duplicado.
+    const aInsertar = [];
+    for (const f of filasValidas) {
+      const clave = `${f.semanaId}-${f.fincaId}`;
+      if (existenteSet.has(clave)) continue;
+      existenteSet.add(clave);
+      aInsertar.push(f);
+    }
     const saltados = filasValidas.length - aInsertar.length;
 
     if (aInsertar.length > 0) {

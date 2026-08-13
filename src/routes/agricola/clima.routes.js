@@ -13,6 +13,8 @@ router.post('/', auth, climaController.create);
 // Serie para el gráfico de Clima — mismo criterio que el list de arriba,
 // abierto a cualquier usuario autenticado, sin permiso puntual.
 router.get('/promedio-semanal', auth, climaController.promedioSemanal);
+router.get('/promedio-semanal/:semanaUuid/detalle', auth, climaController.detalleSemanaPorFinca);
+router.get('/serie', auth, climaController.serie);
 
 // A diferencia del registro individual (arriba), el cargue masivo por
 // archivo sí exige un permiso puntual — es una acción de oficina/admin, no
