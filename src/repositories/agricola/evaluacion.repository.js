@@ -96,16 +96,16 @@ export const evaluacionRepository = {
   },
 
   // Evaluaciones con sus asociaciones (incluida la semana) para promedios
-  // por semana. `anio` filtra por el año de la semana; `fincaId`/`fincaIds`
-  // filtran por ubicación.
-  async findAllPorSemana({ fincaId, fincaIds, anio }) {
-    const includes = buildIncludes({ fincaId, fincaIds }).map((inc) => {
+  // por semana. `anio`/`semanaId` filtran por la semana (año, o una semana
+  // puntual); `fincaId`/`fincaIds` filtran por ubicación.
+  async findAllPorSemana({ fincaId, fincaIds, anio, semanaId, loteId }) {
+    const includes = buildIncludes({ fincaId, fincaIds, loteId }).map((inc) => {
       if (inc.as === 'semana') {
         return {
           model: Semana,
           as: 'semana',
           attributes: ['id', 'uuid', 'codigo', 'numeroSemana', 'anio', 'fechaInicio', 'color'],
-          where: anio ? { anio } : undefined,
+          where: anio ? { anio } : semanaId ? { id: semanaId } : undefined,
         };
       }
       if (inc.as === 'conteoHojas') {
@@ -125,6 +125,7 @@ export const evaluacionRepository = {
     });
 
     return Evaluacion.findAll({
+      where: semanaId ? { semanaId } : undefined,
       include: includes,
       order: [[{ model: Semana, as: 'semana' }, 'fechaInicio', 'ASC']],
     });

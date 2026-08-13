@@ -1,3 +1,4 @@
+import { Op } from 'sequelize';
 import { sequelize } from '../../database/connection.js';
 import { Planta, User, TipoEvaluacion, Semana, Finca, Lote } from '../../database/associations.js';
 import { evaluacionRepository } from '../../repositories/agricola/evaluacion.repository.js';
@@ -319,6 +320,194 @@ export const evaluacionService = {
         n: e.n,
       }))
       .sort((a, b) => a.anio - b.anio || a.numeroSemana - b.numeroSemana);
+  },
+
+  // Indicadores de una semana puntual (o año, si no llega semanaUuid):
+  // cuántas evaluaciones hizo cada usuario de cada tipo en cada finca, más
+  // los promedios semanales de índice de infección, suma bruta y hojas por
+  // edad de la planta. Es el "tablero" de la página de evaluaciones.
+  async indicadoresPorSemana(query, user) {
+    const fincaId = query.fincaUuid ? (await findFincaByUuidOrFail(query.fincaUuid)).id : undefined;
+    if (fincaId) assertFincaPermitida(user, fincaId);
+    const fincaIds = fincaId ? await expandirFincaIds([fincaId]) : getFincaIdsPermitidas(user);
+    const semana = query.semanaUuid ? await findSemanaByUuidOrFail(query.semanaUuid) : undefined;
+    const anio = query.anio ? Number(query.anio) : semana?.anio;
+    const usuarioId = query.usuarioUuid ? (await findUsuarioByUuidOrFail(query.usuarioUuid)).id : undefined;
+    const lote = query.loteUuid ? await findLoteByUuidOrFail(query.loteUuid) : undefined;
+    if (lote) assertFincaPermitida(user, lote.fincaId);
+
+    const evaluaciones = await evaluacionRepository.findAllPorSemana({
+      fincaIds,
+      anio,
+      semanaId: semana?.id,
+      loteId: lote?.id,
+    });
+
+    // Evaluadores con registros en el período (semana o año) ya limitado por
+    // finca — alimentan el selector de usuario del panel; no depende del
+    // filtro de usuario elegido.
+    const evaluadores = [];
+    const vistos = new Set();
+    evaluaciones.forEach((ev) => {
+      const u = ev.usuario;
+      if (!u?.uuid || vistos.has(u.uuid)) return;
+      vistos.add(u.uuid);
+      evaluadores.push({
+        uuid: u.uuid,
+        usuario: u.usuario,
+        nombre: u.nombre,
+        apellido: u.apellido,
+      });
+    });
+    evaluadores.sort((a, b) => `${a.nombre || ''} ${a.apellido || ''}`.localeCompare(`${b.nombre || ''} ${b.apellido || ''}`));
+
+    const filtradas = usuarioId ? evaluaciones.filter((ev) => ev.usuario?.id === usuarioId) : evaluaciones;
+
+    // Suma Bruta calculada en el momento de la lectura (no se persiste).
+    const conSuma = filtradas.filter((ev) => ev.sumaBruta);
+    const hidratadas = await adjuntarTotales(conSuma.map((ev) => ev.sumaBruta));
+    const totalPorSumaId = new Map(hidratadas.map((h) => [h.id, h.total]));
+
+        // Árbol para el drill-down: finca → lote, con los conteos por tipo en
+    // cada nivel. La finca llega anidada en planta -> lote -> finca; un
+    // registro sin finca no cuenta (datos viejos).
+    const arbol = new Map();
+    let sumaIndice = 0;
+    let nIndice = 0;
+    let sumaYli = 0;
+    let sumaYls = 0;
+    let sumaHojasTotales = 0;
+    let nInfeccion = 0;
+    let sumaBruta = 0;
+    let nBruta = 0;
+    const porEdad = new Map();
+
+    for (let i = 0; i < filtradas.length; i++) {
+      const ev = filtradas[i];
+      const fincaNombre = ev.planta?.lote?.finca?.nombre;
+      if (fincaNombre) {
+        const tipo = ev.tipoEvaluacion?.nombre || 'Sin tipo';
+        const loteNombre = ev.planta?.lote?.nombre || 'Sin lote';
+
+        let nodoFinca = arbol.get(fincaNombre);
+        if (!nodoFinca) {
+          nodoFinca = { finca: fincaNombre, uuid: ev.planta?.lote?.finca?.uuid, total: 0, tipos: new Map(), lotes: new Map() };
+          arbol.set(fincaNombre, nodoFinca);
+        }
+        let nodoLote = nodoFinca.lotes.get(loteNombre);
+        if (!nodoLote) {
+          nodoLote = { lote: loteNombre, uuid: ev.planta?.lote?.uuid, total: 0, tipos: new Map() };
+          nodoFinca.lotes.set(loteNombre, nodoLote);
+        }
+        nodoFinca.total += 1;
+        nodoLote.total += 1;
+        nodoFinca.tipos.set(tipo, (nodoFinca.tipos.get(tipo) || 0) + 1);
+        nodoLote.tipos.set(tipo, (nodoLote.tipos.get(tipo) || 0) + 1);
+      }
+
+      // Promedios semanales.
+      if (ev.infeccion) {
+        const indice = calcularIndiceInfeccion(ev.infeccion.hojas);
+        if (indice !== null) {
+          sumaIndice += indice;
+          nIndice += 1;
+        }
+        sumaYli += Number(ev.infeccion.yli) || 0;
+        sumaYls += Number(ev.infeccion.yls) || 0;
+        sumaHojasTotales += Number(ev.infeccion.hojasTotales) || 0;
+        nInfeccion += 1;
+      }
+      if (ev.sumaBruta && ev.semana) {
+        const total = totalPorSumaId.get(ev.sumaBruta.id);
+        if (total !== undefined) {
+          sumaBruta += total;
+          nBruta += 1;
+        }
+      }
+      if (ev.conteoHojas?.hojasFuncionales !== null && ev.conteoHojas?.hojasFuncionales !== undefined && ev.semana && ev.conteoHojas.semanaEmbolse) {
+        const edad = semanasEntre(ev.conteoHojas.semanaEmbolse.fechaInicio, ev.semana.fechaInicio);
+        if (edad !== null) {
+          const entry = porEdad.get(edad) || { edad, suma: 0, n: 0, evaluaciones: [] };
+          entry.suma += Number(ev.conteoHojas.hojasFuncionales) || 0;
+          entry.n += 1;
+          entry.evaluaciones.push({
+            uuid: ev.uuid,
+            fecha: ev.fecha,
+            hojas: Number(ev.conteoHojas.hojasFuncionales) || 0,
+            lote: ev.planta?.lote?.nombre,
+            finca: ev.planta?.lote?.finca?.nombre,
+          });
+          porEdad.set(edad, entry);
+        }
+      }
+    }
+
+    const aPlano = (tipos) => Object.fromEntries([...tipos.entries()].sort((a, b) => a[0].localeCompare(b[0])));
+
+    // Precipitación acumulada (mm) de los días de la semana, de las fincas
+    // del alcance (la finca puntual ya viene expandida a su Grupo de Finca
+    // en `fincaIds`). Se toma exclusivamente de la tabla `clima`.
+    let precipitacion = null;
+    if (semana) {
+      const fincaUuids = fincaIds
+        ? (await Finca.findAll({ where: { id: { [Op.in]: fincaIds } }, attributes: ['uuid'] })).map((f) => f.uuid)
+        : null;
+      const replacements = { desde: semana.fechaInicio, hasta: semana.fechaFin };
+      let whereFinca = '';
+      if (fincaUuids?.length) {
+        whereFinca = ' AND finca_uuid IN (:fincaUuids)';
+        replacements.fincaUuids = fincaUuids;
+      }
+      const [fila] = await sequelize.query(
+        `SELECT COALESCE(SUM(mm), 0) AS total
+           FROM clima
+          WHERE fecha BETWEEN :desde AND :hasta${whereFinca}`,
+        { replacements, type: 'SELECT' },
+      );
+      precipitacion = Number(fila?.total) || 0;
+    }
+
+    const porFinca = [...arbol.values()]
+      .map((f) => ({
+        finca: f.finca,
+        uuid: f.uuid,
+        total: f.total,
+        tipos: aPlano(f.tipos),
+        lotes: [...f.lotes.values()]
+          .map((l) => ({
+            lote: l.lote,
+            uuid: l.uuid,
+            total: l.total,
+            tipos: aPlano(l.tipos),
+          }))
+          .sort((a, b) => a.lote.localeCompare(b.lote)),
+      }))
+      .sort((a, b) => a.finca.localeCompare(b.finca));
+
+    return {
+      semana: semana
+        ? { uuid: semana.uuid, codigo: semana.codigo, numeroSemana: semana.numeroSemana, anio: semana.anio }
+        : null,
+      totalEvaluaciones: filtradas.length,
+      evaluadores,
+      porFinca,
+      precipitacion,
+      promedios: {
+        indiceInfeccion: nIndice > 0 ? Number((sumaIndice / nIndice).toFixed(2)) : null,
+        yli: nInfeccion > 0 ? Number((sumaYli / nInfeccion).toFixed(2)) : null,
+        yls: nInfeccion > 0 ? Number((sumaYls / nInfeccion).toFixed(2)) : null,
+        hojasTotales: nInfeccion > 0 ? Number((sumaHojasTotales / nInfeccion).toFixed(2)) : null,
+        sumaBruta: nBruta > 0 ? Number((sumaBruta / nBruta).toFixed(2)) : null,
+        hojasPorEdad: [...porEdad.values()]
+          .map((e) => ({
+            edad: e.edad,
+            promedio: Number((e.suma / e.n).toFixed(2)),
+            n: e.n,
+            evaluaciones: e.evaluaciones.sort((a, b) => (a.fecha < b.fecha ? -1 : 1)),
+          }))
+          .sort((a, b) => a.edad - b.edad),
+      },
+    };
   },
 };
 

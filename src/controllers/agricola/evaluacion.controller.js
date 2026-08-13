@@ -56,6 +56,14 @@ export const evaluacionController = {
       data: { items },
     });
   }),
+
+  indicadores: asyncHandler(async (req, res) => {
+    const data = await evaluacionService.indicadoresPorSemana(req.query, req.user);
+    ApiResponse.send(res, {
+      message: 'Indicadores de evaluaciones obtenidos correctamente',
+      data,
+    });
+  }),
 };
 
 export default evaluacionController;
