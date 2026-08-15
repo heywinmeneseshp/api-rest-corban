@@ -213,6 +213,7 @@ export const PERMISSIONS = {
   MENU_SANIDAD_VEGETAL_EVALUACIONES: 'menu.sanidad_vegetal.evaluaciones',
   MENU_SANIDAD_VEGETAL_GRAFICOS: 'menu.sanidad_vegetal.graficos',
   MENU_SANIDAD_VEGETAL_LABORES: 'menu.sanidad_vegetal.labores',
+  MENU_SANIDAD_VEGETAL_ALERTAS: 'menu.sanidad_vegetal.alertas',
 
   // Ítems planos del menú (hoy sin submenú propio, un solo código cada uno).
   MENU_PRECIPITACION_DIARIA: 'menu.precipitacion_diaria',
@@ -383,6 +384,7 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.MENU_SANIDAD_VEGETAL_EVALUACIONES, nombre: 'Ver submenú Evaluaciones' },
   { codigo: PERMISSIONS.MENU_SANIDAD_VEGETAL_GRAFICOS, nombre: 'Ver submenú Gráficos' },
   { codigo: PERMISSIONS.MENU_SANIDAD_VEGETAL_LABORES, nombre: 'Ver submenú Evaluación de Labores' },
+  { codigo: PERMISSIONS.MENU_SANIDAD_VEGETAL_ALERTAS, nombre: 'Ver submenú Alertas' },
 
   { codigo: PERMISSIONS.MENU_PRECIPITACION_DIARIA, nombre: 'Ver ítem de menú Precipitación Diaria' },
   { codigo: PERMISSIONS.MENU_PRODUCCION_SEMANAL, nombre: 'Ver ítem de menú Producción Semanal' },

@@ -116,7 +116,7 @@ export const evaluacionRepository = {
             {
               model: Semana,
               as: 'semanaEmbolse',
-              attributes: ['id', 'uuid', 'codigo', 'numeroSemana', 'anio', 'fechaInicio'],
+              attributes: ['id', 'uuid', 'codigo', 'numeroSemana', 'anio', 'fechaInicio', 'color'],
             },
           ],
         };

@@ -41,6 +41,14 @@ export const evaluacionController = {
     });
   }),
 
+  promedioSumaBrutaPorHoja: asyncHandler(async (req, res) => {
+    const items = await evaluacionService.promedioSumaBrutaPorHoja(req.query, req.user);
+    ApiResponse.send(res, {
+      message: 'Promedio de suma bruta por hoja obtenido correctamente',
+      data: { items },
+    });
+  }),
+
   promedioConteo: asyncHandler(async (req, res) => {
     const items = await evaluacionService.promedioConteoPorSemana(req.query, req.user);
     ApiResponse.send(res, {
@@ -55,6 +63,11 @@ export const evaluacionController = {
       message: 'Promedio de índice de infección por semana obtenido correctamente',
       data: { items },
     });
+  }),
+
+  alertasSemana: asyncHandler(async (req, res) => {
+    const result = await evaluacionService.alertasSemanaCerrada(req.query, req.user);
+    ApiResponse.send(res, { message: 'Alertas de la última semana cerrada obtenidas correctamente', data: result });
   }),
 
   indicadores: asyncHandler(async (req, res) => {

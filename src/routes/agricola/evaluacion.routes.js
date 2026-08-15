@@ -66,6 +66,24 @@ router.get(
 
 /**
  * @openapi
+ * /evaluaciones/suma-bruta-promedio-por-hoja:
+ *   get:
+ *     tags: [Evaluaciones]
+ *     summary: Promedio de Suma Bruta desglosado por hoja (3, 4 o 5) y semana
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.get(
+  '/suma-bruta-promedio-por-hoja',
+  auth,
+  permission(PERMISSIONS.SUMA_BRUTA_VER),
+  validate(promedioPorSemanaSchema),
+  evaluacionController.promedioSumaBrutaPorHoja,
+);
+
+/**
+ * @openapi
  * /evaluaciones/conteo-promedio:
  *   get:
  *     tags: [Evaluaciones]
@@ -116,6 +134,23 @@ router.get(
   permission(PERMISSIONS.EVALUACION_VER),
   validate(indicadoresSchema),
   evaluacionController.indicadores,
+);
+
+/**
+ * @openapi
+ * /evaluaciones/alertas-semana:
+ *   get:
+ *     tags: [Evaluaciones]
+ *     summary: Alertas por finca de la última semana cerrada (YLI bajo, Índice de Infección alto)
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.get(
+  '/alertas-semana',
+  auth,
+  permission(PERMISSIONS.INFECCION_VER),
+  evaluacionController.alertasSemana,
 );
 
 /**

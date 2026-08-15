@@ -2,6 +2,10 @@ import Joi from 'joi';
 
 const uuidParam = Joi.string().guid({ version: 'uuidv4' }).required();
 const uuidRef = Joi.string().guid({ version: 'uuidv4' });
+const UUID_V4 = '[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
+// Una o varias fincas separadas por coma (comparación entre fincas: se
+// suman en una sola línea) — mismo criterio que clima.service.js.
+const uuidListRef = Joi.string().pattern(new RegExp(`^${UUID_V4}(,${UUID_V4})*$`, 'i'));
 
 export const listEvaluacionesSchema = Joi.object({
   body: Joi.object({}),
@@ -29,7 +33,7 @@ export const promedioPorSemanaSchema = Joi.object({
   body: Joi.object({}),
   params: Joi.object({}),
   query: Joi.object({
-    fincaUuid: uuidRef,
+    fincaUuid: uuidListRef,
     anio: Joi.number().integer().min(2000).max(2100),
   }),
 });

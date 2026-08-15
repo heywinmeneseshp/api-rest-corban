@@ -5,16 +5,21 @@ import { evaluacionRepository } from '../../repositories/agricola/evaluacion.rep
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { getFincaIdsPermitidas, assertFincaPermitida, expandirFincaIds } from '../../utils/fincaScope.js';
-import { adjuntarTotales } from './sumaBrutaTotal.js';
+import { adjuntarTotales, adjuntarValoresPorHoja, calcularIndicadorHoja } from './sumaBrutaTotal.js';
+
+const HOJAS_INDICADOR = [3, 5];
 import { calcularIndiceInfeccion } from './indiceInfeccion.js';
 
-// Semanas de diferencia entre dos fechas de inicio de semana (mismo sistema
-// ISO). Devuelve null si alguna fecha es inválida.
+// Edad de la planta en semanas, contadas desde su semana de embolse: la
+// semana en que se embolsa YA es edad 1 (no 0), la siguiente es edad 2, y
+// así sucesivamente — por eso se suma 1 a la diferencia de semanas entre
+// las dos fechas de inicio (mismo sistema ISO). Devuelve null si alguna
+// fecha es inválida.
 function semanasEntre(fechaInicioA, fechaInicioB) {
   const a = Date.parse(fechaInicioA);
   const b = Date.parse(fechaInicioB);
   if (Number.isNaN(a) || Number.isNaN(b)) return null;
-  return Math.round((b - a) / (7 * 24 * 60 * 60 * 1000));
+  return Math.round((b - a) / (7 * 24 * 60 * 60 * 1000)) + 1;
 }
 
 // Trae la planta con su loteId para poder validar la finca del usuario sin
@@ -47,6 +52,19 @@ const findFincaByUuidOrFail = async (uuid) => {
   const finca = await Finca.findOne({ where: { uuid } });
   if (!finca) throw ApiError.notFound('Finca no encontrada');
   return finca;
+};
+
+// `query.fincaUuid` puede traer varias fincas separadas por coma (mismo
+// criterio que clima.service.js) — para sumarlas en una sola línea de
+// comparación en vez de una por finca. Sin `fincaUuid`, usa las fincas
+// permitidas del usuario (null = todas, sin restricción).
+const resolverFincaIds = async (query, user) => {
+  if (!query.fincaUuid) return getFincaIdsPermitidas(user);
+  const uuids = query.fincaUuid.split(',');
+  const fincasEncontradas = await Finca.findAll({ where: { uuid: uuids } });
+  if (fincasEncontradas.length === 0) throw ApiError.notFound('Finca no encontrada');
+  fincasEncontradas.forEach((f) => assertFincaPermitida(user, f.id));
+  return expandirFincaIds(fincasEncontradas.map((f) => f.id));
 };
 
 const findLoteByUuidOrFail = async (uuid) => {
@@ -173,10 +191,11 @@ export const evaluacionService = {
   // Promedio de Suma Bruta por semana. Con `fincaUuid` se calcula solo para
   // esa finca; sin él, para todas las fincas permitidas. El total de cada
   // evaluación se calcula al vuelo con la configuración vigente de estadios.
+  // Promedio = (Σ SB de las plantas evaluadas) / (N.° de lotes evaluados),
+  // no de plantas — un lote con más plantas evaluadas no pesa más que uno
+  // con menos.
   async promedioSumaBrutaPorSemana(query, user) {
-    const fincaId = query.fincaUuid ? (await findFincaByUuidOrFail(query.fincaUuid)).id : undefined;
-    if (fincaId) assertFincaPermitida(user, fincaId);
-    const fincaIds = fincaId ? await expandirFincaIds([fincaId]) : getFincaIdsPermitidas(user);
+    const fincaIds = await resolverFincaIds(query, user);
     const anio = query.anio ? Number(query.anio) : undefined;
 
     const evaluaciones = await evaluacionRepository.findAllPorSemana({
@@ -184,7 +203,7 @@ export const evaluacionService = {
       anio,
     });
 
-    const conSuma = evaluaciones.filter((ev) => ev.sumaBruta);
+    const conSuma = evaluaciones.filter((ev) => ev.sumaBruta && ev.planta?.lote);
     const hidratadas = await adjuntarTotales(conSuma.map((ev) => ev.sumaBruta));
 
     const porSemana = new Map();
@@ -197,22 +216,78 @@ export const evaluacionService = {
         anio: semana.anio,
         cinta: semana.color,
         suma: 0,
-        n: 0,
+        lotes: new Set(),
       };
       entry.suma += hidratadas[i].total;
-      entry.n += 1;
+      entry.lotes.add(ev.planta.lote.id);
       porSemana.set(semana.id, entry);
     });
 
-    return this.finalizarPromedios(porSemana);
+    return [...porSemana.values()]
+      .map((e) => ({
+        semanaCodigo: e.semanaCodigo,
+        numeroSemana: e.numeroSemana,
+        anio: e.anio,
+        cinta: e.cinta,
+        promedio: Number((e.suma / e.lotes.size).toFixed(2)),
+        n: e.lotes.size,
+      }))
+      .sort((a, b) => a.anio - b.anio || a.numeroSemana - b.numeroSemana);
+  },
+
+  // Indicadores SB_H3 y SB_H5 por semana (ver calcularIndicadorHoja en
+  // sumaBrutaTotal.js para la fórmula completa). A diferencia de
+  // promedioSumaBrutaPorSemana (que promedia por LOTE), acá el grupo es
+  // directamente todas las plantas evaluadas de la semana (dentro del
+  // filtro de finca recibido) — N_plantas es la cantidad real de esas
+  // plantas, nunca una constante fija.
+  async promedioSumaBrutaPorHoja(query, user) {
+    const fincaIds = await resolverFincaIds(query, user);
+    const anio = query.anio ? Number(query.anio) : undefined;
+
+    const evaluaciones = await evaluacionRepository.findAllPorSemana({
+      fincaIds,
+      anio,
+    });
+
+    const conSuma = evaluaciones.filter((ev) => ev.sumaBruta && ev.semana);
+    const hidratadas = await adjuntarValoresPorHoja(conSuma.map((ev) => ev.sumaBruta));
+
+    // Agrupa las plantas (con su sumaBruta ya hidratada) por semana.
+    const porSemana = new Map();
+    conSuma.forEach((ev, i) => {
+      const semana = ev.semana;
+      const entry = porSemana.get(semana.id) || {
+        semanaCodigo: semana.codigo,
+        numeroSemana: semana.numeroSemana,
+        anio: semana.anio,
+        plantas: [],
+      };
+      entry.plantas.push(hidratadas[i]);
+      porSemana.set(semana.id, entry);
+    });
+
+    const items = [];
+    porSemana.forEach((grupo) => {
+      HOJAS_INDICADOR.forEach((hoja) => {
+        items.push({
+          semanaCodigo: grupo.semanaCodigo,
+          numeroSemana: grupo.numeroSemana,
+          anio: grupo.anio,
+          hoja,
+          promedio: calcularIndicadorHoja(grupo.plantas, hoja),
+          n: grupo.plantas.length,
+        });
+      });
+    });
+
+    return items.sort((a, b) => a.anio - b.anio || a.numeroSemana - b.numeroSemana);
   },
 
   // Promedio de hojas funcionales (Conteo de Hojas) por semana de registro y
   // edad de la planta (semanas transcurridas desde su semana de embolse).
   async promedioConteoPorSemana(query, user) {
-    const fincaId = query.fincaUuid ? (await findFincaByUuidOrFail(query.fincaUuid)).id : undefined;
-    if (fincaId) assertFincaPermitida(user, fincaId);
-    const fincaIds = fincaId ? await expandirFincaIds([fincaId]) : getFincaIdsPermitidas(user);
+    const fincaIds = await resolverFincaIds(query, user);
     const anio = query.anio ? Number(query.anio) : undefined;
 
     const evaluaciones = await evaluacionRepository.findAllPorSemana({
@@ -232,6 +307,9 @@ export const evaluacionService = {
         semanaCodigo: semana.codigo,
         numeroSemana: semana.numeroSemana,
         anio: semana.anio,
+        cinta: semana.color,
+        cintaEmbolse: embolse.color,
+        semanaEmbolseCodigo: embolse.codigo,
         edad,
         suma: 0,
         n: 0,
@@ -246,6 +324,9 @@ export const evaluacionService = {
         semanaCodigo: e.semanaCodigo,
         numeroSemana: e.numeroSemana,
         anio: e.anio,
+        cinta: e.cinta,
+        cintaEmbolse: e.cintaEmbolse,
+        semanaEmbolseCodigo: e.semanaEmbolseCodigo,
         edad: e.edad,
         promedio: Number((e.suma / e.n).toFixed(2)),
         n: e.n,
@@ -258,9 +339,7 @@ export const evaluacionService = {
   // cuentan las evaluaciones que tienen al menos una hoja evaluada, así una
   // evaluación sin datos de hojas no arrastra el promedio hacia abajo.
   async promedioInfeccionPorSemana(query, user) {
-    const fincaId = query.fincaUuid ? (await findFincaByUuidOrFail(query.fincaUuid)).id : undefined;
-    if (fincaId) assertFincaPermitida(user, fincaId);
-    const fincaIds = fincaId ? await expandirFincaIds([fincaId]) : getFincaIdsPermitidas(user);
+    const fincaIds = await resolverFincaIds(query, user);
     const anio = query.anio ? Number(query.anio) : undefined;
 
     const evaluaciones = await evaluacionRepository.findAllPorSemana({
@@ -309,17 +388,80 @@ export const evaluacionService = {
       .sort((a, b) => a.anio - b.anio || a.numeroSemana - b.numeroSemana);
   },
 
-  finalizarPromedios(porSemana) {
-    return [...porSemana.values()]
-      .map((e) => ({
-        semanaCodigo: e.semanaCodigo,
-        numeroSemana: e.numeroSemana,
-        anio: e.anio,
-        cinta: e.cinta,
-        promedio: Number((e.suma / e.n).toFixed(2)),
-        n: e.n,
-      }))
-      .sort((a, b) => a.anio - b.anio || a.numeroSemana - b.numeroSemana);
+  // Alertas por finca de la última semana ya cerrada (fechaFin < hoy):
+  // YLI promedio por debajo de 8, o Índice de Infección promedio por
+  // encima de 33%. No hay cron/notificaciones en el proyecto — se calcula
+  // on-demand al abrir la pantalla, mismo patrón que
+  // precipitacionDiaria.listInconsistencias().
+  async alertasSemanaCerrada(query, user) {
+    let semana;
+    if (query.semanaUuid) {
+      semana = await findSemanaByUuidOrFail(query.semanaUuid);
+    } else {
+      const hoyIso = new Date().toISOString().slice(0, 10);
+      semana = await Semana.findOne({
+        where: { fechaFin: { [Op.lt]: hoyIso } },
+        order: [['fechaFin', 'DESC']],
+      });
+    }
+    if (!semana) return { semana: null, alertas: [] };
+
+    const fincaIds = getFincaIdsPermitidas(user);
+    const evaluaciones = await evaluacionRepository.findAllPorSemana({
+      fincaIds,
+      semanaId: semana.id,
+    });
+
+    const porFinca = new Map();
+    evaluaciones.forEach((ev) => {
+      const finca = ev.planta?.lote?.finca;
+      if (!finca || !ev.infeccion) return;
+      const entry = porFinca.get(finca.id) || {
+        fincaUuid: finca.uuid,
+        fincaNombre: finca.nombre,
+        sumaYli: 0,
+        sumaIndice: 0,
+        nIndice: 0,
+        n: 0,
+      };
+      entry.sumaYli += Number(ev.infeccion.yli) || 0;
+      const indice = calcularIndiceInfeccion(ev.infeccion.hojas);
+      if (indice !== null) {
+        entry.sumaIndice += indice;
+        entry.nIndice += 1;
+      }
+      entry.n += 1;
+      porFinca.set(finca.id, entry);
+    });
+
+    const UMBRAL_YLI = 8;
+    const UMBRAL_INDICE = 33;
+    const alertas = [];
+    porFinca.forEach((e) => {
+      const promedioYli = e.n > 0 ? Number((e.sumaYli / e.n).toFixed(2)) : null;
+      const promedioIndice = e.nIndice > 0 ? Number((e.sumaIndice / e.nIndice).toFixed(2)) : null;
+      const motivos = [];
+      if (promedioYli !== null && promedioYli < UMBRAL_YLI) {
+        motivos.push({ tipo: 'yli_bajo', mensaje: `YLI promedio (${promedioYli}) por debajo de ${UMBRAL_YLI}` });
+      }
+      if (promedioIndice !== null && promedioIndice > UMBRAL_INDICE) {
+        motivos.push({ tipo: 'indice_alto', mensaje: `Índice de Infección promedio (${promedioIndice}%) por encima de ${UMBRAL_INDICE}%` });
+      }
+      if (motivos.length > 0) {
+        alertas.push({
+          fincaUuid: e.fincaUuid,
+          fincaNombre: e.fincaNombre,
+          promedioYli,
+          promedioIndice,
+          motivos,
+        });
+      }
+    });
+
+    return {
+      semana: { uuid: semana.uuid, codigo: semana.codigo, numeroSemana: semana.numeroSemana, anio: semana.anio, fechaInicio: semana.fechaInicio, fechaFin: semana.fechaFin },
+      alertas: alertas.sort((a, b) => a.fincaNombre.localeCompare(b.fincaNombre)),
+    };
   },
 
   // Indicadores de una semana puntual (o año, si no llega semanaUuid):
@@ -427,7 +569,14 @@ export const evaluacionService = {
       if (ev.conteoHojas?.hojasFuncionales !== null && ev.conteoHojas?.hojasFuncionales !== undefined && ev.semana && ev.conteoHojas.semanaEmbolse) {
         const edad = semanasEntre(ev.conteoHojas.semanaEmbolse.fechaInicio, ev.semana.fechaInicio);
         if (edad !== null) {
-          const entry = porEdad.get(edad) || { edad, suma: 0, n: 0, evaluaciones: [] };
+          const entry = porEdad.get(edad) || {
+            edad,
+            semanaEmbolseCodigo: ev.conteoHojas.semanaEmbolse.codigo,
+            cintaEmbolse: ev.conteoHojas.semanaEmbolse.color,
+            suma: 0,
+            n: 0,
+            evaluaciones: [],
+          };
           entry.suma += Number(ev.conteoHojas.hojasFuncionales) || 0;
           entry.n += 1;
           entry.evaluaciones.push({
@@ -501,6 +650,8 @@ export const evaluacionService = {
         hojasPorEdad: [...porEdad.values()]
           .map((e) => ({
             edad: e.edad,
+            semanaEmbolseCodigo: e.semanaEmbolseCodigo,
+            cintaEmbolse: e.cintaEmbolse,
             promedio: Number((e.suma / e.n).toFixed(2)),
             n: e.n,
             evaluaciones: e.evaluaciones.sort((a, b) => (a.fecha < b.fecha ? -1 : 1)),

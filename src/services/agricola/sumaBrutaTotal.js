@@ -17,6 +17,31 @@ function valorDeHoja(estadioRow, numeroHoja) {
   return campo ? Number(estadioRow[campo] ?? 0) : 0;
 }
 
+// Igual que `adjuntarTotales`, pero en vez de sumar todo en un único
+// `total`, deja cada estadio con su `valor` ya resuelto por hoja (3, 4 o 5)
+// — para desglosar el promedio de Suma Bruta por hoja en vez de solo el
+// total. Una sola consulta a `estadios_sigatoka` para todo el lote.
+export async function adjuntarValoresPorHoja(sumasBruta, { transaction } = {}) {
+  if (!sumasBruta?.length) return sumasBruta;
+
+  const planos = sumasBruta.map((s) => (s?.toJSON ? s.toJSON() : s));
+  const conEstadios = planos.filter((s) => Array.isArray(s.estadios) && s.estadios.length > 0);
+
+  if (conEstadios.length > 0) {
+    const denominaciones = [
+      ...new Set(conEstadios.flatMap((s) => s.estadios.map((e) => normalizar(e.estadio))).filter(Boolean)),
+    ];
+    const valores = await sumaBrutaRepository.findEstadiosValuesByNames(denominaciones, { transaction });
+    const porEstadio = valorPorEstadio(valores);
+
+    for (const s of conEstadios) {
+      s.estadios = s.estadios.map((e) => ({ ...e, valor: valorDeHoja(porEstadio.get(normalizar(e.estadio)), e.numeroHoja) }));
+    }
+  }
+
+  return planos;
+}
+
 // Suma los valores configurables (tabla `estadios_sigatoka`) de los estadios
 // registrados en cada hoja. Se calcula SIEMPRE al leer, consultando la tabla
 // en ese momento, para que un cambio de valores en la administración se
@@ -59,4 +84,43 @@ export async function adjuntarTotales(sumasBruta, { transaction } = {}) {
   return planos;
 }
 
-export default { calcularTotal, adjuntarTotales };
+// Indicador SB_H3 / SB_H5: promedio de las plantas evaluadas de una hoja
+// puntual (3 o 5), corregido por candela y normalizado a una base
+// equivalente de 10 plantas — independiente de cuántas plantas se hayan
+// evaluado realmente en el grupo (finca + semana).
+//
+//   CC_hoja  = candela × 10, SOLO si esa hoja fue evaluada en esa planta
+//              (si la hoja está vacía, tanto su valor como su CC son 0).
+//   SB_hoja  = ((Σ valor_hoja − Σ CC_hoja) / N_plantas) × 10
+//
+// N_plantas es SIEMPRE el total de plantas del grupo analizado (todas las
+// que tienen sumaBruta registrada), no solo las que tienen esa hoja
+// puntual evaluada — así una planta con la hoja 3 vacía sigue contando
+// para el denominador, aportando 0 al numerador.
+//
+// El ×2 que aparece en versiones antiguas de esta fórmula NO es un
+// coeficiente biológico: es un caso particular de 10/N_plantas cuando
+// N_plantas = 5 por lote (10/5 = 2). Por eso acá NUNCA se usa una
+// constante fija (×2, /5) — N_plantas se cuenta siempre de los registros
+// reales, sea cual sea la cantidad de plantas evaluadas.
+//
+// `sumasBruta` debe venir ya hidratado con `adjuntarValoresPorHoja`
+// (cada estadio con su `.valor` resuelto) y con su `.candela` original.
+export function calcularIndicadorHoja(sumasBruta, numeroHoja) {
+  const nPlantas = sumasBruta?.length || 0;
+  if (nPlantas === 0) return null;
+
+  let sumaValor = 0;
+  let sumaCC = 0;
+  for (const sb of sumasBruta) {
+    const estadio = (sb.estadios || []).find((e) => e.numeroHoja === numeroHoja);
+    if (!estadio) continue; // hoja vacía en esta planta: aporta 0 al valor y al CC
+    sumaValor += estadio.valor || 0;
+    sumaCC += (Number(sb.candela) || 0) * 10;
+  }
+
+  const normalizacion = 10 / nPlantas;
+  return Number(((sumaValor - sumaCC) * normalizacion).toFixed(2));
+}
+
+export default { calcularTotal, adjuntarTotales, adjuntarValoresPorHoja, calcularIndicadorHoja };
