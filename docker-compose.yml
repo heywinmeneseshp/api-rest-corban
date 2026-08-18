@@ -42,6 +42,7 @@ services:
 
     networks:
       - banarica-network
+      - database-banarica_banarica-network
 
     labels:
       - "traefik.enable=true"
@@ -57,4 +58,11 @@ services:
 networks:
 
   banarica-network:
+    external: true
+
+  # Red donde quedó el contenedor de MySQL tras su último redeploy (creada
+  # por su propio docker-compose bajo el nombre de proyecto
+  # "database-banarica") — sin esto, la API no puede resolver
+  # "banarica-mysql" por DNS de Docker.
+  database-banarica_banarica-network:
     external: true
