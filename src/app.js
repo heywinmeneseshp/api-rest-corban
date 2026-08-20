@@ -56,6 +56,7 @@ import configuracionRoutes from './routes/sistema/configuracion.routes.js';
 import resetDatosRoutes from './routes/sistema/resetDatos.routes.js';
 import setupRoutes from './routes/sistema/setup.routes.js';
 import backupRoutes from './routes/sistema/backup.routes.js';
+import cronRoutes from './routes/sistema/cron.routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -145,6 +146,7 @@ router.use('/configuraciones', configuracionRoutes);
 router.use('/sistema', resetDatosRoutes);
 router.use('/sistema', setupRoutes);
 router.use('/sistema', backupRoutes);
+router.use('/cron', cronRoutes);
 
 app.use(env.apiPrefix, router);
 

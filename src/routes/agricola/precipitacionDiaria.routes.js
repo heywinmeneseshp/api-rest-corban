@@ -51,8 +51,11 @@ router.delete(
   precipitacionDiariaController.eliminarConfig,
 );
 
-// Reporte de inconsistencias entre precipitacion_diaria y clima — mismo
-// permiso que ver/configurar la precipitación diaria (no un módulo aparte).
+// Reporte de inconsistencias entre precipitacion_diaria y clima — ver la
+// lista usa el mismo permiso que ver la precipitación diaria, pero
+// RESOLVER una inconsistencia exige su propio permiso (SINCRONIZAR),
+// separado de CONFIGURAR (programar captura obligatoria) — no todo el que
+// registra necesita poder resolver conflictos de otras fincas/fechas.
 router.get(
   '/inconsistencias',
   auth,
@@ -62,7 +65,7 @@ router.get(
 router.put(
   '/inconsistencias/:uuid',
   auth,
-  permission(PERMISSIONS.PRECIPITACION_DIARIA_CONFIGURAR),
+  permission(PERMISSIONS.PRECIPITACION_DIARIA_SINCRONIZAR),
   validate(resolverInconsistenciaSchema),
   precipitacionDiariaController.resolverInconsistencia,
 );

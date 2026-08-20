@@ -5,6 +5,7 @@ import { Finca, Role, Semana } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getFincaIdsPermitidas, expandirFincaUuids } from '../../utils/fincaScope.js';
 import { climaService } from './clima.service.js';
+import { PERMISSIONS } from '../../constants/permissions.constants.js';
 
 // Dos tablas nuevas, separadas del "clima" que registra la app móvil:
 // - precipitacion_diaria_config: qué rol debe capturar la precipitación de
@@ -187,11 +188,17 @@ export const precipitacionDiariaService = {
 
   // ─── Registro diario ───
 
-  async registrar(registros, actorId, actorNombre) {
+  async registrar(registros, actorId, actorNombre, user) {
     await ensureTables();
     if (!Array.isArray(registros) || registros.length === 0) {
       throw ApiError.badRequest('Debes enviar al menos un registro');
     }
+
+    // Si el rol del que registra tiene este permiso, cada registro también
+    // se copia a `clima` (siempre, pise lo que haya o no — ver
+    // PERMISSIONS.PRECIPITACION_DIARIA_PROPAGAR_CLIMA). El camino inverso
+    // (Clima → Precipitación Diaria) nunca ocurre acá.
+    const propagarAClima = (user?.permissions || []).includes(PERMISSIONS.PRECIPITACION_DIARIA_PROPAGAR_CLIMA);
 
     // Resuelve cada finca una sola vez aunque el lote traiga varias fechas
     // de la misma finca.
@@ -204,6 +211,18 @@ export const precipitacionDiariaService = {
       return finca;
     };
 
+    // Resuelve la semana de cada fecha una sola vez (usada solo si hay que
+    // propagar a `clima`, que exige semanaUuid).
+    const semanasCache = new Map();
+    const resolverSemana = async (fecha) => {
+      if (semanasCache.has(fecha)) return semanasCache.get(fecha);
+      const semana = await Semana.findOne({
+        where: { fechaInicio: { [Op.lte]: fecha }, fechaFin: { [Op.gte]: fecha } },
+      });
+      semanasCache.set(fecha, semana);
+      return semana;
+    };
+
     const resultados = [];
     for (const r of registros) {
       if (!r.fincaUuid || !r.fecha || r.mm === undefined || r.mm === null) {
@@ -211,7 +230,29 @@ export const precipitacionDiariaService = {
       }
       const finca = await resolverFinca(r.fincaUuid);
       const uuid = crypto.randomUUID();
-      const coincide = await calcularCoincide(finca.uuid, r.fecha, r.mm);
+
+      let coincide;
+      if (propagarAClima) {
+        const semana = await resolverSemana(r.fecha);
+        if (semana) {
+          await climaService.create(
+            {
+              fincaUuid: finca.uuid,
+              fincaNombre: finca.nombre,
+              semanaUuid: semana.uuid,
+              semanaCodigo: semana.codigo,
+              fecha: r.fecha,
+              mm: r.mm,
+              usuarioNombre: actorNombre,
+            },
+            actorId,
+          );
+        }
+        coincide = true; // se acaba de forzar el mismo mm en ambas tablas.
+      } else {
+        coincide = await calcularCoincide(finca.uuid, r.fecha, r.mm);
+      }
+
       await sequelize.query(
         `INSERT INTO ${TABLE_REGISTRO} (uuid, finca_id, finca_uuid, finca_nombre, fecha, mm, usuario_id, usuario_nombre, coincide_clima)
          VALUES (:uuid, :fincaId, :fincaUuid, :fincaNombre, :fecha, :mm, :usuarioId, :usuarioNombre, :coincide)
@@ -414,9 +455,10 @@ export const precipitacionDiariaService = {
         `UPDATE ${TABLE_REGISTRO} SET mm = :mm, coincide_clima = 1 WHERE uuid = :uuid`,
         { replacements: { mm: registroClima.mm, uuid } },
       );
-    } else if (registroClima && registroClima.mm !== null) {
-      // Ya había un valor real en clima, y difería — se sobreescribe con el
-      // de Precipitación Diaria, que se toma como el correcto.
+    } else if (registroClima) {
+      // Ya existía una fila en clima (con valor real o placeholder sin mm)
+      // — se sobreescribe con el de Precipitación Diaria, que se toma como
+      // el correcto.
       await sequelize.query(
         `UPDATE clima SET mm = :mm WHERE uuid = :uuid`,
         { replacements: { mm: registro.mm, uuid: registroClima.uuid } },
@@ -425,14 +467,10 @@ export const precipitacionDiariaService = {
         `UPDATE ${TABLE_REGISTRO} SET coincide_clima = 1 WHERE uuid = :uuid`,
         { replacements: { uuid } },
       );
-    } else if (!registroClima) {
-      // No existe fila en clima para ese día: se crea una vacía (sin mm,
-      // sin temperatura/humedad) como "placeholder" — no se copia el mm de
-      // Precipitación Diaria, porque ese dato lo tiene que digitar quien
-      // corresponda desde la app móvil. Como sigue sin haber un mm real que
-      // comparar, la inconsistencia NO se marca como resuelta todavía (queda
-      // coincide_clima = 0, así sigue apareciendo en el reporte hasta que
-      // alguien cargue el dato real en clima).
+    } else {
+      // No existe ninguna fila en clima para ese día: se crea ya con el mm
+      // de Precipitación Diaria (que se tomó como el correcto), no como
+      // placeholder vacío.
       const semana = await Semana.findOne({
         where: { fechaInicio: { [Op.lte]: fecha }, fechaFin: { [Op.gte]: fecha } },
       });
@@ -443,14 +481,16 @@ export const precipitacionDiariaService = {
           semanaUuid: semana?.uuid,
           semanaCodigo: semana?.codigo,
           fecha,
-          mm: null,
+          mm: registro.mm,
           usuarioNombre: actorNombre,
         },
         actorId,
       );
+      await sequelize.query(
+        `UPDATE ${TABLE_REGISTRO} SET coincide_clima = 1 WHERE uuid = :uuid`,
+        { replacements: { uuid } },
+      );
     }
-    // else: registroClima existe pero mm ya es null (placeholder previo) —
-    // no hay nada que hacer, sigue esperando el dato real.
 
     return { uuid, fuente };
   },

@@ -12,7 +12,7 @@ export const CLAVE_PRIMERA_SEMANA_PROGRAMACION = 'primera_semana_programacion_id
 // si en el futuro cambia el estándar. Usado para convertir las cajas de
 // Programación de Corte (que vienen en cajas del producto real, con su
 // propio peso neto) a esta unidad histórica de Producción Semanal.
-const TASA_CONVERSION_DEFAULT = 18.16;
+const TASA_CONVERSION_DEFAULT = 18.6;
 
 // Valor por defecto si nunca se configuró nada — evita que la app móvil
 // reciba un 404/error al arrancar en un ambiente recién desplegado.

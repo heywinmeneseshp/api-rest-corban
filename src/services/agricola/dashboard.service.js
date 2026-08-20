@@ -197,12 +197,16 @@ export const dashboardService = {
     const primeraSemanaEmbolse = primeraEmbolse
       ? semanasAnio.find((s) => s.id === primeraEmbolse.semanaEmbolseId) : null;
 
-    // Para el Ratio se agrupa por finca+semana (no solo por semana) — una
-    // finca que esa semana solo tenga cajas (sin cosecha registrada) o solo
-    // cosecha (sin cajas registradas) se excluye de esa semana por
-    // completo, en vez de sumarse igual y distorsionar el ratio con datos
-    // de un solo lado. Ver conversación: dos módulos independientes que no
-    // siempre se cargan juntos.
+    // Se agrupa por finca+semana para dos cosas distintas:
+    // - El TOTAL de cajas de la gráfica "Cajas Producidas" es el total real,
+    //   sin condición (misma cifra que la tarjeta `cajasProducidas` de
+    //   arriba) — no depende de si esa finca también tiene racimos
+    //   registrados esa semana.
+    // - El RATIO (cajas/racimo) sí necesita cruzar ambos datos por finca:
+    //   una finca que esa semana solo tenga cajas (sin cosecha registrada) o
+    //   solo cosecha (sin cajas registradas) se excluye del cálculo del
+    //   ratio, para no distorsionarlo con datos de un solo lado. Son dos
+    //   módulos independientes que no siempre se cargan juntos.
     const cajasAnualPorFinca = todasSemanaIds.length > 0 ? await ProduccionSemanal.findAll({
       where: { semanaId: { [Op.in]: todasSemanaIds }, ...fw },
       attributes: ['semanaId', 'fincaId', [fn('SUM', col('cajas_20kg')), 'total']],
@@ -218,7 +222,7 @@ export const dashboardService = {
     }) : [];
 
     // Mapas anidados semanaId -> fincaId -> total, para poder cruzar cuáles
-    // fincas tienen AMBOS datos esa semana antes de sumar.
+    // fincas tienen AMBOS datos esa semana antes de sumar el ratio.
     const cajasPorSemanaYFinca = new Map();
     for (const r of cajasAnualPorFinca) {
       if (!cajasPorSemanaYFinca.has(r.semanaId)) cajasPorSemanaYFinca.set(r.semanaId, new Map());
@@ -230,7 +234,17 @@ export const dashboardService = {
       cortesPorSemanaYFinca.get(r.semanaRegistroId).set(r.fincaId, Number(r.total));
     }
 
+    // Total real de cajas por semana, sin cruzar con racimos — es lo que se
+    // muestra en la gráfica "Cajas Producidas".
     const cajasAnualMap = new Map();
+    for (const [semanaId, fincasMap] of cajasPorSemanaYFinca) {
+      let total = 0;
+      for (const cantidad of fincasMap.values()) total += cantidad;
+      if (total > 0) cajasAnualMap.set(semanaId, total);
+    }
+
+    // Cajas y racimos cruzados por finca, solo para el Ratio.
+    const cajasAnualMapRatio = new Map();
     const cortesAnualMap = new Map();
     for (const semanaId of todasSemanaIds) {
       const cajasFincas = cajasPorSemanaYFinca.get(semanaId) || new Map();
@@ -242,7 +256,7 @@ export const dashboardService = {
         totalCajas += cajasFincas.get(fincaId);
         totalCortes += cortesFincas.get(fincaId);
       }
-      if (totalCajas > 0) cajasAnualMap.set(semanaId, totalCajas);
+      if (totalCajas > 0) cajasAnualMapRatio.set(semanaId, totalCajas);
       if (totalCortes > 0) cortesAnualMap.set(semanaId, totalCortes);
     }
 
@@ -318,19 +332,21 @@ export const dashboardService = {
 
     const hoy = new Date();
     const ratioAnual = semanasAnio.map((semana) => {
-      const cajasSem = cajasAnualMap.get(semana.id) || 0;
+      const cajasSemTotal = cajasAnualMap.get(semana.id) || 0;
+      const cajasSemRatio = cajasAnualMapRatio.get(semana.id) || 0;
       const cortesSem = cortesAnualMap.get(semana.id) || 0;
       const esFutura = new Date(semana.fechaInicio) > hoy;
-      const sinDatos = cajasSem === 0 && cortesSem === 0;
       return {
         numeroSemana: semana.numeroSemana,
         semanaCodigo: semana.codigo,
-        cajas: esFutura || sinDatos ? null : cajasSem,
-        racimosCortados: esFutura || sinDatos ? null : cortesSem,
-        // Sin racimos cortados el ratio no está definido (no es "0", es que
-        // falta cargar el corte de esa semana) — antes se mostraba como 0 y
-        // se veía como una caída real en el gráfico aunque sí hubiera cajas.
-        ratio: esFutura || sinDatos || cortesSem === 0 ? null : Math.round((cajasSem / cortesSem) * 100) / 100,
+        // Total real, sin cruzar con racimos — para la gráfica "Cajas
+        // Producidas" (misma cifra que la tarjeta de arriba).
+        cajas: esFutura || cajasSemTotal === 0 ? null : cajasSemTotal,
+        racimosCortados: esFutura || cortesSem === 0 ? null : cortesSem,
+        // El ratio sí cruza cajas y racimos por finca (cajasSemRatio, no
+        // cajasSemTotal) — sin racimos cortados no está definido (no es
+        // "0", es que falta cargar el corte de esa semana).
+        ratio: esFutura || cortesSem === 0 ? null : Math.round((cajasSemRatio / cortesSem) * 100) / 100,
       };
     });
 

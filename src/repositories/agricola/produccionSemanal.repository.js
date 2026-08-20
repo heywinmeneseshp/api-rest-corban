@@ -64,6 +64,24 @@ export const produccionSemanalRepository = {
     await ProduccionSemanal.destroy({ where: { fincaId, semanaId }, transaction });
   },
 
+  // Borra varios pares finca+semana de una sola vez (usado por
+  // recalcularTodaProduccionSemanal) — evita una consulta DELETE por cada
+  // par cuando puede haber muchos.
+  async deleteMuchosPares(pares, deletedBy) {
+    if (pares.length === 0) return;
+    const condiciones = pares.map((p) => ({ fincaId: p.fincaId, semanaId: p.semanaId }));
+    await ProduccionSemanal.update({ deletedBy }, { where: { [Op.or]: condiciones } });
+    await ProduccionSemanal.destroy({ where: { [Op.or]: condiciones } });
+  },
+
+  // Todos los pares finca+semana que hoy tienen un cálculo guardado — usado
+  // por recalcularTodaProduccionSemanal para detectar cuáles ya no tienen
+  // ninguna caja que contar (ej. tras excluir días futuros de Programación
+  // de Corte) y borrar ese registro en vez de dejarlo con un valor viejo.
+  async findTodosLosPares() {
+    return ProduccionSemanal.findAll({ attributes: ['fincaId', 'semanaId'], raw: true });
+  },
+
   async findAllBySemanaYFinca({ semanaIds, fincaIds }) {
     return ProduccionSemanal.findAll({
       where: {

@@ -71,8 +71,13 @@ export const programacionCorteRepository = {
   // programacionCorteService.recalcularProduccionSemanal). Sin
   // `fincaId`/`semanaId` trae TODAS las combinaciones (usado al cambiar la
   // tasa de conversión, que afecta a toda la historia).
+  //
+  // Solo cuenta días hasta ayer (fecha < hoy): Programación de Corte es un
+  // PLAN que puede traer días futuros ya cargados (la semana completa se
+  // sincroniza de una), pero "Producción Semanal"/"Cajas Producidas" debe
+  // reflejar lo ya cortado, no lo programado a futuro que todavía no pasó.
   async sumarPesoPorFincaYSemana({ fincaId, semanaId } = {}) {
-    const condiciones = ['pc.deleted_at IS NULL'];
+    const condiciones = ['pc.deleted_at IS NULL', 'pc.fecha < CURDATE()'];
     const replacements = {};
     if (fincaId) {
       condiciones.push('pc.finca_id = :fincaId');

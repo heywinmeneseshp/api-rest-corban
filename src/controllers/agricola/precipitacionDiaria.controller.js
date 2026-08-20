@@ -10,7 +10,7 @@ export const precipitacionDiariaController = {
   }),
 
   registrar: asyncHandler(async (req, res) => {
-    const result = await precipitacionDiariaService.registrar(req.body.registros, req.user?.id, req.user?.usuario);
+    const result = await precipitacionDiariaService.registrar(req.body.registros, req.user?.id, req.user?.usuario, req.user);
     ApiResponse.send(res, {
       statusCode: HTTP_STATUS.CREATED,
       message: 'Precipitación registrada correctamente',

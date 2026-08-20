@@ -38,10 +38,11 @@ router.get(
   validate(listPlantasSchema),
   plantaController.list,
 );
+// Crear planta: sin permiso puntual — cualquier usuario autenticado puede
+// registrar plantas, no hace falta granularlo por rol.
 router.post(
   '/',
   auth,
-  permission(PERMISSIONS.PLANTA_CREAR),
   validate(createPlantaSchema),
   plantaController.create,
 );
@@ -103,17 +104,16 @@ router.get(
   validate(getPlantaSchema),
   plantaController.getByUuid,
 );
+// Editar/eliminar planta: sin permiso puntual, mismo criterio que crear.
 router.put(
   '/:uuid',
   auth,
-  permission(PERMISSIONS.PLANTA_EDITAR),
   validate(updatePlantaSchema),
   plantaController.update,
 );
 router.delete(
   '/:uuid',
   auth,
-  permission(PERMISSIONS.PLANTA_ELIMINAR),
   validate(getPlantaSchema),
   plantaController.remove,
 );

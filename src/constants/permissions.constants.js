@@ -45,14 +45,14 @@ export const PERMISSIONS = {
   LOTE_EDITAR: 'lote.editar',
   LOTE_ELIMINAR: 'lote.eliminar',
 
+  // Crear/editar/eliminar planta: sin permiso puntual — cualquier usuario
+  // autenticado puede hacerlo, no hace falta granularlo por rol (a
+  // diferencia de "ver", que sí sigue gateado).
   PLANTA_VER: 'planta.ver',
-  PLANTA_CREAR: 'planta.crear',
-  PLANTA_EDITAR: 'planta.editar',
-  PLANTA_ELIMINAR: 'planta.eliminar',
 
-  CATEGORIA_PLANTA_VER: 'categoria_planta.ver',
-  CATEGORIA_PLANTA_CREAR: 'categoria_planta.crear',
-  CATEGORIA_PLANTA_EDITAR: 'categoria_planta.editar',
+  // Ver/crear/editar categoría de planta: sin permiso puntual, mismo
+  // criterio — "eliminar" sí sigue siendo granular (es la única acción
+  // destructiva de este módulo).
   CATEGORIA_PLANTA_ELIMINAR: 'categoria_planta.eliminar',
 
   TIPO_EVALUACION_VER: 'tipo_evaluacion.ver',
@@ -139,6 +139,21 @@ export const PERMISSIONS = {
   // el registro (solo administración).
   PRECIPITACION_DIARIA_VER: 'precipitacion_diaria.ver',
   PRECIPITACION_DIARIA_CONFIGURAR: 'precipitacion_diaria.configurar',
+
+  // Si el rol tiene este permiso, cada registro que haga en Precipitación
+  // Diaria también se copia (siempre, la pise o no) al mm de `clima` de esa
+  // misma finca+fecha — sin este permiso, Precipitación Diaria sigue sin
+  // tocar `clima` en absoluto (solo la reconciliación manual de
+  // /inconsistencias escribe cruzado). El camino inverso nunca aplica:
+  // registrar en Clima jamás inserta en Precipitación Diaria.
+  PRECIPITACION_DIARIA_PROPAGAR_CLIMA: 'precipitacion_diaria.propagar_clima',
+
+  // Resolver inconsistencias entre Precipitación Diaria y Clima (botones
+  // "Usar Precipitación Diaria"/"Usar Clima") — permiso propio, separado de
+  // CONFIGURAR (que es para programar la captura obligatoria), porque no
+  // todo el que registra o propaga a Clima necesita poder resolver
+  // conflictos de otras fincas/fechas.
+  PRECIPITACION_DIARIA_SINCRONIZAR: 'precipitacion_diaria.sincronizar_precipitaciones',
 
   // El registro individual de Clima (POST /clima, un día/finca a la vez) no
   // exige permiso puntual — lo usa cualquier usuario autenticado desde la
@@ -285,13 +300,7 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.LOTE_ELIMINAR, nombre: 'Eliminar lotes' },
 
   { codigo: PERMISSIONS.PLANTA_VER, nombre: 'Ver plantas' },
-  { codigo: PERMISSIONS.PLANTA_CREAR, nombre: 'Crear plantas' },
-  { codigo: PERMISSIONS.PLANTA_EDITAR, nombre: 'Editar plantas' },
-  { codigo: PERMISSIONS.PLANTA_ELIMINAR, nombre: 'Eliminar plantas' },
 
-  { codigo: PERMISSIONS.CATEGORIA_PLANTA_VER, nombre: 'Ver categorías de planta' },
-  { codigo: PERMISSIONS.CATEGORIA_PLANTA_CREAR, nombre: 'Crear categorías de planta' },
-  { codigo: PERMISSIONS.CATEGORIA_PLANTA_EDITAR, nombre: 'Editar categorías de planta' },
   { codigo: PERMISSIONS.CATEGORIA_PLANTA_ELIMINAR, nombre: 'Eliminar categorías de planta' },
 
   { codigo: PERMISSIONS.TIPO_EVALUACION_VER, nombre: 'Ver tipos de evaluación' },
@@ -353,6 +362,8 @@ export const PERMISSIONS_SEED = [
 
   { codigo: PERMISSIONS.PRECIPITACION_DIARIA_VER, nombre: 'Ver precipitación diaria y su configuración' },
   { codigo: PERMISSIONS.PRECIPITACION_DIARIA_CONFIGURAR, nombre: 'Programar captura obligatoria de precipitación diaria' },
+  { codigo: PERMISSIONS.PRECIPITACION_DIARIA_PROPAGAR_CLIMA, nombre: 'Al registrar Precipitación Diaria, copiar el dato también en Clima' },
+  { codigo: PERMISSIONS.PRECIPITACION_DIARIA_SINCRONIZAR, nombre: 'Resolver inconsistencias entre Precipitación Diaria y Clima' },
   { codigo: PERMISSIONS.CLIMA_CREAR, nombre: 'Cargue masivo de clima (precipitación/temperatura/humedad)' },
 
   { codigo: PERMISSIONS.AREA_LOTE_VER, nombre: 'Ver configuración de área de lotes' },

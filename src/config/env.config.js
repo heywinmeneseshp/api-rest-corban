@@ -67,6 +67,12 @@ export const env = {
   // cambie el aviso de versión de la app, nada más.
   appVersionDeployKey: process.env.APP_VERSION_DEPLOY_KEY || '',
 
+  // Secreto del cron diario de Vercel que recalcula Producción Semanal (ver
+  // routes/sistema/cron.routes.js) — Vercel manda este mismo valor en el
+  // header Authorization de cada invocación programada si CRON_SECRET está
+  // configurada como env var del proyecto.
+  cronSecret: process.env.CRON_SECRET || '',
+
   seedAdmin: {
     usuario: process.env.ADMIN_USUARIO || 'admin',
     email: process.env.ADMIN_EMAIL || 'hmeneses@banarica.com',

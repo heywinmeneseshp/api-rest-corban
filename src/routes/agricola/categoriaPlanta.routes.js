@@ -29,17 +29,17 @@ const router = Router();
  *     responses:
  *       201: { description: Creado }
  */
+// Ver/crear categorías de planta: sin permiso puntual — cualquier usuario
+// autenticado puede usarlas, no hace falta granularlo por rol.
 router.get(
   '/',
   auth,
-  permission(PERMISSIONS.CATEGORIA_PLANTA_VER),
   validate(listCategoriasSchema),
   categoriaPlantaController.list,
 );
 router.post(
   '/',
   auth,
-  permission(PERMISSIONS.CATEGORIA_PLANTA_CREAR),
   validate(createCategoriaSchema),
   categoriaPlantaController.create,
 );
@@ -69,17 +69,17 @@ router.post(
 router.get(
   '/:uuid',
   auth,
-  permission(PERMISSIONS.CATEGORIA_PLANTA_VER),
   validate(getCategoriaSchema),
   categoriaPlantaController.getByUuid,
 );
 router.put(
   '/:uuid',
   auth,
-  permission(PERMISSIONS.CATEGORIA_PLANTA_EDITAR),
   validate(updateCategoriaSchema),
   categoriaPlantaController.update,
 );
+// Eliminar SÍ sigue requiriendo permiso puntual (categoria_planta.eliminar)
+// — es la única acción de este módulo que el usuario pidió dejar granular.
 router.delete(
   '/:uuid',
   auth,

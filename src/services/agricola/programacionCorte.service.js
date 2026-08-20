@@ -209,24 +209,63 @@ async function recalcularProduccionSemanal(pares, actorId) {
 }
 
 // Recalcula Producción Semanal para TODA la historia de Programación de
-// Corte — usado cuando cambia la tasa de conversión configurada, ya que
-// afecta el cálculo de cada finca+semana existente. Misma estrategia de
+// Corte — usado al cambiar la tasa de conversión (afecta todo el cálculo) y
+// por el cron diario (para que el corte "solo hasta ayer" avance solo, ver
+// programacionCorteRepository.sumarPesoPorFincaYSemana). Misma estrategia de
 // una sola consulta agregada + un único bulkUpsert.
+//
+// CRÍTICO: solo toca semanas iguales o posteriores a la primera semana con
+// Programación de Corte (mismo tracker que usa rechazoCorteService, ver
+// actualizarPrimeraSemanaSiAplica) — Producción Semanal existía ANTES de
+// que existiera Programación de Corte (se cargaba a mano por "Cargue
+// Masivo"), así que toda esa historia previa no tiene ninguna fila de
+// Programación de Corte detrás y NUNCA debe borrarse ni recalcularse acá.
 async function recalcularTodaProduccionSemanal(actorId) {
-  const tasa = await configuracionService.getTasaConversion();
-  const totales = await programacionCorteRepository.sumarPesoPorFincaYSemana();
+  const primeraSemanaId = await configuracionService.getPrimeraSemanaProgramacionId();
+  if (!primeraSemanaId) return; // Programación de Corte nunca se ha cargado: nada en alcance.
+  const primeraSemana = await Semana.findByPk(primeraSemanaId, { attributes: ['anio', 'numeroSemana'] });
+  if (!primeraSemana) return;
 
-  const aGuardar = totales
-    .filter((t) => Number(t.totalPeso) > 0)
-    .map((t) => ({
+  const tasa = await configuracionService.getTasaConversion();
+  const [totales, paresExistentes] = await Promise.all([
+    programacionCorteRepository.sumarPesoPorFincaYSemana(),
+    produccionSemanalRepository.findTodosLosPares(),
+  ]);
+
+  const conDato = new Set();
+  const aGuardar = [];
+  for (const t of totales) {
+    if (Number(t.totalPeso) <= 0) continue;
+    conDato.add(`${t.fincaId}-${t.semanaId}`);
+    aGuardar.push({
       fincaId: t.fincaId,
       semanaId: t.semanaId,
       cajas20kg: Math.round(Number(t.totalPeso) / tasa),
       createdBy: actorId,
       updatedBy: actorId,
-    }));
+    });
+  }
 
   if (aGuardar.length > 0) await produccionSemanalRepository.bulkUpsert(aGuardar);
+
+  // Pares dentro del alcance (semana >= primera con Programación de Corte)
+  // que hoy tienen un cálculo guardado pero ya no tienen ninguna caja que
+  // contar (ej. tras excluir días futuros) — se borran en vez de dejarlos
+  // con un valor viejo dando vueltas. Los de fuera de alcance (historia
+  // previa a Programación de Corte) se ignoran por completo.
+  const semanaIdsAConsiderar = [...new Set(paresExistentes.map((p) => p.semanaId))]
+    .filter((id) => id !== primeraSemanaId);
+  const semanasInfo = semanaIdsAConsiderar.length > 0
+    ? await Semana.findAll({ where: { id: semanaIdsAConsiderar }, attributes: ['id', 'anio', 'numeroSemana'] })
+    : [];
+  const semanaEnAlcance = new Map(semanasInfo.map((s) => [s.id, !esSemanaAnterior(s, primeraSemana)]));
+  semanaEnAlcance.set(primeraSemanaId, true);
+
+  const aBorrar = paresExistentes.filter((par) => {
+    if (conDato.has(`${par.fincaId}-${par.semanaId}`)) return false;
+    return semanaEnAlcance.get(par.semanaId) === true;
+  });
+  if (aBorrar.length > 0) await produccionSemanalRepository.deleteMuchosPares(aBorrar, actorId);
 }
 
 // Reemplaza TODA la programación de una semana: borra lo que ya había
@@ -368,6 +407,28 @@ async function fetchProgramacionCorteLogistica() {
   return filas;
 }
 
+// Le pide a Logística que reenvíe los Rechazos de esa semana (best-effort,
+// nunca bloquea ni hace fallar la sincronización de Programación de Corte)
+// — así "Sincronizar" trae ambas cosas de una, sin depender de que alguien
+// edite un rechazo en Banarica para que se entere Corbana (ver
+// rechazoCorteService.syncSemanaWebhook y RechazoService#backfillSemana en
+// api-rest-banarica).
+async function pedirBackfillRechazosBanarica(semanaCodigo) {
+  const [baseUrl, apiKey] = await Promise.all([
+    configuracionService.getBanaricaApiUrl(),
+    configuracionService.getBanaricaApiKey(),
+  ]);
+  if (!apiKey) return;
+
+  const response = await fetch(`${baseUrl.replace(/\/$/, '')}/api/v1/rechazos/backfill`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', api: apiKey },
+    body: JSON.stringify({ semana: semanaCodigo }),
+    signal: AbortSignal.timeout(20000),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+}
+
 export const programacionCorteService = {
   async listProgramacion(query, user) {
     const page = Math.max(1, Number(query.page) || 1);
@@ -435,6 +496,10 @@ export const programacionCorteService = {
         producto: r.combo?.nombre ?? '',
         cajasprogramadas: r.cajas,
       }));
+
+    pedirBackfillRechazosBanarica(semana.codigo).catch((error) => {
+      logger.error('No se pudo pedir a Logística el backfill de Rechazos', { message: error.message, semana: semana.codigo });
+    });
 
     if (filas.length === 0) {
       return { totalFilas: 0, creados: 0, borrados: 0, errores: undefined };
