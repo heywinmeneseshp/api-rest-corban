@@ -63,8 +63,6 @@ export const roleService = {
   // Nota: se busca el rol SIN el include de permisos (más liviano) y no se
   // vuelve a re-consultar el rol completo al final — el front-end solo
   // necesita saber que la operación fue exitosa, no el rol entero de nuevo.
-  // Con el bridge remoto de por medio, cada consulta de más se siente en
-  // la latencia del checkbox.
   async assignPermiso(uuid, permisoUuid, actorId) {
     const role = await roleRepository.findByUuid(uuid, { includePermisos: false });
     if (!role) throw ApiError.notFound('Rol no encontrado');

@@ -33,7 +33,7 @@ export const createLaborSerieSchema = Joi.object({
     fechaInicio: fechaIso.required(),
     hora: horaStr.allow(null, ''),
     duracionMinutos: Joi.number().integer().min(1).allow(null),
-    responsableUuid: uuidRef.allow(null),
+    numeroColaboradores: Joi.number().integer().min(1).allow(null),
     observaciones: Joi.string().max(500).allow('', null),
     esRecurrente: Joi.boolean().default(false),
     frecuencia: Joi.string()

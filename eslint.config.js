@@ -24,6 +24,6 @@ export default [
     // Adaptador vendorizado tal cual desde "Conector DB PHP" (código ya
     // probado en producción en otro proyecto) — no se relintea/reformatea
     // para no arriesgar cambiar su comportamiento.
-    ignores: ['node_modules/', 'logs/', 'uploads/', 'src/database/mysqlHttpBridge.cjs'],
+    ignores: ['node_modules/', 'logs/', 'uploads/'],
   },
 ];

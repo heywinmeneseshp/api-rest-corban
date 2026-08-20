@@ -124,8 +124,7 @@ export const userService = {
   },
 
   // Igual que en role.service.js: se evita el include de roles (más
-  // liviano) y no se re-consulta el usuario completo al final, para no
-  // sumar consultas de más contra el bridge remoto en cada clic.
+  // liviano) y no se re-consulta el usuario completo al final.
   async assignRole(uuid, roleUuid, actorId) {
     const user = await userRepository.findByUuid(uuid, { includeRoles: false });
     if (!user) throw ApiError.notFound('Usuario no encontrado');

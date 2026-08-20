@@ -22,7 +22,10 @@ LaborSerie.init(
     fechaInicio: { type: DataTypes.DATEONLY, allowNull: false, field: 'fecha_inicio' },
     hora: { type: DataTypes.TIME, allowNull: true },
     duracionMinutos: { type: DataTypes.INTEGER, allowNull: true, field: 'duracion_minutos' },
-    responsableId: { type: DataTypes.INTEGER, allowNull: true, field: 'responsable_id' },
+    // Cuántos colaboradores hacen falta para esta labor — sin asignar a
+    // nadie en particular. El pre-reparto por habilidad/calificación
+    // (colaborador_labores) se hace más adelante, aparte.
+    numeroColaboradores: { type: DataTypes.INTEGER, allowNull: true, field: 'numero_colaboradores' },
     observaciones: { type: DataTypes.STRING(500), allowNull: true },
     esRecurrente: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: 'es_recurrente' },
     frecuencia: { type: DataTypes.ENUM(...FRECUENCIAS_LABOR_SERIE), allowNull: true },

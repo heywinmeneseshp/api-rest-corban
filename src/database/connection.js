@@ -6,7 +6,6 @@ import { Sequelize } from 'sequelize';
 // el modo 'direct' falla en producción con "Please install mysql2 package
 // manually" aunque mysql2 esté en package.json.
 import 'mysql2';
-import { env } from '../config/env.config.js';
 import { databaseConfig } from '../config/database.config.js';
 import { logger } from '../utils/logger.js';
 
@@ -18,7 +17,6 @@ export const sequelize = new Sequelize(
     host: databaseConfig.host,
     port: databaseConfig.port,
     dialect: databaseConfig.dialect,
-    dialectModule: databaseConfig.dialectModule,
     dialectOptions: databaseConfig.dialectOptions,
     timezone: databaseConfig.timezone,
     logging: databaseConfig.logging ? (msg) => logger.debug(msg) : false,
@@ -29,9 +27,7 @@ export const sequelize = new Sequelize(
 
 export const testConnection = async () => {
   await sequelize.authenticate();
-  logger.info(
-    `Conexión a la base de datos establecida correctamente (modo: ${env.db.mode})`,
-  );
+  logger.info('Conexión a la base de datos establecida correctamente');
 };
 
 export default sequelize;

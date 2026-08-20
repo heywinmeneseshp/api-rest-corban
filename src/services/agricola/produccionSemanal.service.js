@@ -1,74 +1,13 @@
-import crypto from 'node:crypto';
 import { parseBulkFile } from '../../utils/bulkFileParser.js';
 import { produccionSemanalRepository } from '../../repositories/agricola/produccionSemanal.repository.js';
 import { Finca, Semana } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getFincaIdsPermitidas, assertFincaPermitida, expandirFincaIds } from '../../utils/fincaScope.js';
-import { env } from '../../config/env.config.js';
-import mysqlHttpBridge from '../../database/mysqlHttpBridge.cjs';
 
-// Mismo tope y misma lógica de "menos peticiones, más grandes" que el
-// cargue masivo de Movimientos de Racimos (ver ese servicio para más
-// contexto) — un archivo con demasiadas filas no cabe en el tiempo de
-// ejecución de la función serverless, y en modo bridge cada tanda de 500
-// filas era antes una petición HTTP aparte al túnel.
+// Ver el mismo límite en racimoMovimiento.service.js: un archivo demasiado
+// grande no cabe en el tiempo de ejecución de la función serverless y se
+// queda colgado sin ningún error visible.
 const MAX_FILAS_BULK = 15000;
-const FILAS_POR_STATEMENT = 2000;
-const STATEMENTS_POR_PETICION = 5;
-
-const construirInsertMultifila = (filas) => {
-  const columnas = ['uuid', 'semana_id', 'finca_id', 'cajas_20kg', 'created_by'];
-  const grupo = `(${columnas.map(() => '?').join(',')}, NOW(), NOW())`;
-  const sql = `INSERT INTO produccion_semanal (${columnas.join(',')}, created_at, updated_at) VALUES ${filas.map(() => grupo).join(',')}`;
-  const params = [];
-  for (const f of filas) {
-    params.push(crypto.randomUUID(), f.semanaId, f.fincaId, f.cajas20kg, f.createdBy);
-  }
-  return { sql, params };
-};
-
-// Igual que construirInsertMultifila, pero con ON DUPLICATE KEY UPDATE sobre
-// el índice único (semana_id, finca_id) — inserta las filas nuevas y
-// sobrescribe `cajas_20kg` de las que ya existían, en una sola sentencia.
-const construirUpsertMultifila = (filas) => {
-  const columnas = ['uuid', 'semana_id', 'finca_id', 'cajas_20kg', 'created_by'];
-  const grupo = `(${columnas.map(() => '?').join(',')}, NOW(), NOW())`;
-  const sql =
-    `INSERT INTO produccion_semanal (${columnas.join(',')}, created_at, updated_at) VALUES ${filas.map(() => grupo).join(',')} ` +
-    'ON DUPLICATE KEY UPDATE cajas_20kg = VALUES(cajas_20kg), updated_by = VALUES(created_by), updated_at = NOW()';
-  const params = [];
-  for (const f of filas) {
-    params.push(crypto.randomUUID(), f.semanaId, f.fincaId, f.cajas20kg, f.createdBy);
-  }
-  return { sql, params };
-};
-
-async function insertarViaBridgeBatch(filas) {
-  let creados = 0;
-  const filasPorPeticion = FILAS_POR_STATEMENT * STATEMENTS_POR_PETICION;
-  for (let i = 0; i < filas.length; i += filasPorPeticion) {
-    const grupoGrande = filas.slice(i, i + filasPorPeticion);
-    const queries = [];
-    for (let j = 0; j < grupoGrande.length; j += FILAS_POR_STATEMENT) {
-      queries.push(construirInsertMultifila(grupoGrande.slice(j, j + FILAS_POR_STATEMENT)));
-    }
-    await mysqlHttpBridge.sendBatch(env.db.bridgeUrl, env.db.bridgeApiKey, queries);
-    creados += grupoGrande.length;
-  }
-  return creados;
-}
-
-async function upsertViaBridgeBatch(filas) {
-  const filasPorPeticion = FILAS_POR_STATEMENT * STATEMENTS_POR_PETICION;
-  for (let i = 0; i < filas.length; i += filasPorPeticion) {
-    const grupoGrande = filas.slice(i, i + filasPorPeticion);
-    const queries = [];
-    for (let j = 0; j < grupoGrande.length; j += FILAS_POR_STATEMENT) {
-      queries.push(construirUpsertMultifila(grupoGrande.slice(j, j + FILAS_POR_STATEMENT)));
-    }
-    await mysqlHttpBridge.sendBatch(env.db.bridgeUrl, env.db.bridgeApiKey, queries);
-  }
-}
 
 // Valida las filas crudas del archivo contra los catálogos de finca/semana
 // y el alcance del usuario — compartido entre el cargue masivo (crea, salta
@@ -207,11 +146,7 @@ export const produccionSemanalService = {
     const saltados = filasValidas.length - aInsertar.length;
 
     if (aInsertar.length > 0) {
-      if (env.db.mode === 'bridge') {
-        await insertarViaBridgeBatch(aInsertar);
-      } else {
-        await produccionSemanalRepository.bulkCreate(aInsertar);
-      }
+      await produccionSemanalRepository.bulkCreate(aInsertar);
     }
 
     return {
@@ -261,11 +196,7 @@ export const produccionSemanalService = {
     const existenteSet = new Set(existentes.map((e) => `${e.semanaId}-${e.fincaId}`));
     const actualizados = filasValidas.filter((f) => existenteSet.has(`${f.semanaId}-${f.fincaId}`)).length;
 
-    if (env.db.mode === 'bridge') {
-      await upsertViaBridgeBatch(filasValidas);
-    } else {
-      await produccionSemanalRepository.bulkUpsert(filasValidas);
-    }
+    await produccionSemanalRepository.bulkUpsert(filasValidas);
 
     return {
       totalFilas: filas.length,

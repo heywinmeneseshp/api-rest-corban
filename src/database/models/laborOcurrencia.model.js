@@ -21,7 +21,7 @@ LaborOcurrencia.init(
     fincaId: { type: DataTypes.INTEGER, allowNull: false, field: 'finca_id' },
     loteId: { type: DataTypes.INTEGER, allowNull: false, field: 'lote_id' },
     laborId: { type: DataTypes.INTEGER, allowNull: false, field: 'labor_id' },
-    responsableId: { type: DataTypes.INTEGER, allowNull: true, field: 'responsable_id' },
+    numeroColaboradores: { type: DataTypes.INTEGER, allowNull: true, field: 'numero_colaboradores' },
     observaciones: { type: DataTypes.STRING(500), allowNull: true },
     estado: {
       type: DataTypes.ENUM(...ESTADOS_LABOR_OCURRENCIA),

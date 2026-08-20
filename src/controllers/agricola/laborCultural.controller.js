@@ -54,6 +54,19 @@ export const laborCulturalController = {
       next(error);
     }
   },
+
+  async agregarFotos(req, res, next) {
+    try {
+      const result = await laborCulturalService.agregarFotos(req.params.visitaUuid, req.files, req.user?.id);
+      ApiResponse.send(res, {
+        statusCode: HTTP_STATUS.CREATED,
+        message: 'Fotos de la visita subidas correctamente',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
 };
 
 export default laborCulturalController;

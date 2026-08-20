@@ -1,7 +1,6 @@
 import { Finca } from '../../database/associations.js';
 import { laborOcurrenciaRepository } from '../../repositories/agricola/laborOcurrencia.repository.js';
 import { laborRepository } from '../../repositories/agricola/labor.repository.js';
-import { userRepository } from '../../repositories/seguridad/user.repository.js';
 import { laborSerieService } from './laborSerie.service.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { assertFincaPermitida, expandirFincaIds } from '../../utils/fincaScope.js';
@@ -10,13 +9,6 @@ const findFincaOrFail = async (uuid) => {
   const finca = await Finca.findOne({ where: { uuid } });
   if (!finca) throw ApiError.notFound('Finca no encontrada');
   return finca;
-};
-
-const findResponsableId = async (uuid) => {
-  if (!uuid) return null;
-  const responsable = await userRepository.findByUuid(uuid, { includeRoles: false });
-  if (!responsable) throw ApiError.notFound('Responsable no encontrado');
-  return responsable.id;
 };
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -81,10 +73,6 @@ export const laborOcurrenciaService = {
       if (!labor) throw ApiError.notFound('Labor no encontrada');
       data.laborId = labor.id;
       delete data.laborUuid;
-    }
-    if (campos.responsableUuid !== undefined) {
-      data.responsableId = await findResponsableId(campos.responsableUuid);
-      delete data.responsableUuid;
     }
     return laborOcurrenciaRepository.update(ocurrencia, data);
   },

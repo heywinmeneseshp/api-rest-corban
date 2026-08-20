@@ -31,6 +31,11 @@ import { LaborSerie } from './models/laborSerie.model.js';
 import { LaborSerieLote } from './models/laborSerieLote.model.js';
 import { LaborOcurrencia } from './models/laborOcurrencia.model.js';
 import { EstadioSigatoka } from './models/estadioSigatoka.model.js';
+import { Colaborador } from './models/colaborador.model.js';
+import { ColaboradorLabor } from './models/colaboradorLabor.model.js';
+import { ProgramacionCorte } from './models/programacionCorte.model.js';
+import { Producto } from './models/producto.model.js';
+import { RechazoCorte } from './models/rechazoCorte.model.js';
 
 const withAuditAssociations = (TargetModel) => {
   TargetModel.belongsTo(User, { as: 'creadoPor', foreignKey: 'createdBy' });
@@ -238,9 +243,6 @@ export const setupAssociations = () => {
   Lote.hasMany(LaborSerie, { foreignKey: 'loteId', as: 'laborSeries' });
   LaborSerie.belongsTo(Lote, { foreignKey: 'loteId', as: 'lote' });
 
-  User.hasMany(LaborSerie, { foreignKey: 'responsableId', as: 'laborSeriesResponsable' });
-  LaborSerie.belongsTo(User, { foreignKey: 'responsableId', as: 'responsable' });
-
   LaborSerie.hasMany(LaborSerieLote, { foreignKey: 'laborSerieId', as: 'lotesRotacion' });
   LaborSerieLote.belongsTo(LaborSerie, { foreignKey: 'laborSerieId', as: 'serie' });
   Lote.hasMany(LaborSerieLote, { foreignKey: 'loteId', as: 'laborSerieLotes' });
@@ -258,9 +260,6 @@ export const setupAssociations = () => {
   Labor.hasMany(LaborOcurrencia, { foreignKey: 'laborId', as: 'ocurrencias' });
   LaborOcurrencia.belongsTo(Labor, { foreignKey: 'laborId', as: 'labor' });
 
-  User.hasMany(LaborOcurrencia, { foreignKey: 'responsableId', as: 'laborOcurrenciasResponsable' });
-  LaborOcurrencia.belongsTo(User, { foreignKey: 'responsableId', as: 'responsable' });
-
   withAuditAssociations(CategoriaLabor);
   withAuditAssociations(Labor);
   withAuditAssociations(LaborSerie);
@@ -268,6 +267,42 @@ export const setupAssociations = () => {
 
   // Valores configurables por estadio de Sigatoka para el cálculo de Suma Bruta.
   withAuditAssociations(EstadioSigatoka);
+
+  // Colaboradores (trabajadores de campo, sin login) y su calificación
+  // (1-5) por Labor — de acá sale la lista de responsables sugeridos.
+  Finca.hasMany(Colaborador, { foreignKey: 'fincaId', as: 'colaboradores' });
+  Colaborador.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+
+  Colaborador.hasMany(ColaboradorLabor, { foreignKey: 'colaboradorId', as: 'labores' });
+  ColaboradorLabor.belongsTo(Colaborador, { foreignKey: 'colaboradorId', as: 'colaborador' });
+
+  Labor.hasMany(ColaboradorLabor, { foreignKey: 'laborId', as: 'colaboradorLabores' });
+  ColaboradorLabor.belongsTo(Labor, { foreignKey: 'laborId', as: 'labor' });
+
+  withAuditAssociations(Colaborador);
+
+  // Programación de Corte (cargue masivo de cuándo se espera cortar cada
+  // finca y cuántas cajas se programan) — mismo patrón que ProduccionSemanal.
+  Finca.hasMany(ProgramacionCorte, { foreignKey: 'fincaId', as: 'programacionesCorte' });
+  ProgramacionCorte.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+
+  Semana.hasMany(ProgramacionCorte, { foreignKey: 'semanaId', as: 'programacionesCorte' });
+  ProgramacionCorte.belongsTo(Semana, { foreignKey: 'semanaId', as: 'semana' });
+
+  Producto.hasMany(ProgramacionCorte, { foreignKey: 'productoId', as: 'programacionesCorte' });
+  ProgramacionCorte.belongsTo(Producto, { foreignKey: 'productoId', as: 'producto' });
+
+  Finca.hasMany(RechazoCorte, { foreignKey: 'fincaId', as: 'rechazosCorte' });
+  RechazoCorte.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+
+  Semana.hasMany(RechazoCorte, { foreignKey: 'semanaId', as: 'rechazosCorte' });
+  RechazoCorte.belongsTo(Semana, { foreignKey: 'semanaId', as: 'semana' });
+
+  Producto.hasMany(RechazoCorte, { foreignKey: 'productoId', as: 'rechazosCorte' });
+  RechazoCorte.belongsTo(Producto, { foreignKey: 'productoId', as: 'producto' });
+
+  withAuditAssociations(ProgramacionCorte);
+  withAuditAssociations(Producto);
 };
 
 export {
@@ -305,6 +340,11 @@ export {
   LaborSerieLote,
   LaborOcurrencia,
   EstadioSigatoka,
+  Colaborador,
+  ColaboradorLabor,
+  ProgramacionCorte,
+  Producto,
+  RechazoCorte,
 };
 
 export default setupAssociations;

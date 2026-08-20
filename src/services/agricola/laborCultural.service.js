@@ -3,8 +3,10 @@ import { sequelize } from '../../database/connection.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { climaService } from './clima.service.js';
 import { expandirFincaUuids } from '../../utils/fincaScope.js';
+import { cargarFotosLaborCultural } from '../googleDrive/cargueFotosLabor.js';
 
 const TABLE = 'labores_culturales';
+const TABLE_FOTOS = 'labor_visita_fotos';
 
 const ESTADOS = ['Hecho', 'En ejecucion', 'Pendiente'];
 
@@ -68,6 +70,22 @@ const ensureTable = async () => {
     }
   }
   columnasVerificadas = true;
+
+  // Fotos de la visita, subidas a Google Drive — tabla aparte (no una
+  // columna más en ${TABLE}) porque son N por visita, no un valor único.
+  await sequelize.query(`
+    CREATE TABLE IF NOT EXISTS ${TABLE_FOTOS} (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      uuid VARCHAR(36) NOT NULL UNIQUE,
+      visita_uuid VARCHAR(36) NOT NULL,
+      id_drive VARCHAR(255) NOT NULL,
+      url_drive VARCHAR(500),
+      nombre_original VARCHAR(255),
+      usuario_uuid VARCHAR(36),
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_visita_uuid (visita_uuid)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
 };
 
 const validarEstados = (data) => {
@@ -294,6 +312,12 @@ export const laborCulturalService = {
     // finca, el documento simplemente no muestra esa sección.
     const clima = await climaService.getByFincaFecha(primero.finca_uuid, primero.fecha);
 
+    const fotos = await sequelize.query(
+      `SELECT uuid, id_drive AS idDrive, url_drive AS urlDrive, nombre_original AS nombreOriginal
+       FROM ${TABLE_FOTOS} WHERE visita_uuid = :visitaUuid ORDER BY created_at ASC`,
+      { replacements: { visitaUuid }, type: 'SELECT' },
+    );
+
     return {
       visitaUuid,
       fincaUuid: primero.finca_uuid,
@@ -311,6 +335,7 @@ export const laborCulturalService = {
       cumpleProtocoloFocR4: Boolean(primero.cumple_protocolo_foc_r4),
       cumpleProtocoloMoko: Boolean(primero.cumple_protocolo_moko),
       checklistObservacion: primero.checklist_observacion,
+      fotos,
       lotes: rows.map((r) => ({
         uuid: r.uuid,
         loteUuid: r.lote_uuid,
@@ -324,6 +349,45 @@ export const laborCulturalService = {
         observacion: r.observacion,
       })),
     };
+  },
+
+  // Sube las fotos de una visita a Google Drive y guarda la referencia
+  // (id + url de Drive) por cada una — la visita ya tiene que existir
+  // (se suben después de "Finalizar", no antes).
+  async agregarFotos(visitaUuid, archivos, actorId) {
+    await ensureTable();
+
+    const [primero] = await sequelize.query(
+      `SELECT finca_nombre, semana_codigo, fecha FROM ${TABLE} WHERE visita_uuid = :visitaUuid LIMIT 1`,
+      { replacements: { visitaUuid }, type: 'SELECT' },
+    );
+    if (!primero) throw ApiError.notFound('Visita no encontrada');
+
+    const resultado = await cargarFotosLaborCultural(
+      { fincaNombre: primero.finca_nombre, semanaCodigo: primero.semana_codigo, fecha: primero.fecha, visitaUuid },
+      archivos,
+    );
+
+    for (const foto of resultado.fotos) {
+      await sequelize.query(
+        `INSERT INTO ${TABLE_FOTOS} (uuid, visita_uuid, id_drive, url_drive, nombre_original, usuario_uuid, created_at)
+         VALUES (:uuid, :visitaUuid, :idDrive, :urlDrive, :nombreOriginal, :usuarioUuid, :createdAt)`,
+        {
+          replacements: {
+            uuid: crypto.randomUUID(),
+            visitaUuid,
+            idDrive: foto.idDrive,
+            urlDrive: foto.urlDrive || null,
+            nombreOriginal: foto.nombreOriginal || null,
+            usuarioUuid: actorId ? String(actorId) : null,
+            createdAt: new Date().toISOString(),
+          },
+          type: 'INSERT',
+        },
+      );
+    }
+
+    return { visitaUuid, totalFotos: resultado.fotos.length, carpetaUrl: resultado.carpetaUrl, fotos: resultado.fotos };
   },
 };
 

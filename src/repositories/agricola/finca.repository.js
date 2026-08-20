@@ -4,7 +4,7 @@ import { Finca, Lote, GrupoFinca } from '../../database/associations.js';
 const INCLUDE_GRUPO = [{ model: GrupoFinca, as: 'grupoFinca' }];
 
 export const fincaRepository = {
-  async findAndCountAll({ limit, offset, search, fincaIdsPermitidas }) {
+  async findAndCountAll({ limit, offset, search, fincaIdsPermitidas, soloOperativas }) {
     const where = {
       ...(search
         ? {
@@ -15,6 +15,7 @@ export const fincaRepository = {
           }
         : {}),
       ...(fincaIdsPermitidas ? { id: { [Op.in]: fincaIdsPermitidas } } : {}),
+      ...(soloOperativas ? { esExterna: false } : {}),
     };
 
     return Finca.findAndCountAll({ where, limit, offset, order: [['id', 'ASC']], include: INCLUDE_GRUPO });

@@ -32,7 +32,7 @@ export const updateLaborOcurrenciaSchema = Joi.object({
     fecha: fechaIso.when('alcance', { is: 'TODA_LA_SERIE', then: Joi.forbidden() }),
     hora: horaStr.allow(null, ''),
     duracionMinutos: Joi.number().integer().min(1).allow(null),
-    responsableUuid: uuidRef.allow(null),
+    numeroColaboradores: Joi.number().integer().min(1).allow(null),
     observaciones: Joi.string().max(500).allow('', null),
     // El estado de UNA ocurrencia (completada/cancelada) no aplica en bloque
     // a varias — solo tiene sentido con alcance ESTA.

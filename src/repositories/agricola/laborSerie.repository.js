@@ -1,4 +1,4 @@
-import { LaborSerie, LaborSerieLote, Labor, Finca, Lote, CategoriaLabor, User } from '../../database/associations.js';
+import { LaborSerie, LaborSerieLote, Labor, Finca, Lote, CategoriaLabor } from '../../database/associations.js';
 
 export const laborSerieRepository = {
   create(data, { transaction } = {}) {
@@ -20,7 +20,6 @@ export const laborSerieRepository = {
         { model: Labor, as: 'labor', include: [{ model: CategoriaLabor, as: 'categoria' }] },
         { model: Finca, as: 'finca' },
         { model: Lote, as: 'lote' },
-        { model: User, as: 'responsable' },
         { model: LaborSerieLote, as: 'lotesRotacion', include: [{ model: Lote, as: 'lote' }] },
       ],
     });

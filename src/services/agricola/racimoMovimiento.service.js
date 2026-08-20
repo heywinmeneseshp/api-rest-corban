@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import { Op } from 'sequelize';
 import { sequelize } from '../../database/connection.js';
 import { Finca, Lote, Semana, MotivoRepique, MotivoRecuse, User } from '../../database/associations.js';
@@ -14,60 +13,6 @@ import { bulkValidationCache } from '../../utils/bulkValidationCache.js';
 import { getFincaIdsPermitidas, assertFincaPermitida, expandirFincaIds } from '../../utils/fincaScope.js';
 import { ROLES } from '../../constants/roles.constants.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
-import { env } from '../../config/env.config.js';
-import mysqlHttpBridge from '../../database/mysqlHttpBridge.cjs';
-
-// Cargue masivo en modo bridge: en vez de una petición HTTP por cada tanda
-// de 500 filas (lo normal con Sequelize), se agrupan muchas más filas por
-// INSERT multi-fila, y varios de esos INSERT se mandan juntos en una sola
-// petición HTTP (acción 'batch' del gateway.php) — reduce drásticamente el
-// volumen de tráfico al túnel, que es lo que dispara los bloqueos del
-// firewall del hosting bajo cargas grandes.
-const FILAS_POR_STATEMENT = 2000;
-const STATEMENTS_POR_PETICION = 5;
-
-const construirInsertMultifila = (filas) => {
-  const columnas = [
-    'uuid', 'finca_id', 'lote_id', 'semana_embolse_id', 'semana_registro_id', 'tipo',
-    'motivo_repique_id', 'motivo_recuse_id', 'cantidad', 'fecha', 'observacion', 'created_by',
-  ];
-  const grupo = `(${columnas.map(() => '?').join(',')}, NOW(), NOW())`;
-  const sql = `INSERT INTO racimo_movimientos (${columnas.join(',')}, created_at, updated_at) VALUES ${filas.map(() => grupo).join(',')}`;
-  const params = [];
-  for (const f of filas) {
-    params.push(
-      crypto.randomUUID(),
-      f.fincaId,
-      f.loteId,
-      f.semanaEmbolseId,
-      f.semanaRegistroId,
-      f.tipo,
-      f.motivoRepiqueId,
-      f.motivoRecuseId,
-      f.cantidad,
-      f.fecha,
-      f.observacion ?? null,
-      f.createdBy,
-    );
-  }
-  return { sql, params };
-};
-
-async function insertarViaBridgeBatch(filasValidas, onProgreso) {
-  let creados = 0;
-  const filasPorPeticion = FILAS_POR_STATEMENT * STATEMENTS_POR_PETICION;
-  for (let i = 0; i < filasValidas.length; i += filasPorPeticion) {
-    const grupoGrande = filasValidas.slice(i, i + filasPorPeticion);
-    const queries = [];
-    for (let j = 0; j < grupoGrande.length; j += FILAS_POR_STATEMENT) {
-      queries.push(construirInsertMultifila(grupoGrande.slice(j, j + FILAS_POR_STATEMENT)));
-    }
-    await mysqlHttpBridge.sendBatch(env.db.bridgeUrl, env.db.bridgeApiKey, queries);
-    creados += grupoGrande.length;
-    onProgreso(creados);
-  }
-  return creados;
-}
 
 // Además del Administrador (que se salta toda restricción), un usuario con
 // este permiso puntual también puede crear/eliminar movimientos de semanas
@@ -645,7 +590,7 @@ export const racimoMovimientoService = {
     try {
       return await this._procesarBulkMovimientos(rows, actorId, { dryRun, mode, progressToken, forceNegativeSaldos, esAdmin, user });
     } catch (error) {
-      // Si algo revienta a mitad de camino (BD, bridge, etc.), el frontend
+      // Si algo revienta a mitad de camino (BD, etc.), el frontend
       // debe enterarse por el polling en vez de quedarse esperando para
       // siempre a que 'fase' llegue a 'completado'.
       if (progressToken) bulkProgress.fail(progressToken, error.message || 'Error inesperado durante el cargue');
@@ -925,15 +870,10 @@ export const racimoMovimientoService = {
   // Inserta en lotes de 500, actualizando el progreso a medida que avanza.
   // Se usa tanto en la validación normal como al reutilizar una validación
   // ya cacheada (confirmación de saldos negativos), para no duplicar esta
-  // lógica.
-  //
-  // NOTA: con DB_MODE=bridge (túnel HTTP), sequelize.transaction() no
-  // garantiza atomicidad real entre lotes — el bridge puede enrutar cada
-  // query a un worker distinto sin la transacción activa (bug confirmado).
-  // Por eso cada lote se inserta como su propia sentencia (ya atómica por
-  // sí sola vía bulkCreate) con reintento ante fallos transitorios del
-  // bridge, en vez de envolver todo en una transacción que daría una falsa
-  // sensación de todo-o-nada.
+  // lógica. Cada lote se inserta como su propia sentencia (atómica por sí
+  // sola vía bulkCreate), con reintento ante fallos transitorios, en vez de
+  // envolver todo en una transacción que daría una falsa sensación de
+  // todo-o-nada si falla a mitad de camino.
   async _insertarYFinalizar(filasValidas, totalFilas, errores, warnings, progressToken) {
     let creados = 0;
     logger.info(`Validación completa. Insertando ${filasValidas.length} filas...`);
@@ -952,34 +892,23 @@ export const racimoMovimientoService = {
       }
     };
 
-    if (env.db.mode === 'bridge' && filasValidas.length > 0) {
+    const BATCH_SIZE = 500;
+    for (let i = 0; i < filasValidas.length; i += BATCH_SIZE) {
+      const batch = filasValidas.slice(i, i + BATCH_SIZE);
       try {
-        creados = await insertarViaBridgeBatch(filasValidas, actualizarProgreso);
+        await racimoMovimientoRepository.bulkCreate(batch);
       } catch (error) {
-        // Deja constancia de cuánto sí alcanzó a insertarse antes de fallar
-        // definitivamente (cada petición 'batch' es su propia transacción,
-        // así que lo de peticiones anteriores ya quedó insertado de verdad).
-        throw new Error(`Se insertaron ${creados} de ${filasValidas.length} filas antes de fallar: ${error.message}`);
-      }
-    } else {
-      const BATCH_SIZE = 500;
-      for (let i = 0; i < filasValidas.length; i += BATCH_SIZE) {
-        const batch = filasValidas.slice(i, i + BATCH_SIZE);
+        logger.info(`Fallo insertando lote (filas ${creados}-${creados + batch.length}), reintentando: ${error.message}`);
+        await new Promise((r) => setTimeout(r, 1500));
         try {
           await racimoMovimientoRepository.bulkCreate(batch);
-        } catch (error) {
-          logger.info(`Fallo insertando lote (filas ${creados}-${creados + batch.length}), reintentando: ${error.message}`);
-          await new Promise((r) => setTimeout(r, 1500));
-          try {
-            await racimoMovimientoRepository.bulkCreate(batch);
-          } catch (error2) {
-            throw new Error(
-              `Se insertaron ${creados} de ${filasValidas.length} filas antes de fallar: ${error2.message}`,
-            );
-          }
+        } catch (error2) {
+          throw new Error(
+            `Se insertaron ${creados} de ${filasValidas.length} filas antes de fallar: ${error2.message}`,
+          );
         }
-        actualizarProgreso(creados + batch.length);
       }
+      actualizarProgreso(creados + batch.length);
     }
 
     logger.info(`Cargue completado: ${creados} movimientos creados`);

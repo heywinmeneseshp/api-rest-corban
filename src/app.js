@@ -22,6 +22,7 @@ import permisoRoutes from './routes/seguridad/permiso.routes.js';
 import menuRoutes from './routes/seguridad/menuItem.routes.js';
 
 import fincaRoutes from './routes/agricola/finca.routes.js';
+import productoRoutes from './routes/agricola/producto.routes.js';
 import grupoFincaRoutes from './routes/agricola/grupoFinca.routes.js';
 import loteRoutes from './routes/agricola/lote.routes.js';
 import plantaRoutes from './routes/agricola/planta.routes.js';
@@ -47,10 +48,14 @@ import laborRoutes from './routes/agricola/labor.routes.js';
 import laborSerieRoutes from './routes/agricola/laborSerie.routes.js';
 import laborOcurrenciaRoutes from './routes/agricola/laborOcurrencia.routes.js';
 import estadioSigatokaRoutes from './routes/agricola/estadioSigatoka.routes.js';
+import colaboradorRoutes from './routes/agricola/colaborador.routes.js';
+import programacionCorteRoutes from './routes/agricola/programacionCorte.routes.js';
+import rechazoCorteRoutes from './routes/agricola/rechazoCorte.routes.js';
 
 import configuracionRoutes from './routes/sistema/configuracion.routes.js';
 import resetDatosRoutes from './routes/sistema/resetDatos.routes.js';
 import setupRoutes from './routes/sistema/setup.routes.js';
+import backupRoutes from './routes/sistema/backup.routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -99,6 +104,7 @@ router.use('/permisos', permisoRoutes);
 router.use('/menu', menuRoutes);
 
 router.use('/fincas', fincaRoutes);
+router.use('/productos', productoRoutes);
 router.use('/grupos-finca', grupoFincaRoutes);
 router.use('/lotes', loteRoutes);
 router.use('/plantas', plantaRoutes);
@@ -131,10 +137,14 @@ router.use('/labores', laborRoutes);
 router.use('/labor-series', laborSerieRoutes);
 router.use('/labor-ocurrencias', laborOcurrenciaRoutes);
 router.use('/estadios-sigatoka', estadioSigatokaRoutes);
+router.use('/colaboradores', colaboradorRoutes);
+router.use('/programacion-corte', programacionCorteRoutes);
+router.use('/rechazos-corte', rechazoCorteRoutes);
 
 router.use('/configuraciones', configuracionRoutes);
 router.use('/sistema', resetDatosRoutes);
 router.use('/sistema', setupRoutes);
+router.use('/sistema', backupRoutes);
 
 app.use(env.apiPrefix, router);
 

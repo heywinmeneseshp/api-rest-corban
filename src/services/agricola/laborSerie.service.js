@@ -3,7 +3,6 @@ import { Lote, Finca } from '../../database/associations.js';
 import { laborSerieRepository } from '../../repositories/agricola/laborSerie.repository.js';
 import { laborOcurrenciaRepository } from '../../repositories/agricola/laborOcurrencia.repository.js';
 import { laborRepository } from '../../repositories/agricola/labor.repository.js';
-import { userRepository } from '../../repositories/seguridad/user.repository.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { assertFincaPermitida } from '../../utils/fincaScope.js';
 import { generarFechas, expandirPorLote } from '../../utils/recurrencia.js';
@@ -34,13 +33,6 @@ const findLotesOrFail = async (uuids, fincaId) => {
   return uuids.map((u) => porUuid.get(u));
 };
 
-const findResponsableId = async (uuid) => {
-  if (!uuid) return null;
-  const responsable = await userRepository.findByUuid(uuid, { includeRoles: false });
-  if (!responsable) throw ApiError.notFound('Responsable no encontrado');
-  return responsable.id;
-};
-
 export const laborSerieService = {
   async crearSerie(payload, actorId, user) {
     const labor = await laborRepository.findByUuid(payload.laborUuid);
@@ -57,8 +49,6 @@ export const laborSerieService = {
     } else {
       lotes = await findLotesOrFail(payload.loteUuids, finca.id);
     }
-
-    const responsableId = await findResponsableId(payload.responsableUuid);
 
     const fechas = generarFechas({
       fechaInicio: payload.fechaInicio,
@@ -85,7 +75,7 @@ export const laborSerieService = {
           fechaInicio: payload.fechaInicio,
           hora: payload.hora,
           duracionMinutos: payload.duracionMinutos,
-          responsableId,
+          numeroColaboradores: payload.numeroColaboradores,
           observaciones: payload.observaciones,
           esRecurrente: payload.esRecurrente,
           frecuencia: payload.esRecurrente ? payload.frecuencia : null,
@@ -110,7 +100,7 @@ export const laborSerieService = {
           fincaId: finca.id,
           loteId: loteOcurrenciaId,
           laborId: labor.id,
-          responsableId,
+          numeroColaboradores: payload.numeroColaboradores,
           observaciones: payload.observaciones,
           createdBy: actorId,
         })),
@@ -153,8 +143,8 @@ export const laborSerieService = {
       if (!labor) throw ApiError.notFound('Labor no encontrada');
       cambios.laborId = labor.id;
     }
-    if (payload.responsableUuid !== undefined) {
-      cambios.responsableId = await findResponsableId(payload.responsableUuid);
+    if (payload.numeroColaboradores !== undefined) {
+      cambios.numeroColaboradores = payload.numeroColaboradores;
     }
     if (payload.hora !== undefined) cambios.hora = payload.hora || null;
     if (payload.duracionMinutos !== undefined) cambios.duracionMinutos = payload.duracionMinutos;
@@ -196,8 +186,8 @@ export const laborSerieService = {
       if (!labor) throw ApiError.notFound('Labor no encontrada');
       laborId = labor.id;
     }
-    const responsableId =
-      payload.responsableUuid !== undefined ? await findResponsableId(payload.responsableUuid) : ocurrencia.responsableId;
+    const numeroColaboradores =
+      payload.numeroColaboradores !== undefined ? payload.numeroColaboradores : ocurrencia.numeroColaboradores;
     const hora = payload.hora !== undefined ? payload.hora || null : ocurrencia.hora;
     const duracionMinutos = payload.duracionMinutos !== undefined ? payload.duracionMinutos : ocurrencia.duracionMinutos;
     const observaciones = payload.observaciones !== undefined ? payload.observaciones || null : ocurrencia.observaciones;
@@ -216,7 +206,7 @@ export const laborSerieService = {
           fechaInicio: fechaNueva,
           hora,
           duracionMinutos,
-          responsableId,
+          numeroColaboradores,
           observaciones,
           esRecurrente: true,
           frecuencia: serieOriginal.frecuencia,
@@ -246,7 +236,7 @@ export const laborSerieService = {
           fincaId: serieOriginal.fincaId,
           loteId: ocurrencia.loteId,
           laborId,
-          responsableId,
+          numeroColaboradores,
           observaciones,
           createdBy: actorId,
         })),

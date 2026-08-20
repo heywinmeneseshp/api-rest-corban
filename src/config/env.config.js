@@ -14,21 +14,12 @@ export const env = {
   apiPrefix: process.env.API_PREFIX || '/api/v1',
 
   db: {
-    // 'direct'  -> conexión MySQL normal (mysql2), para desarrollo local o un
-    //              hosting/VPS que sí permite conexiones externas al puerto 3306.
-    // 'bridge'  -> túnel HTTP hacia un script PHP (tunnel.php) desplegado en
-    //              el mismo hosting compartido que la base de datos, para
-    //              hostings que solo aceptan conexiones MySQL desde localhost.
-    //              Ver hosting-tunnel/README.md.
-    mode: process.env.DB_MODE === 'bridge' ? 'bridge' : 'direct',
     host: required('DB_HOST', '127.0.0.1'),
     port: Number(process.env.DB_PORT || 3306),
     name: required('DB_NAME'),
     user: required('DB_USER'),
     password: process.env.DB_PASSWORD || '',
     logging: process.env.DB_LOGGING === 'true',
-    bridgeUrl: process.env.BRIDGE_URL || '',
-    bridgeApiKey: process.env.BRIDGE_API_KEY || '',
   },
 
   jwt: {
@@ -43,9 +34,22 @@ export const env = {
   },
 
   integrations: {
-    // API de api-rest-banarica: expone GET /api/v1/almacenes/ público (sin auth),
-    // usado para sincronizar almacenes activos como fincas de corbana.
+    // API de api-rest-banarica: GET /api/v1/almacenes/ y GET
+    // /api/v1/programacion-corte exigen el header `api` con esta key (o un
+    // login JWT normal, que corbana no usa) — ver checkApiKeyOrJwt en
+    // api-rest-banarica/middlewares/auth.handler.js. El valor real de
+    // producción se configura desde Maestros → Configuración (ver
+    // configuracion.service.js); esto es solo el default si nunca se guardó
+    // nada ahí.
     banaricaBaseUrl: process.env.BANARICA_API_URL || 'https://api-logistica-banarica.vercel.app',
+    banaricaApiKey: process.env.BANARICA_API_KEY || '',
+    // En espejo de banaricaApiKey pero en sentido inverso: la key que
+    // api-rest-banarica manda por header `api` para avisarle a Corbana que
+    // ya cargó la Programación de Corte de una semana (ver
+    // requireApiKey.middleware.js), y para el push de Fincas→Almacenes al
+    // revés no hace falta (Corbana llama a Banarica con banaricaApiKey de
+    // arriba).
+    corbanaApiKey: process.env.CORBANA_API_KEY || '',
   },
 
   rateLimit: {
@@ -73,9 +77,3 @@ export const env = {
 
   isProduction: (process.env.NODE_ENV || 'development') === 'production',
 };
-
-if (env.db.mode === 'bridge' && (!env.db.bridgeUrl || !env.db.bridgeApiKey)) {
-  throw new Error(
-    'DB_MODE=bridge requiere BRIDGE_URL y BRIDGE_API_KEY en el .env (ver hosting-tunnel/README.md)',
-  );
-}

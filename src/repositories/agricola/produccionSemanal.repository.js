@@ -56,6 +56,14 @@ export const produccionSemanalRepository = {
     return registro;
   },
 
+  // Cuando Programación de Corte de una finca+semana se queda sin filas
+  // (se borró la última), ya no hay nada que calcular — se borra el
+  // registro calculado en vez de dejar un valor viejo dando vueltas.
+  async deleteByFincaYSemana(fincaId, semanaId, deletedBy, { transaction } = {}) {
+    await ProduccionSemanal.update({ deletedBy }, { where: { fincaId, semanaId }, transaction });
+    await ProduccionSemanal.destroy({ where: { fincaId, semanaId }, transaction });
+  },
+
   async findAllBySemanaYFinca({ semanaIds, fincaIds }) {
     return ProduccionSemanal.findAll({
       where: {

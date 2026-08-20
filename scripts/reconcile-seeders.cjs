@@ -8,9 +8,8 @@
 // aplicado sin tocar los datos; si falla por otra razón, corta y avisa. Así
 // queda lista para que `npm run db:seed` funcione normal de ahí en más.
 //
-// Uso: apuntar las variables de entorno (DB_HOST/DB_NAME/DB_MODE/etc, o
-// BRIDGE_URL si es DB_MODE=bridge) a la base que se quiere reconciliar y
-// correr:
+// Uso: apuntar las variables de entorno (DB_HOST/DB_NAME/etc) a la base que
+// se quiere reconciliar y correr:
 //   node scripts/reconcile-seeders.cjs
 
 require('dotenv/config');

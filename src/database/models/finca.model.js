@@ -14,6 +14,11 @@ Finca.init(
     // utils/fincaScope.js `expandirFincaIds`/`expandirFincaUuids`.
     grupoFincaId: { type: DataTypes.INTEGER, allowNull: true, field: 'grupo_finca_id' },
     estado: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+    // Fincas que exportan cajas a través de nosotros (aparecen en
+    // Programación de Corte) pero no son propias — no se les hace
+    // seguimiento de labores, racimos, precipitación, etc. Se excluyen de
+    // esos selectores vía fincaRepository/finca.service `soloOperativas`.
+    esExterna: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: 'es_externa' },
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
     updatedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'updated_by' },
     deletedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'deleted_by' },

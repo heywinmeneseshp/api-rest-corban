@@ -9,6 +9,11 @@ export const listFincasSchema = Joi.object({
     page: Joi.number().integer().min(1),
     limit: Joi.number().integer().min(1).max(100),
     search: Joi.string().allow('').max(150),
+    // Opt-in: excluye fincas marcadas `esExterna` (exportan cajas a través
+    // nuestro pero no son propias — no reciben seguimiento de labores,
+    // racimos, precipitación, etc.). Usado por esos selectores; el listado
+    // de Maestros → Fincas y Programación de Corte siguen trayendo todas.
+    soloOperativas: Joi.boolean(),
   }),
 });
 
@@ -39,6 +44,7 @@ export const createFincaSchema = Joi.object({
     codigo: Joi.string().min(1).max(20).required(),
     nombre: Joi.string().min(2).max(150).required(),
     estado: Joi.boolean(),
+    esExterna: Joi.boolean(),
     grupoFincaUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null),
   }),
   params: Joi.object({}),
@@ -50,6 +56,7 @@ export const updateFincaSchema = Joi.object({
     codigo: Joi.string().min(1).max(20),
     nombre: Joi.string().min(2).max(150),
     estado: Joi.boolean(),
+    esExterna: Joi.boolean(),
     grupoFincaUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null),
   }).min(1),
   params: Joi.object({ uuid: uuidParam }),

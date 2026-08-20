@@ -1,4 +1,5 @@
 import { configuracionService } from '../../services/sistema/configuracion.service.js';
+import { programacionCorteService } from '../../services/agricola/programacionCorte.service.js';
 import { ApiResponse } from '../../utils/ApiResponse.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 
@@ -14,6 +15,47 @@ export const configuracionController = {
       message: 'Enlace de banarica actualizado correctamente',
       data: { url: valor },
     });
+  }),
+
+  getLogistica: asyncHandler(async (req, res) => {
+    const [url, apiKey] = await Promise.all([
+      configuracionService.getBanaricaApiUrl(),
+      configuracionService.getBanaricaApiKey(),
+    ]);
+    // La API key nunca se devuelve completa al frontend, solo si ya hay una guardada.
+    ApiResponse.send(res, {
+      message: 'Configuración obtenida correctamente',
+      data: { url, hasApiKey: Boolean(apiKey) },
+    });
+  }),
+
+  updateLogistica: asyncHandler(async (req, res) => {
+    await configuracionService.setBanaricaApiUrl(req.body.url, req.user?.id);
+    // La API key es opcional al actualizar: si viene vacía, se conserva la
+    // que ya estaba guardada (así el formulario no obliga a reescribirla
+    // cada vez que solo se corrige el enlace).
+    let apiKey = await configuracionService.getBanaricaApiKey();
+    if (req.body.apiKey) {
+      apiKey = await configuracionService.setBanaricaApiKey(req.body.apiKey, req.user?.id);
+    }
+    ApiResponse.send(res, {
+      message: 'Conexión con Logística actualizada correctamente',
+      data: { url: req.body.url, hasApiKey: Boolean(apiKey) },
+    });
+  }),
+
+  getTasaConversion: asyncHandler(async (req, res) => {
+    const peso = await configuracionService.getTasaConversion();
+    ApiResponse.send(res, { message: 'Configuración obtenida correctamente', data: { peso } });
+  }),
+
+  updateTasaConversion: asyncHandler(async (req, res) => {
+    const peso = await configuracionService.setTasaConversion(req.body.peso, req.user?.id);
+    // Recalcula toda la Producción Semanal ya calculada con la tasa nueva
+    // (una sola consulta agregada + un único upsert, ver
+    // programacionCorteService.recalcularTodaProduccionSemanal).
+    await programacionCorteService.recalcularTodaProduccionSemanal(req.user?.id);
+    ApiResponse.send(res, { message: 'Tasa de conversión actualizada correctamente', data: { peso } });
   }),
 
   getAppVersionInfo: asyncHandler(async (req, res) => {

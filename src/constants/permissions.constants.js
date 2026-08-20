@@ -27,6 +27,11 @@ export const PERMISSIONS = {
   FINCA_EDITAR: 'finca.editar',
   FINCA_ELIMINAR: 'finca.eliminar',
 
+  PRODUCTO_VER: 'producto.ver',
+  PRODUCTO_CREAR: 'producto.crear',
+  PRODUCTO_EDITAR: 'producto.editar',
+  PRODUCTO_ELIMINAR: 'producto.eliminar',
+
   // Fincas que operativamente son una sola dividida en varios registros (ej.
   // "María Margarita" / "Marbella"): agruparlas expande tanto los lotes
   // visibles al elegir cualquiera de ellas como el acceso por finca asignada.
@@ -160,6 +165,11 @@ export const PERMISSIONS = {
   LABOR_EDITAR: 'labor.editar',
   LABOR_ELIMINAR: 'labor.eliminar',
 
+  COLABORADOR_VER: 'colaborador.ver',
+  COLABORADOR_CREAR: 'colaborador.crear',
+  COLABORADOR_EDITAR: 'colaborador.editar',
+  COLABORADOR_ELIMINAR: 'colaborador.eliminar',
+
   LABOR_PROGRAMACION_VER: 'labor_programacion.ver',
   LABOR_PROGRAMACION_CREAR: 'labor_programacion.crear',
   LABOR_PROGRAMACION_EDITAR: 'labor_programacion.editar',
@@ -169,6 +179,10 @@ export const PERMISSIONS = {
   // móvil (Sanidad Vegetal › Evaluación de Labores). Antes reutilizaba
   // labor.ver (el maestro de Labores), lo que impedía asignarlo aparte.
   LABOR_EVALUACION_VER: 'labor_evaluacion.ver',
+
+  PROGRAMACION_CORTE_VER: 'programacion_corte.ver',
+  PROGRAMACION_CORTE_CREAR: 'programacion_corte.crear',
+  PROGRAMACION_CORTE_ELIMINAR: 'programacion_corte.eliminar',
 
   SISTEMA_RESET_DATOS: 'sistema.reset_datos',
 
@@ -184,6 +198,7 @@ export const PERMISSIONS = {
   // puntual dentro de esa sección ya visible.
   MENU_MAESTROS: 'menu.maestros',
   MENU_MAESTROS_FINCAS: 'menu.maestros.fincas',
+  MENU_MAESTROS_PRODUCTOS: 'menu.maestros.productos',
   MENU_MAESTROS_GRUPOS_FINCA: 'menu.maestros.grupos_finca',
   MENU_MAESTROS_AREA_LOTES: 'menu.maestros.area_lotes',
   MENU_MAESTROS_USUARIOS: 'menu.maestros.usuarios',
@@ -196,6 +211,7 @@ export const PERMISSIONS = {
   MENU_MAESTROS_LABORES: 'menu.maestros.labores',
   MENU_MAESTROS_ESTADIOS_SIGATOKA: 'menu.maestros.estadios_sigatoka',
   MENU_MAESTROS_VERSION_APP: 'menu.maestros.version_app',
+  MENU_MAESTROS_COLABORADORES: 'menu.maestros.colaboradores',
 
   MENU_RACIMOS: 'menu.racimos',
   MENU_RACIMOS_MOVIMIENTOS: 'menu.racimos.movimientos',
@@ -220,6 +236,7 @@ export const PERMISSIONS = {
   MENU_PRODUCCION_SEMANAL: 'menu.produccion_semanal',
   MENU_PRONOSTICO: 'menu.pronostico',
   MENU_CARGUE_MASIVO: 'menu.cargue_masivo',
+  MENU_PROGRAMACION_CORTE: 'menu.programacion_corte',
   MENU_REPORTES: 'menu.reportes',
 };
 
@@ -251,6 +268,11 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.FINCA_CREAR, nombre: 'Crear fincas' },
   { codigo: PERMISSIONS.FINCA_EDITAR, nombre: 'Editar fincas' },
   { codigo: PERMISSIONS.FINCA_ELIMINAR, nombre: 'Eliminar fincas' },
+
+  { codigo: PERMISSIONS.PRODUCTO_VER, nombre: 'Ver productos' },
+  { codigo: PERMISSIONS.PRODUCTO_CREAR, nombre: 'Crear productos' },
+  { codigo: PERMISSIONS.PRODUCTO_EDITAR, nombre: 'Editar productos' },
+  { codigo: PERMISSIONS.PRODUCTO_ELIMINAR, nombre: 'Eliminar productos' },
 
   { codigo: PERMISSIONS.GRUPO_FINCA_VER, nombre: 'Ver grupos de finca' },
   { codigo: PERMISSIONS.GRUPO_FINCA_CREAR, nombre: 'Crear grupos de finca' },
@@ -346,6 +368,11 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.LABOR_EDITAR, nombre: 'Editar labores' },
   { codigo: PERMISSIONS.LABOR_ELIMINAR, nombre: 'Eliminar labores' },
 
+  { codigo: PERMISSIONS.COLABORADOR_VER, nombre: 'Ver colaboradores' },
+  { codigo: PERMISSIONS.COLABORADOR_CREAR, nombre: 'Crear colaboradores' },
+  { codigo: PERMISSIONS.COLABORADOR_EDITAR, nombre: 'Editar colaboradores' },
+  { codigo: PERMISSIONS.COLABORADOR_ELIMINAR, nombre: 'Eliminar colaboradores' },
+
   { codigo: PERMISSIONS.LABOR_PROGRAMACION_VER, nombre: 'Ver el calendario de labores' },
   { codigo: PERMISSIONS.LABOR_PROGRAMACION_CREAR, nombre: 'Programar labores (únicas o recurrentes)' },
   { codigo: PERMISSIONS.LABOR_PROGRAMACION_EDITAR, nombre: 'Editar programaciones de labores' },
@@ -353,10 +380,15 @@ export const PERMISSIONS_SEED = [
 
   { codigo: PERMISSIONS.LABOR_EVALUACION_VER, nombre: 'Ver evaluación de labores (visitas de sanidad/labor cultural)' },
 
+  { codigo: PERMISSIONS.PROGRAMACION_CORTE_VER, nombre: 'Ver programación de corte' },
+  { codigo: PERMISSIONS.PROGRAMACION_CORTE_CREAR, nombre: 'Cargar programación de corte' },
+  { codigo: PERMISSIONS.PROGRAMACION_CORTE_ELIMINAR, nombre: 'Eliminar programación de corte' },
+
   { codigo: PERMISSIONS.SISTEMA_RESET_DATOS, nombre: 'Borrar todos los datos que no vienen de los seeders' },
 
   { codigo: PERMISSIONS.MENU_MAESTROS, nombre: 'Ver sección Maestros en el menú' },
   { codigo: PERMISSIONS.MENU_MAESTROS_FINCAS, nombre: 'Ver submenú Fincas' },
+  { codigo: PERMISSIONS.MENU_MAESTROS_PRODUCTOS, nombre: 'Ver submenú Productos' },
   { codigo: PERMISSIONS.MENU_MAESTROS_GRUPOS_FINCA, nombre: 'Ver submenú Grupos de Finca' },
   { codigo: PERMISSIONS.MENU_MAESTROS_AREA_LOTES, nombre: 'Ver submenú Área de Lotes' },
   { codigo: PERMISSIONS.MENU_MAESTROS_USUARIOS, nombre: 'Ver submenú Usuarios' },
@@ -369,6 +401,7 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.MENU_MAESTROS_LABORES, nombre: 'Ver submenú Labores' },
   { codigo: PERMISSIONS.MENU_MAESTROS_ESTADIOS_SIGATOKA, nombre: 'Ver submenú Estadios de Sigatoka' },
   { codigo: PERMISSIONS.MENU_MAESTROS_VERSION_APP, nombre: 'Ver submenú Versión App Móvil' },
+  { codigo: PERMISSIONS.MENU_MAESTROS_COLABORADORES, nombre: 'Ver submenú Colaboradores' },
 
   { codigo: PERMISSIONS.MENU_RACIMOS, nombre: 'Ver sección Racimos en el menú' },
   { codigo: PERMISSIONS.MENU_RACIMOS_MOVIMIENTOS, nombre: 'Ver submenú Movimientos' },
@@ -390,5 +423,6 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.MENU_PRODUCCION_SEMANAL, nombre: 'Ver ítem de menú Producción Semanal' },
   { codigo: PERMISSIONS.MENU_PRONOSTICO, nombre: 'Ver ítem de menú Pronóstico de Cajas' },
   { codigo: PERMISSIONS.MENU_CARGUE_MASIVO, nombre: 'Ver ítem de menú Cargue Masivo' },
+  { codigo: PERMISSIONS.MENU_PROGRAMACION_CORTE, nombre: 'Ver ítem de menú Programación de Corte' },
   { codigo: PERMISSIONS.MENU_REPORTES, nombre: 'Ver ítem de menú Reportes' },
 ];

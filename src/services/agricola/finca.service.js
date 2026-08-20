@@ -32,6 +32,7 @@ export const fincaService = {
       offset,
       search: query.search,
       fincaIdsPermitidas: getFincaIdsPermitidas(user),
+      soloOperativas: query.soloOperativas === true || query.soloOperativas === 'true',
     });
     return { items: rows, meta: buildPaginationMeta({ page, limit, total: count }) };
   },
@@ -53,13 +54,50 @@ export const fincaService = {
     const existing = await fincaRepository.findByCodigo(payload.codigo);
     if (existing) throw ApiError.conflict('Ya existe una finca con ese código');
 
-    return fincaRepository.create({
+    const finca = await fincaRepository.create({
       codigo: payload.codigo,
       nombre: payload.nombre,
       estado: payload.estado ?? true,
+      esExterna: payload.esExterna ?? false,
       grupoFincaId: await resolverGrupoFincaId(payload.grupoFincaUuid),
       createdBy: actorId,
     });
+
+    // Best-effort: crea el almacén espejo en Logística. Si Banarica está
+    // caído o el almacén ya existía allá, no bloquea la creación de la
+    // finca en Corbana — solo se loguea, se puede reintentar a mano después
+    // (ej. reeditando la finca o creando el almacén directo en Banarica).
+    this.pushFincaComoAlmacenBanarica(finca).catch((error) => {
+      logger.error('No se pudo crear el almacén espejo en Logística', {
+        fincaCodigo: finca.codigo,
+        message: error.message,
+      });
+    });
+
+    return finca;
+  },
+
+  // Ver comentario en createFinca — nunca debe hacer fallar la creación de
+  // la finca en Corbana, por eso el caller la llama sin `await`.
+  async pushFincaComoAlmacenBanarica(finca) {
+    const [baseUrl, apiKey] = await Promise.all([
+      configuracionService.getBanaricaApiUrl(),
+      configuracionService.getBanaricaApiKey(),
+    ]);
+    if (!apiKey) return;
+
+    const response = await fetch(`${baseUrl.replace(/\/$/, '')}/api/v1/almacenes/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', api: apiKey },
+      body: JSON.stringify({ consecutivo: finca.codigo, nombre: finca.nombre }),
+      signal: AbortSignal.timeout(15000),
+    });
+
+    // 409 = "El almacen ya existe" en Banarica — no es un error real acá,
+    // solo significa que ya estaba creado de antes (ej. re-sincronización).
+    if (!response.ok && response.status !== 409) {
+      throw new Error(`HTTP ${response.status}`);
+    }
   },
 
   async updateFinca(uuid, payload, actorId, user) {
@@ -113,11 +151,17 @@ export const fincaService = {
   // `estado`/`activo`: usa `isBlock` (bloqueado) como bandera inversa, así
   // que "activo" = !isBlock.
   async fetchActiveBanaricaAlmacenes() {
-    const baseUrl = await configuracionService.getBanaricaApiUrl();
+    const [baseUrl, apiKey] = await Promise.all([
+      configuracionService.getBanaricaApiUrl(),
+      configuracionService.getBanaricaApiKey(),
+    ]);
     const url = `${baseUrl.replace(/\/$/, '')}/api/v1/almacenes/`;
     let almacenes;
     try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
+      const response = await fetch(url, {
+        headers: apiKey ? { api: apiKey } : {},
+        signal: AbortSignal.timeout(15000),
+      });
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
