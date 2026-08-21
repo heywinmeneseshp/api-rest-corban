@@ -9,6 +9,7 @@ import {
   updateLogisticaSchema,
   updateTasaConversionSchema,
   updateAppVersionInfoSchema,
+  updateMarcaAppSchema,
 } from '../../validators/sistema/configuracion.validator.js';
 
 const router = Router();
@@ -114,6 +115,32 @@ router.put(
   deployKeyOrAuth,
   validate(updateAppVersionInfoSchema),
   configuracionController.updateAppVersionInfo,
+);
+
+/**
+ * @openapi
+ * /configuraciones/marca:
+ *   get:
+ *     tags: [Configuraciones]
+ *     summary: Obtener el nombre y logo configurados de la app
+ *     responses:
+ *       200: { description: OK }
+ *   put:
+ *     tags: [Configuraciones]
+ *     summary: Configurar el nombre y logo de la app. Solo Administrador.
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+// Sin `auth`: el login y el sidebar necesitan poder mostrar la marca antes
+// de que el usuario inicie sesión.
+router.get('/marca', configuracionController.getMarcaApp);
+router.put(
+  '/marca',
+  auth,
+  requireAdmin,
+  validate(updateMarcaAppSchema),
+  configuracionController.updateMarcaApp,
 );
 
 export default router;

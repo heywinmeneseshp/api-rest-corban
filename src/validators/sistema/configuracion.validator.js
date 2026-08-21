@@ -39,3 +39,14 @@ export const updateAppVersionInfoSchema = Joi.object({
   params: Joi.object({}),
   query: Joi.object({}),
 });
+
+export const updateMarcaAppSchema = Joi.object({
+  body: Joi.object({
+    nombreApp: Joi.string().min(2).max(60).required(),
+    // data URL base64 (ej. "data:image/png;base64,...") o null para volver
+    // al logo por defecto.
+    logoUrl: Joi.string().max(2_000_000).pattern(/^data:image\/(png|jpeg|jpg|webp|svg\+xml);base64,/).allow('', null),
+  }),
+  params: Joi.object({}),
+  query: Joi.object({}),
+});

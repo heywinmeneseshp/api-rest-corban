@@ -57,33 +57,66 @@ const normalizarErrorGoogleDrive = (error) => {
   return error;
 };
 
-// Sube las fotos de UNA visita de Evaluación de Labores a una subcarpeta
-// dentro de la carpeta principal (GOOGLE_DRIVE_FOLDER_LABORES). La
-// subcarpeta se nombra por finca+semana+fecha y se reutiliza si ya existe
-// (ej. si se suben fotos en más de un envío para la misma visita).
-export async function cargarFotosLaborCultural({ fincaNombre, semanaCodigo, fecha, visitaUuid }, archivos) {
-  const carpetaPrincipalId = process.env.GOOGLE_DRIVE_FOLDER_LABORES;
-  if (!carpetaPrincipalId) throw new Error('Falta GOOGLE_DRIVE_FOLDER_LABORES en el entorno');
+// Jerarquía de carpetas dentro de GOOGLE_DRIVE_FOLDER (la carpeta raíz,
+// compartida entre todos los módulos que suben evidencias):
+//   GOOGLE_DRIVE_FOLDER / <carpeta del módulo> / <subcarpeta por evidencia> / archivos
+// Cada módulo que suba evidencias agrega su propia entrada a MODULOS_ID
+// (cacheada en memoria tras la primera búsqueda/creación, igual que la
+// conexión a `drive`).
+const MODULOS_ID = {};
+
+async function obtenerOCrearCarpeta(nombre, carpetaPadreId) {
+  const drive = getDrive();
+  const nombreEscapado = nombre.replace(/'/g, "\\'");
+  const query = `name='${nombreEscapado}' and '${carpetaPadreId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+  const busqueda = await drive.files.list({ q: query, fields: 'files(id)', ...SHARED_DRIVE_OPTIONS });
+
+  if (busqueda.data.files.length > 0) return busqueda.data.files[0].id;
+
+  const nuevaCarpeta = await drive.files.create({
+    resource: { name: nombre, mimeType: 'application/vnd.google-apps.folder', parents: [carpetaPadreId] },
+    fields: 'id',
+    supportsAllDrives: true,
+  });
+  return nuevaCarpeta.data.id;
+}
+
+// Resuelve (y cachea) el id de la carpeta de un módulo dentro de la raíz
+// GOOGLE_DRIVE_FOLDER, creándola la primera vez que se necesita.
+async function obtenerCarpetaModulo(nombreModulo) {
+  if (MODULOS_ID[nombreModulo]) return MODULOS_ID[nombreModulo];
+
+  const carpetaRaizId = process.env.GOOGLE_DRIVE_FOLDER;
+  if (!carpetaRaizId) throw new Error('Falta GOOGLE_DRIVE_FOLDER en el entorno');
+
+  const id = await obtenerOCrearCarpeta(nombreModulo, carpetaRaizId);
+  MODULOS_ID[nombreModulo] = id;
+  return id;
+}
+
+const MODULO_LABORES = 'Evaluacion_Labores';
+
+// Sube las fotos de UNA visita de Evaluación de Labores. Jerarquía en Drive:
+// GOOGLE_DRIVE_FOLDER / Evaluacion_Labores / {semana}_{finca}_{fecha}_VisitaSanidadVegetal / archivos
+// La subcarpeta se reutiliza si ya existe (ej. si se suben fotos en más de
+// un envío para la misma visita); el nombre identifica la evidencia por
+// semana, finca, fecha y el formato de origen (mismo criterio pedido para
+// que cualquier carpeta/archivo se identifique por sí solo sin tener que
+// abrirlo).
+export async function cargarFotosLaborCultural({ fincaNombre, semanaCodigo, fecha }, archivos) {
   if (!archivos?.length) throw new Error('No hay fotos para subir');
 
   const drive = getDrive();
-  const nombreSubcarpeta = `${normalizarTexto(fincaNombre) || 'sin_finca'}_${normalizarTexto(semanaCodigo) || 'sin_semana'}_${fecha || 'sin_fecha'}`;
+  const identificador = [
+    normalizarTexto(semanaCodigo) || 'sin_semana',
+    normalizarTexto(fincaNombre) || 'sin_finca',
+    fecha || 'sin_fecha',
+    'VisitaSanidadVegetal',
+  ].join('_');
 
   try {
-    let subcarpetaId;
-    const queryBusqueda = `name='${nombreSubcarpeta}' and '${carpetaPrincipalId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-    const busqueda = await drive.files.list({ q: queryBusqueda, fields: 'files(id)', ...SHARED_DRIVE_OPTIONS });
-
-    if (busqueda.data.files.length > 0) {
-      subcarpetaId = busqueda.data.files[0].id;
-    } else {
-      const nuevaCarpeta = await drive.files.create({
-        resource: { name: nombreSubcarpeta, mimeType: 'application/vnd.google-apps.folder', parents: [carpetaPrincipalId] },
-        fields: 'id',
-        supportsAllDrives: true,
-      });
-      subcarpetaId = nuevaCarpeta.data.id;
-    }
+    const carpetaModuloId = await obtenerCarpetaModulo(MODULO_LABORES);
+    const subcarpetaId = await obtenerOCrearCarpeta(identificador, carpetaModuloId);
 
     const fotosSubidas = [];
     let contador = 1;
@@ -91,7 +124,7 @@ export async function cargarFotosLaborCultural({ fincaNombre, semanaCodigo, fech
       if (!foto.buffer?.length) continue;
 
       const extension = path.extname(foto.originalname || '').toLowerCase() || '.jpg';
-      const nombreArchivo = `${visitaUuid}_${contador}_${Date.now()}${extension}`;
+      const nombreArchivo = `${identificador}_${contador}${extension}`;
 
       const archivoSubido = await drive.files.create({
         resource: { name: nombreArchivo, parents: [subcarpetaId] },
@@ -109,6 +142,15 @@ export async function cargarFotosLaborCultural({ fincaNombre, semanaCodigo, fech
       contador += 1;
     }
 
+    // Antes esto devolvía éxito con `fotos: []` si ningún archivo recibido
+    // tenía contenido (ej. el picker de la app móvil mandó una referencia a
+    // un archivo local que ya no existía) — el cliente lo tomaba como
+    // subida exitosa y borraba el pendiente sin haber subido nada. Ahora se
+    // lanza un error real para que quede visible y reintentable.
+    if (fotosSubidas.length === 0) {
+      throw new Error('Ninguna de las fotos recibidas tenía contenido válido');
+    }
+
     return { carpetaId: subcarpetaId, carpetaUrl: `https://drive.google.com/drive/folders/${subcarpetaId}`, fotos: fotosSubidas };
   } catch (error) {
     logger.error('Error al subir fotos de labor cultural a Google Drive', { message: error.message });
@@ -118,7 +160,7 @@ export async function cargarFotosLaborCultural({ fincaNombre, semanaCodigo, fech
 
 export async function eliminarFotoDeDrive(fileId) {
   try {
-    await getDrive().files.delete({ fileId });
+    await getDrive().files.delete({ fileId, supportsAllDrives: true });
     return true;
   } catch (error) {
     logger.error(`Error al eliminar archivo ${fileId} de Google Drive`, { message: error.message });
@@ -126,4 +168,23 @@ export async function eliminarFotoDeDrive(fileId) {
   }
 }
 
-export default { cargarFotosLaborCultural, eliminarFotoDeDrive };
+// Descarga el contenido de un archivo (foto) de Drive para mostrarlo en el
+// panel/PDF — un <img> no puede mandar el Authorization Bearer del panel, así
+// que el frontend pide esto vía fetch autenticado y arma un blob local en
+// vez de apuntar directo a Drive (que además exige que el archivo sea
+// público, algo que no queremos en una unidad compartida privada).
+export async function descargarArchivoDeDrive(fileId) {
+  const drive = getDrive();
+  const metadata = await drive.files.get({
+    fileId,
+    fields: 'mimeType, name',
+    supportsAllDrives: true,
+  });
+  const contenido = await drive.files.get(
+    { fileId, alt: 'media', supportsAllDrives: true },
+    { responseType: 'stream' },
+  );
+  return { stream: contenido.data, mimeType: metadata.data.mimeType, nombre: metadata.data.name };
+}
+
+export default { cargarFotosLaborCultural, eliminarFotoDeDrive, descargarArchivoDeDrive };

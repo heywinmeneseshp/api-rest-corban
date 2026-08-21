@@ -36,6 +36,18 @@ export const uploadFotosLabor = multer({
   },
 }).array('fotos', 10);
 
+// PDF de una visita de Sanidad Vegetal, generado en el navegador (jsPDF) y
+// mandado al backend solo para adjuntarlo al aviso de revisión aprobada —
+// nunca se guarda, se usa en memoria y se descarta tras enviar el correo.
+export const uploadPdfLabor = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype === 'application/pdf') cb(null, true);
+    else cb(Object.assign(new Error('El archivo debe ser un PDF'), { statusCode: 400 }));
+  },
+}).single('pdf');
+
 // Dump completo de la base de datos a importar (Configuración → Base de
 // datos) — puede pesar bastante más que un cargue masivo normal, de ahí el
 // límite propio y más generoso.

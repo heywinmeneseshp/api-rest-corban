@@ -31,6 +31,9 @@ export const uuidParamSchema = Joi.object({
 export const resolverInconsistenciaSchema = Joi.object({
   body: Joi.object({
     fuente: Joi.string().valid('precipitacion_diaria', 'clima').required(),
+    // Solo aplica con fuente="clima" — el mm editado a mano en la tabla de
+    // inconsistencias, en vez de aceptar a ciegas el que ya había guardado.
+    mm: Joi.number().min(0).allow(null),
   }),
   params: Joi.object({
     uuid: Joi.string().uuid().required(),

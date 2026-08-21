@@ -55,6 +55,7 @@ export const userService = {
           email: payload.email,
           password: hashedPassword,
           estado: payload.estado ?? true,
+          cargo: payload.cargo || null,
           createdBy: actorId,
         },
         { transaction },

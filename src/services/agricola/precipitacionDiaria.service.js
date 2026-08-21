@@ -403,12 +403,34 @@ export const precipitacionDiariaService = {
 
   // Lista los registros marcados como no-coincidentes, junto con el valor
   // que tenga (si tiene) el `clima` de esa misma finca+fecha, para que el
-  // usuario decida cuál tomar como definitivo.
-  async listInconsistencias() {
+  // usuario decida cuál tomar como definitivo. Mismos filtros que list()
+  // (Finca/Semana-rango de fechas/Usuario), para que el filtro de arriba
+  // de la pantalla aplique a las dos tablas a la vez.
+  async listInconsistencias(query = {}) {
     await ensureTables();
+
+    const replacements = {};
+    let where = 'WHERE coincide_clima = 0';
+    if (query.fincaUuid) {
+      where += ' AND finca_uuid IN (:fincaUuids)';
+      replacements.fincaUuids = await expandirFincaUuids([query.fincaUuid]);
+    }
+    if (query.fechaDesde) {
+      where += ' AND fecha >= :fechaDesde';
+      replacements.fechaDesde = query.fechaDesde;
+    }
+    if (query.fechaHasta) {
+      where += ' AND fecha <= :fechaHasta';
+      replacements.fechaHasta = query.fechaHasta;
+    }
+    if (query.usuarioId) {
+      where += ' AND usuario_id = :usuarioId';
+      replacements.usuarioId = query.usuarioId;
+    }
+
     const registros = await sequelize.query(
-      `SELECT * FROM ${TABLE_REGISTRO} WHERE coincide_clima = 0 ORDER BY fecha DESC`,
-      { type: 'SELECT' },
+      `SELECT * FROM ${TABLE_REGISTRO} ${where} ORDER BY fecha DESC`,
+      { replacements, type: 'SELECT' },
     );
 
     const resultado = [];
@@ -432,7 +454,12 @@ export const precipitacionDiariaService = {
   // Resuelve una inconsistencia puntual: el usuario elige cuál de los dos
   // valores es el correcto y ESE overwrite explícito es el único momento en
   // que estas dos tablas se escriben cruzadas entre sí.
-  async resolverInconsistencia(uuid, fuente, actorId, actorNombre) {
+  //
+  // `mmClima` (opcional, solo aplica con fuente="clima"): el usuario puede
+  // editar el mm de Clima ahí mismo antes de confirmar, en vez de aceptar a
+  // ciegas el valor que ya tenía guardado — si no se manda, se usa el que
+  // ya había en `clima`.
+  async resolverInconsistencia(uuid, fuente, actorId, actorNombre, mmClima) {
     await ensureTables();
     if (!['precipitacion_diaria', 'clima'].includes(fuente)) {
       throw ApiError.badRequest('fuente debe ser "precipitacion_diaria" o "clima"');
@@ -448,12 +475,39 @@ export const precipitacionDiariaService = {
     const registroClima = await climaService.getByFincaFecha(registro.finca_uuid, fecha);
 
     if (fuente === 'clima') {
-      if (!registroClima || registroClima.mm === null) {
-        throw ApiError.badRequest('No hay un valor de clima cargado todavía para tomar como definitivo');
+      const mmFinal = mmClima !== undefined && mmClima !== null ? Number(mmClima) : registroClima?.mm;
+      if (mmFinal === undefined || mmFinal === null || Number.isNaN(mmFinal)) {
+        throw ApiError.badRequest('Debes indicar el mm de Clima a usar como definitivo');
       }
+
+      if (registroClima) {
+        await sequelize.query(
+          `UPDATE clima SET mm = :mm WHERE uuid = :uuid`,
+          { replacements: { mm: mmFinal, uuid: registroClima.uuid } },
+        );
+      } else {
+        // No existía ninguna fila en clima para ese día — se crea con el mm
+        // que el usuario acaba de escribir.
+        const semana = await Semana.findOne({
+          where: { fechaInicio: { [Op.lte]: fecha }, fechaFin: { [Op.gte]: fecha } },
+        });
+        await climaService.create(
+          {
+            fincaUuid: registro.finca_uuid,
+            fincaNombre: registro.finca_nombre,
+            semanaUuid: semana?.uuid,
+            semanaCodigo: semana?.codigo,
+            fecha,
+            mm: mmFinal,
+            usuarioNombre: actorNombre,
+          },
+          actorId,
+        );
+      }
+
       await sequelize.query(
         `UPDATE ${TABLE_REGISTRO} SET mm = :mm, coincide_clima = 1 WHERE uuid = :uuid`,
-        { replacements: { mm: registroClima.mm, uuid } },
+        { replacements: { mm: mmFinal, uuid } },
       );
     } else if (registroClima) {
       // Ya existía una fila en clima (con valor real o placeholder sin mm)

@@ -67,6 +67,16 @@ export const configuracionController = {
     const data = await configuracionService.setAppVersionInfo(req.body, req.user?.id);
     ApiResponse.send(res, { message: 'Información de versión actualizada correctamente', data });
   }),
+
+  getMarcaApp: asyncHandler(async (req, res) => {
+    const data = await configuracionService.getMarcaApp();
+    ApiResponse.send(res, { message: 'Marca de la app obtenida correctamente', data });
+  }),
+
+  updateMarcaApp: asyncHandler(async (req, res) => {
+    const data = await configuracionService.setMarcaApp(req.body, req.user?.id);
+    ApiResponse.send(res, { message: 'Marca de la app actualizada correctamente', data });
+  }),
 };
 
 export default configuracionController;

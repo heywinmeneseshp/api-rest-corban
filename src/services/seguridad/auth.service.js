@@ -47,8 +47,16 @@ const buildTokenPair = async (user) => {
   // Trade-off: una sesión activa no ve un cambio de agrupamiento hasta que
   // el access token expire y se refresque (JWT_EXPIRES_IN), igual que ya
   // pasa hoy con cambios de rol/permisos.
-  const fincaIdsAsignados = esAdmin ? null : await userRepository.findFincaIdsByUserId(user.id);
+  const fincaIdsPropios = await userRepository.findFincaIdsByUserId(user.id);
+  const fincaIdsAsignados = esAdmin ? null : fincaIdsPropios;
   const fincaIds = fincaIdsAsignados === null ? null : await expandirFincaIds(fincaIdsAsignados);
+
+  // Un Administrador con fincas asignadas sigue viendo todo (arriba), pero
+  // NO cuenta como "administrador del sistema" para acciones reservadas de
+  // alto impacto (eliminar evaluaciones, configurar avisos por correo) — de
+  // esas solo puede encargarse un Administrador sin ninguna finca asignada.
+  // Ver requireAdminGlobal en requireAdmin.middleware.js.
+  const administradorGlobal = esAdmin && fincaIdsPropios.length === 0;
 
   const accessToken = signAccessToken({
     id: user.id,
@@ -57,6 +65,7 @@ const buildTokenPair = async (user) => {
     roles: roleNames,
     permissions,
     fincaIds,
+    administradorGlobal,
   });
 
   const refreshTokenPlain = generateRefreshToken();
@@ -69,7 +78,7 @@ const buildTokenPair = async (user) => {
   return {
     accessToken,
     refreshToken: refreshTokenPlain,
-    user: { ...user.toSafeJSON(), roles: roleNames, permissions, fincaIds },
+    user: { ...user.toSafeJSON(), roles: roleNames, permissions, fincaIds, administradorGlobal },
   };
 };
 

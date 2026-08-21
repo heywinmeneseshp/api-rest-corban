@@ -48,7 +48,7 @@ export const precipitacionDiariaController = {
   }),
 
   listInconsistencias: asyncHandler(async (req, res) => {
-    const result = await precipitacionDiariaService.listInconsistencias();
+    const result = await precipitacionDiariaService.listInconsistencias(req.query);
     ApiResponse.send(res, { message: 'Inconsistencias obtenidas correctamente', data: result });
   }),
 
@@ -58,6 +58,7 @@ export const precipitacionDiariaController = {
       req.body.fuente,
       req.user?.id,
       req.user?.usuario,
+      req.body.mm,
     );
     ApiResponse.send(res, { message: 'Inconsistencia resuelta correctamente', data: result });
   }),

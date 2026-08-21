@@ -21,6 +21,7 @@ export const auth = asyncHandler(async (req, _res, next) => {
       // null = sin restricción (Administrador); arreglo (incl. vacío) =
       // solo esas fincas. Ver src/utils/fincaScope.js para cómo se usa.
       fincaIds: payload.fincaIds === null ? null : payload.fincaIds || [],
+      administradorGlobal: payload.administradorGlobal === true,
     };
     next();
   } catch {

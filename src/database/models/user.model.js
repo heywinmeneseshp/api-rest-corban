@@ -55,6 +55,15 @@ User.init(
       allowNull: false,
       defaultValue: true,
     },
+    // Cargo/puesto de trabajo (ej. "Ingeniero Agrónomo", "Supervisor de
+    // Campo") — distinto del rol (que es el mecanismo de permisos). Se usa
+    // para las firmas de documentos (ver laborCultural.service.js), donde
+    // se firma con el cargo real de la persona, no con el nombre técnico
+    // del rol del sistema.
+    cargo: {
+      type: DataTypes.STRING(150),
+      allowNull: true,
+    },
     createdBy: {
       type: DataTypes.INTEGER,
       allowNull: true,

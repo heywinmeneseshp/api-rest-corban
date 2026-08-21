@@ -7,7 +7,7 @@ Configuracion.init(
   {
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     clave: { type: DataTypes.STRING(100), allowNull: false, unique: true },
-    valor: { type: DataTypes.TEXT, allowNull: true },
+    valor: { type: DataTypes.TEXT('medium'), allowNull: true },
     updatedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'updated_by' },
   },
   {
