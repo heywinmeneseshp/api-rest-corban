@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { auth } from '../../middlewares/auth.middleware.js';
-import { requireAdminGlobal } from '../../middlewares/requireAdmin.middleware.js';
+import { requireAdmin } from '../../middlewares/requireAdmin.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
 import { laborCulturalController } from '../../controllers/agricola/laborCultural.controller.js';
 import { uploadFotosLabor, uploadPdfLabor } from '../../middlewares/upload.middleware.js';
@@ -37,11 +37,10 @@ router.get('/visitas/:visitaUuid', auth, laborCulturalController.getVisita);
 // que getVisita, validado en el controlador contra la visita dueña de la
 // foto.
 router.get('/fotos/:fotoUuid/archivo', auth, laborCulturalController.obtenerFoto);
-// Eliminar una visita: acción reservada solo al administrador del sistema
-// (Administrador sin ninguna finca asignada) — borrar registros de
-// evaluaciones es de alto impacto y no se le asigna ni siquiera a un
-// Administrador restringido a una o más fincas puntuales.
-router.delete('/visitas/:visitaUuid', auth, requireAdminGlobal, laborCulturalController.deleteVisita);
+// Eliminar una visita: acción reservada solo al rol Administrador (no hay
+// permiso granular propio; borrar registros de evaluaciones es de alto
+// impacto y no se le asigna a roles operativos).
+router.delete('/visitas/:visitaUuid', auth, requireAdmin, laborCulturalController.deleteVisita);
 
 // Marcar una visita como revisada: cualquier autenticado puede intentarlo,
 // el propio servicio valida si su rol está en la config activa (o es
@@ -54,39 +53,38 @@ router.put(
   laborCulturalController.marcarRevisada,
 );
 
-// Configuración de qué rol(es) pueden revisar: reservada al administrador
-// del sistema, igual que eliminar visitas.
-router.get('/revisor-config', auth, requireAdminGlobal, laborCulturalController.listRolesRevisores);
+// Configuración de qué rol(es) pueden revisar: reservada al Administrador,
+// igual que eliminar visitas.
+router.get('/revisor-config', auth, requireAdmin, laborCulturalController.listRolesRevisores);
 router.post(
   '/revisor-config',
   auth,
-  requireAdminGlobal,
+  requireAdmin,
   validate(crearRolRevisorSchema),
   laborCulturalController.crearRolRevisor,
 );
 router.put(
   '/revisor-config/:uuid',
   auth,
-  requireAdminGlobal,
+  requireAdmin,
   validate(toggleRolRevisorSchema),
   laborCulturalController.toggleRolRevisor,
 );
 router.delete(
   '/revisor-config/:uuid',
   auth,
-  requireAdminGlobal,
+  requireAdmin,
   validate(uuidParamSchema),
   laborCulturalController.eliminarRolRevisor,
 );
 
 // Correos en copia (CC) para los avisos de cargue/revisión — reservado al
-// administrador del sistema, igual que el resto de la configuración del
-// revisor.
-router.get('/revisor-cc', auth, requireAdminGlobal, laborCulturalController.getRevisorCc);
+// Administrador, igual que el resto de la configuración del revisor.
+router.get('/revisor-cc', auth, requireAdmin, laborCulturalController.getRevisorCc);
 router.put(
   '/revisor-cc',
   auth,
-  requireAdminGlobal,
+  requireAdmin,
   validate(revisorCcSchema),
   laborCulturalController.setRevisorCc,
 );

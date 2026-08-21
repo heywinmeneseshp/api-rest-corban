@@ -15,21 +15,4 @@ export const requireAdmin = (req, _res, next) => {
   next();
 };
 
-// Más estricto que requireAdmin: un Administrador con fincas asignadas
-// sigue viendo todos los datos del sistema (ver fincaScope.js), pero no
-// debe poder eliminar evaluaciones ni tocar la configuración de avisos por
-// correo de Sanidad Vegetal — Evaluación de Labores. Esas acciones quedan
-// reservadas solo al administrador del sistema (sin ninguna finca asignada).
-export const requireAdminGlobal = (req, _res, next) => {
-  if (!req.user) {
-    return next(ApiError.unauthorized('No autenticado'));
-  }
-  if (!(req.user.roles || []).includes(ROLES.ADMINISTRADOR) || !req.user.administradorGlobal) {
-    return next(
-      ApiError.forbidden('Solo el administrador del sistema (sin fincas asignadas) puede realizar esta acción'),
-    );
-  }
-  next();
-};
-
 export default requireAdmin;
