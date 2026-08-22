@@ -1,9 +1,8 @@
 import { Router } from 'express';
 import { estadioSigatokaController } from '../../controllers/agricola/estadioSigatoka.controller.js';
 import { auth } from '../../middlewares/auth.middleware.js';
-import { permission } from '../../middlewares/permission.middleware.js';
+import { requireAdmin } from '../../middlewares/requireAdmin.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
-import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import {
   listEstadiosSigatokaSchema,
   getEstadioSigatokaSchema,
@@ -29,17 +28,14 @@ const router = Router();
  *     responses:
  *       201: { description: Creado }
  */
-router.get(
-  '/',
-  auth,
-  permission(PERMISSIONS.ESTADIO_SIGATOKA_VER),
-  validate(listEstadiosSigatokaSchema),
-  estadioSigatokaController.list,
-);
+// Sin permiso puntual para ver (igual que /fincas y /semanas): catálogo de
+// referencia no sensible. Crear/editar/eliminar quedan reservados solo al
+// rol Administrador (requireAdmin), no a un permiso asignable por rol.
+router.get('/', auth, validate(listEstadiosSigatokaSchema), estadioSigatokaController.list);
 router.post(
   '/',
   auth,
-  permission(PERMISSIONS.ESTADIO_SIGATOKA_CREAR),
+  requireAdmin,
   validate(createEstadioSigatokaSchema),
   estadioSigatokaController.create,
 );
@@ -66,24 +62,18 @@ router.post(
  *     responses:
  *       200: { description: OK }
  */
-router.get(
-  '/:uuid',
-  auth,
-  permission(PERMISSIONS.ESTADIO_SIGATOKA_VER),
-  validate(getEstadioSigatokaSchema),
-  estadioSigatokaController.getByUuid,
-);
+router.get('/:uuid', auth, validate(getEstadioSigatokaSchema), estadioSigatokaController.getByUuid);
 router.put(
   '/:uuid',
   auth,
-  permission(PERMISSIONS.ESTADIO_SIGATOKA_EDITAR),
+  requireAdmin,
   validate(updateEstadioSigatokaSchema),
   estadioSigatokaController.update,
 );
 router.delete(
   '/:uuid',
   auth,
-  permission(PERMISSIONS.ESTADIO_SIGATOKA_ELIMINAR),
+  requireAdmin,
   validate(getEstadioSigatokaSchema),
   estadioSigatokaController.remove,
 );

@@ -227,7 +227,7 @@ export const laborCulturalService = {
     // (nombre + apellido), no del que mande el cliente — la app móvil solo
     // envía el primer nombre en `usuarioNombre`, y la firma debe llevar
     // nombre y apellido siempre.
-    const actor = actorId ? await User.findByPk(actorId, { attributes: ['uuid', 'nombre', 'apellido', 'cargo'] }) : null;
+    const actor = actorId ? await User.findByPk(actorId, { attributes: ['uuid', 'nombre', 'apellido', 'cargo', 'email'] }) : null;
     const usuarioCargo = actor?.cargo || null;
     const usuarioNombreCompleto = actor ? `${actor.nombre} ${actor.apellido}`.trim() : (usuarioNombre || null);
     // El uuid también se toma del usuario autenticado, no del payload — lo
@@ -312,8 +312,11 @@ export const laborCulturalService = {
     // hace fallar si el correo falla — solo se registra el error.
     if (esPrimeraFilaDeVisita && visitaUuid) {
       obtenerDestinatariosRevisores(fincaUuid)
-        .then(async (destinatarios) => {
+        .then(async (destinatariosRevisores) => {
           const cc = await resolverCcCompleto();
+          // Quien registró la visita también recibe el aviso, no solo el
+          // revisor — así se entera de que su evaluación quedó cargada.
+          const destinatarios = [...new Set([...destinatariosRevisores, actor?.email].filter(Boolean))];
           await mailService.sendAvisoCargueLabor({
             destinatarios,
             cc,
@@ -788,10 +791,14 @@ export const laborCulturalService = {
       throw ApiError.badRequest('Esta visita todavía no ha sido marcada como revisada');
     }
 
-    const [destinatarios, cc] = await Promise.all([
+    const [destinatariosRevisores, cc, creador] = await Promise.all([
       obtenerDestinatariosRevisores(visita.fincaUuid),
       resolverCcCompleto(),
+      visita.usuarioUuid ? User.findOne({ where: { uuid: visita.usuarioUuid }, attributes: ['email'] }) : null,
     ]);
+    // Quien registró la visita también recibe el aviso de que ya fue
+    // revisada, no solo el revisor/CC.
+    const destinatarios = [...new Set([...destinatariosRevisores, creador?.email].filter(Boolean))];
 
     await mailService.sendAvisoRevisionLabor({
       destinatarios,

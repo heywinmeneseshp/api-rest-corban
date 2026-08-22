@@ -1,9 +1,8 @@
 import { Router } from 'express';
 import { tipoEvaluacionController } from '../../controllers/agricola/tipoEvaluacion.controller.js';
 import { auth } from '../../middlewares/auth.middleware.js';
-import { permission } from '../../middlewares/permission.middleware.js';
+import { requireAdmin } from '../../middlewares/requireAdmin.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
-import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import {
   listTiposSchema,
   getTipoSchema,
@@ -29,17 +28,13 @@ const router = Router();
  *     responses:
  *       201: { description: Creado }
  */
-router.get(
-  '/',
-  auth,
-  permission(PERMISSIONS.TIPO_EVALUACION_VER),
-  validate(listTiposSchema),
-  tipoEvaluacionController.list,
-);
+// Sin permiso puntual (igual que /fincas y /semanas): catálogo de
+// referencia no sensible, necesario para selectores en varias pantallas.
+router.get('/', auth, validate(listTiposSchema), tipoEvaluacionController.list);
 router.post(
   '/',
   auth,
-  permission(PERMISSIONS.TIPO_EVALUACION_CREAR),
+  requireAdmin,
   validate(createTipoSchema),
   tipoEvaluacionController.create,
 );
@@ -66,24 +61,18 @@ router.post(
  *     responses:
  *       200: { description: OK }
  */
-router.get(
-  '/:uuid',
-  auth,
-  permission(PERMISSIONS.TIPO_EVALUACION_VER),
-  validate(getTipoSchema),
-  tipoEvaluacionController.getByUuid,
-);
+router.get('/:uuid', auth, validate(getTipoSchema), tipoEvaluacionController.getByUuid);
 router.put(
   '/:uuid',
   auth,
-  permission(PERMISSIONS.TIPO_EVALUACION_EDITAR),
+  requireAdmin,
   validate(updateTipoSchema),
   tipoEvaluacionController.update,
 );
 router.delete(
   '/:uuid',
   auth,
-  permission(PERMISSIONS.TIPO_EVALUACION_ELIMINAR),
+  requireAdmin,
   validate(getTipoSchema),
   tipoEvaluacionController.remove,
 );

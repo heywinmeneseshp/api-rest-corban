@@ -55,11 +55,6 @@ export const PERMISSIONS = {
   // destructiva de este módulo).
   CATEGORIA_PLANTA_ELIMINAR: 'categoria_planta.eliminar',
 
-  TIPO_EVALUACION_VER: 'tipo_evaluacion.ver',
-  TIPO_EVALUACION_CREAR: 'tipo_evaluacion.crear',
-  TIPO_EVALUACION_EDITAR: 'tipo_evaluacion.editar',
-  TIPO_EVALUACION_ELIMINAR: 'tipo_evaluacion.eliminar',
-
   SEMANA_VER: 'semana.ver',
   SEMANA_CREAR: 'semana.crear',
   SEMANA_EDITAR: 'semana.editar',
@@ -72,14 +67,6 @@ export const PERMISSIONS = {
   EVALUACION_CREAR: 'evaluacion.crear',
   EVALUACION_EDITAR: 'evaluacion.editar',
   EVALUACION_ELIMINAR: 'evaluacion.eliminar',
-
-  // Valores numéricos configurables por estadio de Sigatoka (1-, 1+, 2-, …,
-  // 6+, 6-) usados para calcular automáticamente la Suma Bruta de una
-  // evaluación. Solo lo administra un rol de administración.
-  ESTADIO_SIGATOKA_VER: 'estadio_sigatoka.ver',
-  ESTADIO_SIGATOKA_CREAR: 'estadio_sigatoka.crear',
-  ESTADIO_SIGATOKA_EDITAR: 'estadio_sigatoka.editar',
-  ESTADIO_SIGATOKA_ELIMINAR: 'estadio_sigatoka.eliminar',
 
   MOTIVO_REPIQUE_VER: 'motivo_repique.ver',
   MOTIVO_REPIQUE_CREAR: 'motivo_repique.crear',
@@ -294,11 +281,6 @@ export const PERMISSIONS_SEED = [
 
   { codigo: PERMISSIONS.CATEGORIA_PLANTA_ELIMINAR, nombre: 'Eliminar categorías de planta' },
 
-  { codigo: PERMISSIONS.TIPO_EVALUACION_VER, nombre: 'Ver tipos de evaluación' },
-  { codigo: PERMISSIONS.TIPO_EVALUACION_CREAR, nombre: 'Crear tipos de evaluación' },
-  { codigo: PERMISSIONS.TIPO_EVALUACION_EDITAR, nombre: 'Editar tipos de evaluación' },
-  { codigo: PERMISSIONS.TIPO_EVALUACION_ELIMINAR, nombre: 'Eliminar tipos de evaluación' },
-
   { codigo: PERMISSIONS.SEMANA_VER, nombre: 'Ver semanas' },
   { codigo: PERMISSIONS.SEMANA_CREAR, nombre: 'Crear semanas' },
   { codigo: PERMISSIONS.SEMANA_EDITAR, nombre: 'Editar semanas' },
@@ -308,11 +290,6 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.EVALUACION_CREAR, nombre: 'Crear evaluaciones' },
   { codigo: PERMISSIONS.EVALUACION_EDITAR, nombre: 'Editar evaluaciones' },
   { codigo: PERMISSIONS.EVALUACION_ELIMINAR, nombre: 'Eliminar evaluaciones' },
-
-  { codigo: PERMISSIONS.ESTADIO_SIGATOKA_VER, nombre: 'Ver estadios de Sigatoka' },
-  { codigo: PERMISSIONS.ESTADIO_SIGATOKA_CREAR, nombre: 'Crear estadios de Sigatoka' },
-  { codigo: PERMISSIONS.ESTADIO_SIGATOKA_EDITAR, nombre: 'Editar estadios de Sigatoka' },
-  { codigo: PERMISSIONS.ESTADIO_SIGATOKA_ELIMINAR, nombre: 'Eliminar estadios de Sigatoka' },
 
   { codigo: PERMISSIONS.MOTIVO_REPIQUE_VER, nombre: 'Ver motivos de repique' },
   { codigo: PERMISSIONS.MOTIVO_REPIQUE_CREAR, nombre: 'Crear motivos de repique' },
