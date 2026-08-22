@@ -26,6 +26,9 @@ function validarFilasProgramacion(filas, { fincaPorCodigo, semanaPorCodigo, finc
     const fincaCodigo = String(row.fincacodigo || row.finca || row.codigofinca || '').trim().toUpperCase();
     const semanaCodigo = String(row.semana || row.semanacodigo || '').trim();
     const producto = String(row.producto || row.combo || '').trim();
+    // Proceso de empaque (Finca/Local/Puerto en Logística) — opcional, el
+    // cargue manual no lo trae y queda ''.
+    const procesoEmpaque = String(row.procesoempaque || row.proceso || '').trim();
     const cajasRaw = Number(row.cajasprogramadas || row.cajas || row.cajas20kg || 0);
 
     if (!fechaRaw || Number.isNaN(new Date(fechaRaw).getTime())) {
@@ -67,10 +70,32 @@ function validarFilasProgramacion(filas, { fincaPorCodigo, semanaPorCodigo, finc
     }
 
     const fecha = new Date(fechaRaw).toISOString().slice(0, 10);
-    filasValidas.push({ fecha, fincaId, semanaId, producto, cajasProgramadas: Math.round(cajasRaw), createdBy: actorId });
+    filasValidas.push({
+      fecha, fincaId, semanaId, producto, procesoEmpaque,
+      cajasProgramadas: Math.round(cajasRaw), createdBy: actorId,
+    });
   }
 
   return { filasValidas, errores };
+}
+
+// Antes, dos filas con la misma fecha+finca+producto (ej. una parte
+// cortada se empaca en la Finca y otra en Local, mismo día) se trataban
+// como "duplicado" y se descartaba una — perdiendo cajas reales. Ahora se
+// diferencian por proceso de empaque, y si aun así coinciden (dos filas del
+// mismo lote con la misma clave completa) se SUMAN en vez de descartarse.
+function agruparYSumarCajas(filas) {
+  const porClave = new Map();
+  for (const f of filas) {
+    const clave = `${f.fecha}|${f.fincaId}|${f.productoId}|${f.procesoEmpaque}`;
+    const existente = porClave.get(clave);
+    if (existente) {
+      existente.cajasProgramadas += f.cajasProgramadas;
+    } else {
+      porClave.set(clave, { ...f });
+    }
+  }
+  return [...porClave.values()];
 }
 
 export async function cargarCatalogos() {
@@ -129,18 +154,22 @@ async function procesarFilas(filas, actorId, user) {
   const fechas = [...new Set(filasValidas.map((f) => f.fecha))];
   const fincaIds = [...new Set(filasValidas.map((f) => f.fincaId))];
   const existentes = await programacionCorteRepository.findAllByFechaYFinca({ fechas, fincaIds });
-  const existenteSet = new Set(existentes.map((e) => `${e.fecha}-${e.fincaId}-${e.productoId}`));
+  const existenteSet = new Set(
+    existentes.map((e) => `${e.fecha}|${e.fincaId}|${e.productoId}|${e.procesoEmpaque}`),
+  );
 
-  // También descarta duplicados DENTRO del mismo lote (misma
-  // fecha+finca+producto dos veces) — igual criterio que produccionSemanal.
+  // Primero suma cajas de filas del mismo lote que comparten fecha+finca+
+  // producto+proceso (ver agruparYSumarCajas), y solo después descarta las
+  // que ya existan en la base (mismo criterio que produccionSemanal).
+  const filasAgrupadas = agruparYSumarCajas(filasValidas);
   const aInsertar = [];
-  for (const f of filasValidas) {
-    const clave = `${f.fecha}-${f.fincaId}-${f.productoId}`;
+  for (const f of filasAgrupadas) {
+    const clave = `${f.fecha}|${f.fincaId}|${f.productoId}|${f.procesoEmpaque}`;
     if (existenteSet.has(clave)) continue;
     existenteSet.add(clave);
     aInsertar.push(f);
   }
-  const saltados = filasValidas.length - aInsertar.length;
+  const saltados = filasAgrupadas.length - aInsertar.length;
 
   if (aInsertar.length > 0) {
     await programacionCorteRepository.bulkCreate(aInsertar);
@@ -297,17 +326,10 @@ async function reemplazarFilasSemana(filas, actorId, user, semanaId) {
     delete f.producto;
   }
 
-  // Descarta duplicados DENTRO del mismo lote (misma fecha+finca+producto
-  // repetida en la respuesta de Logística) — si no, la segunda choca contra
-  // el índice único al insertar.
-  const vistos = new Set();
-  const aInsertar = [];
-  for (const f of filasValidas) {
-    const clave = `${f.fecha}-${f.fincaId}-${f.productoId}`;
-    if (vistos.has(clave)) continue;
-    vistos.add(clave);
-    aInsertar.push(f);
-  }
+  // Suma cajas de filas con la misma fecha+finca+producto+proceso repetida
+  // en la respuesta de Logística (ver agruparYSumarCajas) — antes se
+  // descartaba la repetida entera, perdiendo esas cajas.
+  const aInsertar = agruparYSumarCajas(filasValidas);
 
   const borrados = await sequelize.transaction(async (transaction) => {
     const cantidadBorrados = await programacionCorteRepository.deleteBySemana(semanaId, { transaction });
@@ -494,6 +516,7 @@ export const programacionCorteService = {
         fincacodigo: r.almacen?.consecutivo ?? '',
         semana: r.Embarque?.semana?.consecutivo ?? '',
         producto: r.combo?.nombre ?? '',
+        procesoempaque: r.proceso_empaque ?? '',
         cajasprogramadas: r.cajas,
       }));
 
@@ -529,6 +552,7 @@ export const programacionCorteService = {
         fincacodigo: r.almacen?.consecutivo ?? '',
         semana: r.Embarque?.semana?.consecutivo ?? '',
         producto: r.combo?.nombre ?? '',
+        procesoempaque: r.proceso_empaque ?? '',
         cajasprogramadas: r.cajas,
       }));
 

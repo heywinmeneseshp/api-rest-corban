@@ -38,21 +38,21 @@ const router = Router();
 router.get(
   '/:uuid/suma-bruta',
   auth,
-  permission(PERMISSIONS.SUMA_BRUTA_VER),
+  permission(PERMISSIONS.EVALUACION_VER),
   validate(getSumaBrutaSchema),
   sumaBrutaController.getByEvaluacion,
 );
 router.post(
   '/:uuid/suma-bruta',
   auth,
-  permission(PERMISSIONS.SUMA_BRUTA_CREAR),
+  permission(PERMISSIONS.EVALUACION_CREAR),
   validate(createSumaBrutaSchema),
   sumaBrutaController.create,
 );
 router.put(
   '/:uuid/suma-bruta',
   auth,
-  permission(PERMISSIONS.SUMA_BRUTA_EDITAR),
+  permission(PERMISSIONS.EVALUACION_EDITAR),
   validate(updateSumaBrutaSchema),
   sumaBrutaController.update,
 );

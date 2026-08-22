@@ -30,13 +30,12 @@ const router = Router();
  *     responses:
  *       201: { description: Creado }
  */
-router.get(
-  '/',
-  auth,
-  permission(PERMISSIONS.SEMANA_VER),
-  validate(listSemanasSchema),
-  semanaController.list,
-);
+// Sin permiso puntual (igual que /fincas y /clima): semanas es dato de
+// referencia no sensible (código/año/fechas) que casi todos los módulos
+// necesitan para selectores y filtros — exigir semana.ver acá rompía
+// pantallas enteras con Promise.all cuando el rol tenía el permiso de SU
+// módulo pero no este.
+router.get('/', auth, validate(listSemanasSchema), semanaController.list);
 router.post(
   '/',
   auth,

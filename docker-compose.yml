@@ -14,7 +14,6 @@ services:
       PORT: 3000
       API_PREFIX: /api/v1
 
-      DB_MODE: direct
       DB_HOST: banarica-mysql
       DB_PORT: 3306
       DB_NAME: banarica
@@ -28,7 +27,7 @@ services:
 
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
 
-      AUTO_MIGRATE: "false"
+      AUTO_MIGRATE: "true"
 
       RATE_LIMIT_WINDOW_MS: 900000
       RATE_LIMIT_MAX: 300

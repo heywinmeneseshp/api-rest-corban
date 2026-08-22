@@ -36,6 +36,8 @@ import { ColaboradorLabor } from './models/colaboradorLabor.model.js';
 import { ProgramacionCorte } from './models/programacionCorte.model.js';
 import { Producto } from './models/producto.model.js';
 import { RechazoCorte } from './models/rechazoCorte.model.js';
+import { PrecipitacionDiariaConfig } from './models/precipitacionDiariaConfig.model.js';
+import { PrecipitacionDiaria } from './models/precipitacionDiaria.model.js';
 
 const withAuditAssociations = (TargetModel) => {
   TargetModel.belongsTo(User, { as: 'creadoPor', foreignKey: 'createdBy' });
@@ -303,6 +305,26 @@ export const setupAssociations = () => {
 
   withAuditAssociations(ProgramacionCorte);
   withAuditAssociations(Producto);
+
+  // Precipitación Diaria — relaciones reales agregadas después (la tabla se
+  // creó con SQL crudo, ver precipitacionDiaria.service.js y la migración
+  // 20260821000003-fk-precipitacion-diaria).
+  Finca.hasMany(PrecipitacionDiariaConfig, { foreignKey: 'fincaId', as: 'precipitacionDiariaConfigs' });
+  PrecipitacionDiariaConfig.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+
+  Role.hasMany(PrecipitacionDiariaConfig, { foreignKey: 'rolId', as: 'precipitacionDiariaConfigs' });
+  PrecipitacionDiariaConfig.belongsTo(Role, { foreignKey: 'rolId', as: 'rol' });
+
+  // FK apunta a semanas.uuid (no a semanas.id) — la columna ya se llamaba
+  // semana_inicio_uuid antes de que existiera esta relación formal.
+  Semana.hasMany(PrecipitacionDiariaConfig, { foreignKey: 'semanaInicioUuid', sourceKey: 'uuid', as: 'precipitacionDiariaConfigs' });
+  PrecipitacionDiariaConfig.belongsTo(Semana, { foreignKey: 'semanaInicioUuid', targetKey: 'uuid', as: 'semanaInicio' });
+
+  Finca.hasMany(PrecipitacionDiaria, { foreignKey: 'fincaId', as: 'precipitacionesDiarias' });
+  PrecipitacionDiaria.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+
+  User.hasMany(PrecipitacionDiaria, { foreignKey: 'usuarioId', as: 'precipitacionesDiarias' });
+  PrecipitacionDiaria.belongsTo(User, { foreignKey: 'usuarioId', as: 'usuario' });
 };
 
 export {
@@ -345,6 +367,8 @@ export {
   ProgramacionCorte,
   Producto,
   RechazoCorte,
+  PrecipitacionDiariaConfig,
+  PrecipitacionDiaria,
 };
 
 export default setupAssociations;

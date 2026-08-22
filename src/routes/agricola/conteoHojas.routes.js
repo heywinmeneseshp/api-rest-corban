@@ -38,21 +38,21 @@ const router = Router();
 router.get(
   '/:uuid/conteo-hojas',
   auth,
-  permission(PERMISSIONS.CONTEO_HOJAS_VER),
+  permission(PERMISSIONS.EVALUACION_VER),
   validate(getConteoSchema),
   conteoHojasController.getByEvaluacion,
 );
 router.post(
   '/:uuid/conteo-hojas',
   auth,
-  permission(PERMISSIONS.CONTEO_HOJAS_CREAR),
+  permission(PERMISSIONS.EVALUACION_CREAR),
   validate(createConteoSchema),
   conteoHojasController.create,
 );
 router.put(
   '/:uuid/conteo-hojas',
   auth,
-  permission(PERMISSIONS.CONTEO_HOJAS_EDITAR),
+  permission(PERMISSIONS.EVALUACION_EDITAR),
   validate(updateConteoSchema),
   conteoHojasController.update,
 );

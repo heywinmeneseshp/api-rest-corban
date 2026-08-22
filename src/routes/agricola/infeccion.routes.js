@@ -39,21 +39,21 @@ const router = Router();
 router.get(
   '/:uuid/infeccion',
   auth,
-  permission(PERMISSIONS.INFECCION_VER),
+  permission(PERMISSIONS.EVALUACION_VER),
   validate(getInfeccionSchema),
   infeccionController.getByEvaluacion,
 );
 router.post(
   '/:uuid/infeccion',
   auth,
-  permission(PERMISSIONS.INFECCION_CREAR),
+  permission(PERMISSIONS.EVALUACION_CREAR),
   validate(createInfeccionSchema),
   infeccionController.create,
 );
 router.put(
   '/:uuid/infeccion',
   auth,
-  permission(PERMISSIONS.INFECCION_EDITAR),
+  permission(PERMISSIONS.EVALUACION_EDITAR),
   validate(updateInfeccionSchema),
   infeccionController.update,
 );

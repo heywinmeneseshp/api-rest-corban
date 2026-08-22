@@ -1,72 +1,26 @@
 import crypto from 'crypto';
 import { Op } from 'sequelize';
 import { sequelize } from '../../database/connection.js';
-import { Finca, Role, Semana } from '../../database/associations.js';
+import { Finca, Role, Semana, User, PrecipitacionDiariaConfig, PrecipitacionDiaria } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getFincaIdsPermitidas, expandirFincaUuids } from '../../utils/fincaScope.js';
 import { climaService } from './clima.service.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
 
-// Dos tablas nuevas, separadas del "clima" que registra la app móvil:
+// Dos tablas, separadas del "clima" que registra la app móvil:
 // - precipitacion_diaria_config: qué rol debe capturar la precipitación de
 //   qué finca, a partir de qué semana (programado por un admin).
 // - precipitacion_diaria: el registro día a día en sí, capturado desde
 //   app-corbana. No se mezcla con la tabla `clima` (que trae mm/temperatura/
 //   humedad por visita de la app móvil, con otra granularidad) — acá es un
 //   registro de cumplimiento diario obligatorio por finca.
-const TABLE_CONFIG = 'precipitacion_diaria_config';
-const TABLE_REGISTRO = 'precipitacion_diaria';
-
-let tablasVerificadas = false;
-
-const ensureTables = async () => {
-  if (tablasVerificadas) return;
-
-  await sequelize.query(`
-    CREATE TABLE IF NOT EXISTS ${TABLE_CONFIG} (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      uuid VARCHAR(36) NOT NULL UNIQUE,
-      finca_id INT NOT NULL,
-      finca_uuid VARCHAR(36) NOT NULL,
-      finca_nombre VARCHAR(255),
-      rol_id INT NOT NULL,
-      rol_nombre VARCHAR(100),
-      semana_inicio_uuid VARCHAR(36) NOT NULL,
-      semana_inicio_codigo VARCHAR(20),
-      fecha_inicio DATE NOT NULL,
-      activo TINYINT(1) NOT NULL DEFAULT 1,
-      creado_por_nombre VARCHAR(255),
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-  `);
-
-  await sequelize.query(`
-    CREATE TABLE IF NOT EXISTS ${TABLE_REGISTRO} (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      uuid VARCHAR(36) NOT NULL UNIQUE,
-      finca_id INT NOT NULL,
-      finca_uuid VARCHAR(36) NOT NULL,
-      finca_nombre VARCHAR(255),
-      fecha DATE NOT NULL,
-      mm DECIMAL(8,2) NOT NULL,
-      usuario_id INT,
-      usuario_nombre VARCHAR(255),
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE KEY uniq_finca_fecha (finca_id, fecha)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-  `);
-
-  // Marca si el mm de este registro coincide con el que haya en `clima`
-  // para la misma finca+fecha — NULL = todavía no comparado (registros
-  // viejos antes de que existiera esta columna, hasta que corra el backfill).
-  try {
-    await sequelize.query(`ALTER TABLE ${TABLE_REGISTRO} ADD COLUMN coincide_clima TINYINT(1) NULL`);
-  } catch (err) {
-    if (err.original?.errno !== 1060) throw err; // 1060 = la columna ya existe
-  }
-
-  tablasVerificadas = true;
-};
+// Ambas se crearon originalmente con SQL crudo (CREATE TABLE IF NOT EXISTS
+// en cada arranque) y sin llaves foráneas — ver migración
+// 20260821000003-fk-precipitacion-diaria y los modelos
+// precipitacionDiaria(Config).model.js para las relaciones reales que se
+// les agregaron después. Los nombres se siguen guardando denormalizados
+// (finca_nombre/rol_nombre/usuario_nombre/etc.) como respaldo — las
+// lecturas de abajo prefieren el dato vivo de la relación cuando existe.
 
 // Compara el mm de un registro de precipitacion_diaria contra el `clima` de
 // la misma finca+fecha. No existe fila en clima, o el mm no coincide → false;
@@ -116,12 +70,39 @@ const rangoFechas = (desdeIso, hastaIso) => {
   return fechas;
 };
 
+const fechaAIso = (fecha) => (fecha instanceof Date ? fecha.toISOString().slice(0, 10) : String(fecha));
+
+// Forma que ya esperaba el frontend (snake_case, viene de cuando esto era
+// SQL crudo con `SELECT *`) — se arma a mano acá para no tener que tocar
+// app-corbana al pasar a modelos Sequelize.
+const serializarConfig = (c) => ({
+  uuid: c.uuid,
+  finca_uuid: c.fincaUuid,
+  finca_nombre: c.finca?.nombre ?? c.fincaNombre,
+  rol_nombre: c.rol?.nombre ?? c.rolNombre,
+  semana_inicio_codigo: c.semanaInicio?.codigo ?? c.semanaInicioCodigo,
+  fecha_inicio: fechaAIso(c.fechaInicio),
+  activo: c.activo,
+});
+
+const serializarRegistro = (r) => ({
+  uuid: r.uuid,
+  finca_uuid: r.fincaUuid,
+  finca_nombre: r.finca?.nombre ?? r.fincaNombre,
+  fecha: fechaAIso(r.fecha),
+  mm: Number(r.mm),
+  usuario_id: r.usuarioId,
+  // usuario.usuario = el nombre de login, mismo dato que ya se mostraba acá
+  // antes (usuario_nombre) — vivo vía la relación en vez de congelado al
+  // registrar, con la copia como respaldo para filas sin usuario_id.
+  usuario_nombre: r.usuario?.usuario ?? r.usuarioNombre,
+  coincide_clima: r.coincideClima,
+});
+
 export const precipitacionDiariaService = {
   // ─── Configuración (admin) ───
 
   async crearConfig({ fincaUuid, rolId, semanaInicioUuid }, actorNombre) {
-    await ensureTables();
-
     const [finca, rol, semana] = await Promise.all([
       Finca.findOne({ where: { uuid: fincaUuid } }),
       Role.findByPk(rolId),
@@ -131,65 +112,47 @@ export const precipitacionDiariaService = {
     if (!rol) throw ApiError.notFound('Rol no encontrado');
     if (!semana) throw ApiError.notFound('Semana no encontrada');
 
-    const uuid = crypto.randomUUID();
-    await sequelize.query(
-      `INSERT INTO ${TABLE_CONFIG} (
-         uuid, finca_id, finca_uuid, finca_nombre, rol_id, rol_nombre,
-         semana_inicio_uuid, semana_inicio_codigo, fecha_inicio, activo, creado_por_nombre
-       ) VALUES (
-         :uuid, :fincaId, :fincaUuid, :fincaNombre, :rolId, :rolNombre,
-         :semanaInicioUuid, :semanaInicioCodigo, :fechaInicio, 1, :creadoPorNombre
-       )`,
-      {
-        replacements: {
-          uuid,
-          fincaId: finca.id,
-          fincaUuid: finca.uuid,
-          fincaNombre: finca.nombre,
-          rolId: rol.id,
-          rolNombre: rol.nombre,
-          semanaInicioUuid: semana.uuid,
-          semanaInicioCodigo: semana.codigo,
-          fechaInicio: semana.fechaInicio,
-          creadoPorNombre: actorNombre || null,
-        },
-        type: 'INSERT',
-      },
-    );
+    const config = await PrecipitacionDiariaConfig.create({
+      uuid: crypto.randomUUID(),
+      fincaId: finca.id,
+      fincaUuid: finca.uuid,
+      fincaNombre: finca.nombre,
+      rolId: rol.id,
+      rolNombre: rol.nombre,
+      semanaInicioUuid: semana.uuid,
+      semanaInicioCodigo: semana.codigo,
+      fechaInicio: semana.fechaInicio,
+      activo: true,
+      creadoPorNombre: actorNombre || null,
+    });
 
-    return { uuid };
+    return { uuid: config.uuid };
   },
 
   async listConfig() {
-    await ensureTables();
-    // sequelize.query con type: 'SELECT' devuelve el array de filas
-    // directo (no [rows, metadata]) — destructurarlo como [rows] tomaba la
-    // primera fila en vez del array completo.
-    const rows = await sequelize.query(
-      `SELECT * FROM ${TABLE_CONFIG} ORDER BY created_at DESC`,
-      { type: 'SELECT' },
-    );
-    return rows;
+    const configs = await PrecipitacionDiariaConfig.findAll({
+      include: [
+        { model: Finca, as: 'finca', attributes: ['nombre'] },
+        { model: Role, as: 'rol', attributes: ['nombre'] },
+        { model: Semana, as: 'semanaInicio', attributes: ['codigo'] },
+      ],
+      order: [['created_at', 'DESC']],
+    });
+    return configs.map(serializarConfig);
   },
 
   async toggleConfig(uuid, activo) {
-    await ensureTables();
-    const [, affected] = await sequelize.query(
-      `UPDATE ${TABLE_CONFIG} SET activo = :activo WHERE uuid = :uuid`,
-      { replacements: { activo: activo ? 1 : 0, uuid } },
-    );
+    const [affected] = await PrecipitacionDiariaConfig.update({ activo: !!activo }, { where: { uuid } });
     if (!affected) throw ApiError.notFound('Configuración no encontrada');
   },
 
   async eliminarConfig(uuid) {
-    await ensureTables();
-    await sequelize.query(`DELETE FROM ${TABLE_CONFIG} WHERE uuid = :uuid`, { replacements: { uuid } });
+    await PrecipitacionDiariaConfig.destroy({ where: { uuid } });
   },
 
   // ─── Registro diario ───
 
   async registrar(registros, actorId, actorNombre, user) {
-    await ensureTables();
     if (!Array.isArray(registros) || registros.length === 0) {
       throw ApiError.badRequest('Debes enviar al menos un registro');
     }
@@ -229,7 +192,6 @@ export const precipitacionDiariaService = {
         throw ApiError.badRequest('Cada registro requiere fincaUuid, fecha y mm');
       }
       const finca = await resolverFinca(r.fincaUuid);
-      const uuid = crypto.randomUUID();
 
       let coincide;
       if (propagarAClima) {
@@ -253,24 +215,32 @@ export const precipitacionDiariaService = {
         coincide = await calcularCoincide(finca.uuid, r.fecha, r.mm);
       }
 
-      await sequelize.query(
-        `INSERT INTO ${TABLE_REGISTRO} (uuid, finca_id, finca_uuid, finca_nombre, fecha, mm, usuario_id, usuario_nombre, coincide_clima)
-         VALUES (:uuid, :fincaId, :fincaUuid, :fincaNombre, :fecha, :mm, :usuarioId, :usuarioNombre, :coincide)
-         ON DUPLICATE KEY UPDATE mm = VALUES(mm), usuario_id = VALUES(usuario_id), usuario_nombre = VALUES(usuario_nombre), coincide_clima = VALUES(coincide_clima)`,
-        {
-          replacements: {
-            uuid,
-            fincaId: finca.id,
-            fincaUuid: finca.uuid,
-            fincaNombre: finca.nombre,
-            fecha: r.fecha,
-            mm: r.mm,
-            usuarioId: actorId || null,
-            usuarioNombre: actorNombre || null,
-            coincide: coincide ? 1 : 0,
-          },
-        },
-      );
+      // No se usa Model.upsert(): por defecto sobreescribe TODAS las
+      // columnas en conflicto, incluida `uuid` (regeneraría el uuid de un
+      // registro ya existente en cada reenvío del mismo día) — se busca
+      // primero por el único (finca_id, fecha) y se actualiza sin tocar el
+      // uuid, o se crea uno nuevo si no existía.
+      const existente = await PrecipitacionDiaria.findOne({ where: { fincaId: finca.id, fecha: r.fecha } });
+      if (existente) {
+        await existente.update({
+          mm: r.mm,
+          usuarioId: actorId || null,
+          usuarioNombre: actorNombre || null,
+          coincideClima: coincide,
+        });
+      } else {
+        await PrecipitacionDiaria.create({
+          uuid: crypto.randomUUID(),
+          fincaId: finca.id,
+          fincaUuid: finca.uuid,
+          fincaNombre: finca.nombre,
+          fecha: r.fecha,
+          mm: r.mm,
+          usuarioId: actorId || null,
+          usuarioNombre: actorNombre || null,
+          coincideClima: coincide,
+        });
+      }
       resultados.push({ fincaUuid: finca.uuid, fecha: r.fecha, mm: r.mm, coincideClima: coincide });
     }
 
@@ -278,43 +248,49 @@ export const precipitacionDiariaService = {
   },
 
   async list(query) {
-    await ensureTables();
-
     const page = Math.max(1, parseInt(query.page) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(query.limit) || 50));
     const offset = (page - 1) * limit;
 
-    const replacements = {};
-    let where = 'WHERE 1=1';
+    const where = {};
     if (query.fincaUuid) {
       // Se expande a las fincas hermanas de su Grupo de Finca (ver
       // utils/fincaScope.js), si tiene uno asignado.
-      where += ' AND finca_uuid IN (:fincaUuids)';
-      replacements.fincaUuids = await expandirFincaUuids([query.fincaUuid]);
+      where.fincaUuid = { [Op.in]: await expandirFincaUuids([query.fincaUuid]) };
     }
-    if (query.fechaDesde) {
-      where += ' AND fecha >= :fechaDesde';
-      replacements.fechaDesde = query.fechaDesde;
+    if (query.fechaDesde || query.fechaHasta) {
+      where.fecha = {};
+      if (query.fechaDesde) where.fecha[Op.gte] = query.fechaDesde;
+      if (query.fechaHasta) where.fecha[Op.lte] = query.fechaHasta;
     }
-    if (query.fechaHasta) {
-      where += ' AND fecha <= :fechaHasta';
-      replacements.fechaHasta = query.fechaHasta;
-    }
-    if (query.usuarioId) {
-      where += ' AND usuario_id = :usuarioId';
-      replacements.usuarioId = query.usuarioId;
-    }
+    if (query.usuarioId) where.usuarioId = query.usuarioId;
 
-    const rows = await sequelize.query(
-      `SELECT * FROM ${TABLE_REGISTRO} ${where} ORDER BY fecha DESC LIMIT :limit OFFSET :offset`,
-      { replacements: { ...replacements, limit, offset }, type: 'SELECT' },
-    );
-    const [{ total }] = await sequelize.query(
-      `SELECT COUNT(*) AS total FROM ${TABLE_REGISTRO} ${where}`,
-      { replacements, type: 'SELECT' },
-    );
+    const { rows, count } = await PrecipitacionDiaria.findAndCountAll({
+      where,
+      include: [
+        { model: Finca, as: 'finca', attributes: ['nombre'] },
+        { model: User, as: 'usuario', attributes: ['usuario'] },
+      ],
+      order: [['fecha', 'DESC']],
+      limit,
+      offset,
+    });
 
-    return { items: rows, meta: { page, limit, total: Number(total) } };
+    return { items: rows.map(serializarRegistro), meta: { page, limit, total: count } };
+  },
+
+  // Solo para poblar el filtro "Usuario" del reporte — nombre nada más, sin
+  // exponer email/roles/fincas del listado general de /users. Se limita a
+  // quienes ya registraron algo acá, no toda la base de usuarios.
+  async listUsuariosRegistrados() {
+    const registros = await PrecipitacionDiaria.findAll({
+      where: { usuarioId: { [Op.ne]: null } },
+      include: [{ model: User, as: 'usuario', attributes: ['usuario'] }],
+      attributes: ['usuarioId'],
+      group: ['usuarioId', 'usuario.id'],
+      order: [[{ model: User, as: 'usuario' }, 'usuario', 'ASC']],
+    });
+    return registros.map((r) => ({ id: r.usuarioId, nombre: r.usuario?.usuario }));
   },
 
   // ─── Pendientes (usado por el modal bloqueante al iniciar sesión) ───
@@ -323,15 +299,13 @@ export const precipitacionDiariaService = {
   // alguno de sus roles y cuya finca esté dentro de las que puede ver, y
   // calcula qué días entre fecha_inicio y ayer todavía no tienen registro.
   async getPendientes(user) {
-    await ensureTables();
-
     const roles = user?.roles || [];
     if (roles.length === 0) return [];
 
-    const configs = await sequelize.query(
-      `SELECT * FROM ${TABLE_CONFIG} WHERE activo = 1 AND rol_nombre IN (:roles)`,
-      { replacements: { roles }, type: 'SELECT' },
-    );
+    const configs = await PrecipitacionDiariaConfig.findAll({
+      where: { activo: true, rolNombre: { [Op.in]: roles } },
+      raw: true,
+    });
     if (configs.length === 0) return [];
 
     const fincaIdsPermitidas = getFincaIdsPermitidas(user); // null = sin restricción
@@ -343,26 +317,25 @@ export const precipitacionDiariaService = {
     // finca, usando la fecha_inicio más antigua entre las que apliquen.
     const porFinca = new Map();
     for (const c of configs) {
-      if (fincaIdsPermitidas !== null && !fincaIdsPermitidas.includes(c.finca_id)) continue;
-      const fechaInicio = c.fecha_inicio instanceof Date ? c.fecha_inicio.toISOString().slice(0, 10) : String(c.fecha_inicio);
+      if (fincaIdsPermitidas !== null && !fincaIdsPermitidas.includes(c.fincaId)) continue;
+      const fechaInicio = fechaAIso(c.fechaInicio);
       if (fechaInicio > ayer) continue; // todavía no arrancó o arranca hoy/futuro
 
-      const actual = porFinca.get(c.finca_uuid);
+      const actual = porFinca.get(c.fincaUuid);
       if (!actual || fechaInicio < actual.fechaInicio) {
-        porFinca.set(c.finca_uuid, { fincaUuid: c.finca_uuid, fincaNombre: c.finca_nombre, fechaInicio });
+        porFinca.set(c.fincaUuid, { fincaUuid: c.fincaUuid, fincaNombre: c.fincaNombre, fechaInicio });
       }
     }
     if (porFinca.size === 0) return [];
 
     const pendientesPorFinca = [];
     for (const { fincaUuid, fincaNombre, fechaInicio } of porFinca.values()) {
-      const registrados = await sequelize.query(
-        `SELECT fecha FROM ${TABLE_REGISTRO} WHERE finca_uuid = :fincaUuid AND fecha BETWEEN :desde AND :hasta`,
-        { replacements: { fincaUuid, desde: fechaInicio, hasta: ayer }, type: 'SELECT' },
-      );
-      const registradasSet = new Set(
-        registrados.map((r) => (r.fecha instanceof Date ? r.fecha.toISOString().slice(0, 10) : String(r.fecha))),
-      );
+      const registrados = await PrecipitacionDiaria.findAll({
+        where: { fincaUuid, fecha: { [Op.between]: [fechaInicio, ayer] } },
+        attributes: ['fecha'],
+        raw: true,
+      });
+      const registradasSet = new Set(registrados.map((r) => fechaAIso(r.fecha)));
 
       const fechas = rangoFechas(fechaInicio, ayer).filter((f) => f !== hoy && !registradasSet.has(f));
       if (fechas.length > 0) {
@@ -381,20 +354,16 @@ export const precipitacionDiariaService = {
   // el flag al vuelo, así que este método puede volver a llamarse sin
   // problema — es idempotente.
   async recalcularCoincidencias() {
-    await ensureTables();
-    const registros = await sequelize.query(
-      `SELECT uuid, finca_uuid, fecha, mm FROM ${TABLE_REGISTRO}`,
-      { type: 'SELECT' },
-    );
+    const registros = await PrecipitacionDiaria.findAll({
+      attributes: ['uuid', 'fincaUuid', 'fecha', 'mm'],
+      raw: true,
+    });
 
     let actualizados = 0;
     for (const r of registros) {
-      const fecha = r.fecha instanceof Date ? r.fecha.toISOString().slice(0, 10) : String(r.fecha);
-      const coincide = await calcularCoincide(r.finca_uuid, fecha, r.mm);
-      await sequelize.query(
-        `UPDATE ${TABLE_REGISTRO} SET coincide_clima = :coincide WHERE uuid = :uuid`,
-        { replacements: { coincide: coincide ? 1 : 0, uuid: r.uuid } },
-      );
+      const fecha = fechaAIso(r.fecha);
+      const coincide = await calcularCoincide(r.fincaUuid, fecha, r.mm);
+      await PrecipitacionDiaria.update({ coincideClima: coincide }, { where: { uuid: r.uuid } });
       actualizados += 1;
     }
 
@@ -407,40 +376,31 @@ export const precipitacionDiariaService = {
   // (Finca/Semana-rango de fechas/Usuario), para que el filtro de arriba
   // de la pantalla aplique a las dos tablas a la vez.
   async listInconsistencias(query = {}) {
-    await ensureTables();
-
-    const replacements = {};
-    let where = 'WHERE coincide_clima = 0';
+    const where = { coincideClima: false };
     if (query.fincaUuid) {
-      where += ' AND finca_uuid IN (:fincaUuids)';
-      replacements.fincaUuids = await expandirFincaUuids([query.fincaUuid]);
+      where.fincaUuid = { [Op.in]: await expandirFincaUuids([query.fincaUuid]) };
     }
-    if (query.fechaDesde) {
-      where += ' AND fecha >= :fechaDesde';
-      replacements.fechaDesde = query.fechaDesde;
+    if (query.fechaDesde || query.fechaHasta) {
+      where.fecha = {};
+      if (query.fechaDesde) where.fecha[Op.gte] = query.fechaDesde;
+      if (query.fechaHasta) where.fecha[Op.lte] = query.fechaHasta;
     }
-    if (query.fechaHasta) {
-      where += ' AND fecha <= :fechaHasta';
-      replacements.fechaHasta = query.fechaHasta;
-    }
-    if (query.usuarioId) {
-      where += ' AND usuario_id = :usuarioId';
-      replacements.usuarioId = query.usuarioId;
-    }
+    if (query.usuarioId) where.usuarioId = query.usuarioId;
 
-    const registros = await sequelize.query(
-      `SELECT * FROM ${TABLE_REGISTRO} ${where} ORDER BY fecha DESC`,
-      { replacements, type: 'SELECT' },
-    );
+    const registros = await PrecipitacionDiaria.findAll({
+      where,
+      include: [{ model: Finca, as: 'finca', attributes: ['nombre'] }],
+      order: [['fecha', 'DESC']],
+    });
 
     const resultado = [];
     for (const r of registros) {
-      const fecha = r.fecha instanceof Date ? r.fecha.toISOString().slice(0, 10) : String(r.fecha);
-      const registroClima = await climaService.getByFincaFecha(r.finca_uuid, fecha);
+      const fecha = fechaAIso(r.fecha);
+      const registroClima = await climaService.getByFincaFecha(r.fincaUuid, fecha);
       resultado.push({
         uuid: r.uuid,
-        fincaUuid: r.finca_uuid,
-        fincaNombre: r.finca_nombre,
+        fincaUuid: r.fincaUuid,
+        fincaNombre: r.finca?.nombre ?? r.fincaNombre,
         fecha,
         precipitacionDiaria: { mm: Number(r.mm) },
         clima: registroClima
@@ -460,19 +420,15 @@ export const precipitacionDiariaService = {
   // ciegas el valor que ya tenía guardado — si no se manda, se usa el que
   // ya había en `clima`.
   async resolverInconsistencia(uuid, fuente, actorId, actorNombre, mmClima) {
-    await ensureTables();
     if (!['precipitacion_diaria', 'clima'].includes(fuente)) {
       throw ApiError.badRequest('fuente debe ser "precipitacion_diaria" o "clima"');
     }
 
-    const [registro] = await sequelize.query(
-      `SELECT * FROM ${TABLE_REGISTRO} WHERE uuid = :uuid`,
-      { replacements: { uuid }, type: 'SELECT' },
-    );
+    const registro = await PrecipitacionDiaria.findOne({ where: { uuid } });
     if (!registro) throw ApiError.notFound('Registro no encontrado');
 
-    const fecha = registro.fecha instanceof Date ? registro.fecha.toISOString().slice(0, 10) : String(registro.fecha);
-    const registroClima = await climaService.getByFincaFecha(registro.finca_uuid, fecha);
+    const fecha = fechaAIso(registro.fecha);
+    const registroClima = await climaService.getByFincaFecha(registro.fincaUuid, fecha);
 
     if (fuente === 'clima') {
       const mmFinal = mmClima !== undefined && mmClima !== null ? Number(mmClima) : registroClima?.mm;
@@ -481,10 +437,9 @@ export const precipitacionDiariaService = {
       }
 
       if (registroClima) {
-        await sequelize.query(
-          `UPDATE clima SET mm = :mm WHERE uuid = :uuid`,
-          { replacements: { mm: mmFinal, uuid: registroClima.uuid } },
-        );
+        await sequelize.query('UPDATE clima SET mm = :mm WHERE uuid = :uuid', {
+          replacements: { mm: mmFinal, uuid: registroClima.uuid },
+        });
       } else {
         // No existía ninguna fila en clima para ese día — se crea con el mm
         // que el usuario acaba de escribir.
@@ -493,8 +448,8 @@ export const precipitacionDiariaService = {
         });
         await climaService.create(
           {
-            fincaUuid: registro.finca_uuid,
-            fincaNombre: registro.finca_nombre,
+            fincaUuid: registro.fincaUuid,
+            fincaNombre: registro.fincaNombre,
             semanaUuid: semana?.uuid,
             semanaCodigo: semana?.codigo,
             fecha,
@@ -505,22 +460,15 @@ export const precipitacionDiariaService = {
         );
       }
 
-      await sequelize.query(
-        `UPDATE ${TABLE_REGISTRO} SET mm = :mm, coincide_clima = 1 WHERE uuid = :uuid`,
-        { replacements: { mm: mmFinal, uuid } },
-      );
+      await registro.update({ mm: mmFinal, coincideClima: true });
     } else if (registroClima) {
       // Ya existía una fila en clima (con valor real o placeholder sin mm)
       // — se sobreescribe con el de Precipitación Diaria, que se toma como
       // el correcto.
-      await sequelize.query(
-        `UPDATE clima SET mm = :mm WHERE uuid = :uuid`,
-        { replacements: { mm: registro.mm, uuid: registroClima.uuid } },
-      );
-      await sequelize.query(
-        `UPDATE ${TABLE_REGISTRO} SET coincide_clima = 1 WHERE uuid = :uuid`,
-        { replacements: { uuid } },
-      );
+      await sequelize.query('UPDATE clima SET mm = :mm WHERE uuid = :uuid', {
+        replacements: { mm: registro.mm, uuid: registroClima.uuid },
+      });
+      await registro.update({ coincideClima: true });
     } else {
       // No existe ninguna fila en clima para ese día: se crea ya con el mm
       // de Precipitación Diaria (que se tomó como el correcto), no como
@@ -530,8 +478,8 @@ export const precipitacionDiariaService = {
       });
       await climaService.create(
         {
-          fincaUuid: registro.finca_uuid,
-          fincaNombre: registro.finca_nombre,
+          fincaUuid: registro.fincaUuid,
+          fincaNombre: registro.fincaNombre,
           semanaUuid: semana?.uuid,
           semanaCodigo: semana?.codigo,
           fecha,
@@ -540,10 +488,7 @@ export const precipitacionDiariaService = {
         },
         actorId,
       );
-      await sequelize.query(
-        `UPDATE ${TABLE_REGISTRO} SET coincide_clima = 1 WHERE uuid = :uuid`,
-        { replacements: { uuid } },
-      );
+      await registro.update({ coincideClima: true });
     }
 
     return { uuid, fuente };

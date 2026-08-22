@@ -32,7 +32,12 @@ const router = Router();
  *     responses:
  *       201: { description: Creado }
  */
-router.get('/', auth, permission(PERMISSIONS.FINCA_VER), validate(listFincasSchema), fincaController.list);
+// Sin permiso puntual (igual que /semanas y /clima): fincas es dato de
+// referencia no sensible (código/nombre) que casi todos los módulos
+// necesitan para selectores y filtros — exigir finca.ver acá rompía
+// pantallas enteras con Promise.all cuando el rol tenía el permiso de SU
+// módulo pero no este.
+router.get('/', auth, validate(listFincasSchema), fincaController.list);
 router.post(
   '/',
   auth,

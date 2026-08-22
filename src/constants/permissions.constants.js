@@ -65,22 +65,13 @@ export const PERMISSIONS = {
   SEMANA_EDITAR: 'semana.editar',
   SEMANA_ELIMINAR: 'semana.eliminar',
 
+  // Ver/crear/editar/eliminar cualquiera de las 3 evaluaciones (Índice de
+  // Infección, Conteo de Hojas, Suma Bruta) y el panel Indicadores usan
+  // estos 4 permisos genéricos — ya no hay uno propio por tipo.
   EVALUACION_VER: 'evaluacion.ver',
   EVALUACION_CREAR: 'evaluacion.crear',
   EVALUACION_EDITAR: 'evaluacion.editar',
   EVALUACION_ELIMINAR: 'evaluacion.eliminar',
-
-  INFECCION_VER: 'infeccion.ver',
-  INFECCION_CREAR: 'infeccion.crear',
-  INFECCION_EDITAR: 'infeccion.editar',
-
-  CONTEO_HOJAS_VER: 'conteo_hojas.ver',
-  CONTEO_HOJAS_CREAR: 'conteo_hojas.crear',
-  CONTEO_HOJAS_EDITAR: 'conteo_hojas.editar',
-
-  SUMA_BRUTA_VER: 'suma_bruta.ver',
-  SUMA_BRUTA_CREAR: 'suma_bruta.crear',
-  SUMA_BRUTA_EDITAR: 'suma_bruta.editar',
 
   // Valores numéricos configurables por estadio de Sigatoka (1-, 1+, 2-, …,
   // 6+, 6-) usados para calcular automáticamente la Suma Bruta de una
@@ -317,18 +308,6 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.EVALUACION_CREAR, nombre: 'Crear evaluaciones' },
   { codigo: PERMISSIONS.EVALUACION_EDITAR, nombre: 'Editar evaluaciones' },
   { codigo: PERMISSIONS.EVALUACION_ELIMINAR, nombre: 'Eliminar evaluaciones' },
-
-  { codigo: PERMISSIONS.INFECCION_VER, nombre: 'Ver infecciones' },
-  { codigo: PERMISSIONS.INFECCION_CREAR, nombre: 'Crear infecciones' },
-  { codigo: PERMISSIONS.INFECCION_EDITAR, nombre: 'Editar infecciones' },
-
-  { codigo: PERMISSIONS.CONTEO_HOJAS_VER, nombre: 'Ver conteo de hojas' },
-  { codigo: PERMISSIONS.CONTEO_HOJAS_CREAR, nombre: 'Crear conteo de hojas' },
-  { codigo: PERMISSIONS.CONTEO_HOJAS_EDITAR, nombre: 'Editar conteo de hojas' },
-
-  { codigo: PERMISSIONS.SUMA_BRUTA_VER, nombre: 'Ver suma bruta' },
-  { codigo: PERMISSIONS.SUMA_BRUTA_CREAR, nombre: 'Crear suma bruta' },
-  { codigo: PERMISSIONS.SUMA_BRUTA_EDITAR, nombre: 'Editar suma bruta' },
 
   { codigo: PERMISSIONS.ESTADIO_SIGATOKA_VER, nombre: 'Ver estadios de Sigatoka' },
   { codigo: PERMISSIONS.ESTADIO_SIGATOKA_CREAR, nombre: 'Crear estadios de Sigatoka' },

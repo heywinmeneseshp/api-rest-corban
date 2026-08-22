@@ -23,6 +23,16 @@ router.post('/', auth, validate(registrarSchema), precipitacionDiariaController.
 
 router.get('/', auth, permission(PERMISSIONS.PRECIPITACION_DIARIA_VER), precipitacionDiariaController.list);
 
+// Solo nombres de quienes ya registraron algo acá (para el filtro "Usuario")
+// — evita depender de usuarios.ver / exponer email-roles-fincas del listado
+// general de /users a quien solo tiene precipitacion_diaria.ver.
+router.get(
+  '/usuarios',
+  auth,
+  permission(PERMISSIONS.PRECIPITACION_DIARIA_VER),
+  precipitacionDiariaController.listUsuarios,
+);
+
 router.get(
   '/config',
   auth,

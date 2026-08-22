@@ -59,7 +59,7 @@ router.post(
 router.get(
   '/suma-bruta-promedio',
   auth,
-  permission(PERMISSIONS.SUMA_BRUTA_VER),
+  permission(PERMISSIONS.EVALUACION_VER),
   validate(promedioPorSemanaSchema),
   evaluacionController.promedioSumaBruta,
 );
@@ -77,7 +77,7 @@ router.get(
 router.get(
   '/suma-bruta-promedio-por-hoja',
   auth,
-  permission(PERMISSIONS.SUMA_BRUTA_VER),
+  permission(PERMISSIONS.EVALUACION_VER),
   validate(promedioPorSemanaSchema),
   evaluacionController.promedioSumaBrutaPorHoja,
 );
@@ -95,7 +95,7 @@ router.get(
 router.get(
   '/conteo-promedio',
   auth,
-  permission(PERMISSIONS.CONTEO_HOJAS_VER),
+  permission(PERMISSIONS.EVALUACION_VER),
   validate(promedioPorSemanaSchema),
   evaluacionController.promedioConteo,
 );
@@ -113,7 +113,7 @@ router.get(
 router.get(
   '/infeccion-promedio',
   auth,
-  permission(PERMISSIONS.INFECCION_VER),
+  permission(PERMISSIONS.EVALUACION_VER),
   validate(promedioPorSemanaSchema),
   evaluacionController.promedioInfeccion,
 );
@@ -149,7 +149,7 @@ router.get(
 router.get(
   '/alertas-semana',
   auth,
-  permission(PERMISSIONS.INFECCION_VER),
+  permission(PERMISSIONS.EVALUACION_VER),
   evaluacionController.alertasSemana,
 );
 
