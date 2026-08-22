@@ -305,12 +305,21 @@ export const dashboardService = {
     });
     const fincaProcesadosMap = new Map(fincasProcesados.map((r) => [r.fincaId, Number(r.total)]));
 
-    const todasFincaIdsDashboard = [...new Set([...fincaCajasMap.keys(), ...fincaRecusadosMap.keys(), ...fincaProcesadosMap.keys()])];
-    const fincas = todasFincaIdsDashboard.length > 0 ? await Finca.findAll({
-      where: { id: { [Op.in]: todasFincaIdsDashboard } },
+    // Todas las fincas del alcance del usuario (activas), no solo las que
+    // tengan cajas/recusados/procesados en `ultimaSemana` — si no, una
+    // finca sin movimiento esa semana puntual desaparecía por completo del
+    // selector, y ya no había forma de elegirla para mirar otras semanas
+    // (mismo alcance que ya calcula `fincaIdsPermitidas` arriba — `fwScope`
+    // no sirve acá porque filtra por la columna `fincaId` de otras tablas,
+    // no por el `id` propio de Finca).
+    const fincas = await Finca.findAll({
+      where: {
+        estado: true,
+        ...(fincaIdsPermitidas !== null ? { id: { [Op.in]: fincaIdsPermitidas.length ? fincaIdsPermitidas : [-1] } } : {}),
+      },
       attributes: ['id', 'codigo', 'nombre'],
       raw: true,
-    }) : [];
+    });
 
     const fincasActivas = fincas.map((f) => {
       const cajasFinca = fincaCajasMap.get(f.id) || 0;
