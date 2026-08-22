@@ -6,13 +6,6 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3000
-    },
-    {
-      "name": "app-corbana",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "cwd": "../app-corbana",
-      "port": 3001
     }
   ]
 }
