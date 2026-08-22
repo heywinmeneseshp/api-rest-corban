@@ -38,7 +38,29 @@ export const dashboardService = {
     } else {
       fincaIds = fincaIdsPermitidas;
     }
-    const fw = fincaWhere(fincaIds, fincaIdsPermitidas !== null);
+    // Fincas externas (esExterna=true, ver finca.model.js): exportan cajas
+    // con nosotros (Programación de Corte) pero NUNCA tienen seguimiento de
+    // racimos — mezclarlas en el ratio/gráficos infla el numerador (cajas)
+    // contra un denominador (racimos) que estructuralmente nunca las puede
+    // tener. Se excluyen de TODOS los cálculos de acá para abajo; su total
+    // de cajas se muestra aparte (`cajasExternas`) para no perder el dato,
+    // y siguen apareciendo en `fincasActivas` (con `esExterna: true`) para
+    // que se puedan ver/filtrar puntualmente.
+    const fincasEnAlcance = await Finca.findAll({
+      where: {
+        estado: true,
+        ...(fincaIdsPermitidas !== null ? { id: { [Op.in]: fincaIdsPermitidas.length ? fincaIdsPermitidas : [-1] } } : {}),
+      },
+      attributes: ['id', 'codigo', 'nombre', 'esExterna'],
+      raw: true,
+    });
+    const idsInternasEnAlcance = fincasEnAlcance.filter((f) => !f.esExterna).map((f) => f.id);
+    const idsExternasEnAlcance = fincasEnAlcance.filter((f) => f.esExterna).map((f) => f.id);
+
+    const fincaIdsInternasFiltradas = fincaIdsElegidas.length > 0
+      ? idsInternasEnAlcance.filter((id) => fincaIdsElegidas.includes(id))
+      : idsInternasEnAlcance;
+    const fw = fincaWhere(fincaIdsInternasFiltradas, true);
 
     // `semanaUuid` (opcional): el usuario puede elegir una semana puntual
     // desde el selector de Inicio en vez de ver siempre la última con
@@ -82,6 +104,15 @@ export const dashboardService = {
       raw: true,
     });
     const cajasProducidas = Number(cajasRow?.total || 0);
+
+    // Cajas de fincas externas de esa misma semana — se muestran aparte,
+    // NO se suman a `cajasProducidas` ni entran en ningún otro cálculo.
+    const [cajasExternasRow] = idsExternasEnAlcance.length > 0 ? await ProduccionSemanal.findAll({
+      where: { semanaId: ultimaSemana.id, fincaId: { [Op.in]: idsExternasEnAlcance } },
+      attributes: [[fn('SUM', col('cajas_20kg')), 'total']],
+      raw: true,
+    }) : [{ total: 0 }];
+    const cajasExternas = Number(cajasExternasRow?.total || 0);
 
     const [cortesRow] = await RacimoMovimiento.findAll({
       where: { tipo: { [Op.in]: ['RECUSE', 'PROCESADO'] }, semanaRegistroId: ultimaSemana.id, ...fw },
@@ -305,21 +336,12 @@ export const dashboardService = {
     });
     const fincaProcesadosMap = new Map(fincasProcesados.map((r) => [r.fincaId, Number(r.total)]));
 
-    // Todas las fincas del alcance del usuario (activas), no solo las que
-    // tengan cajas/recusados/procesados en `ultimaSemana` — si no, una
-    // finca sin movimiento esa semana puntual desaparecía por completo del
-    // selector, y ya no había forma de elegirla para mirar otras semanas
-    // (mismo alcance que ya calcula `fincaIdsPermitidas` arriba — `fwScope`
-    // no sirve acá porque filtra por la columna `fincaId` de otras tablas,
-    // no por el `id` propio de Finca).
-    const fincas = await Finca.findAll({
-      where: {
-        estado: true,
-        ...(fincaIdsPermitidas !== null ? { id: { [Op.in]: fincaIdsPermitidas.length ? fincaIdsPermitidas : [-1] } } : {}),
-      },
-      attributes: ['id', 'codigo', 'nombre'],
-      raw: true,
-    });
+    // Todas las fincas del alcance del usuario (activas, internas Y
+    // externas), no solo las que tengan cajas/recusados/procesados en
+    // `ultimaSemana` — si no, una finca sin movimiento esa semana puntual
+    // desaparecía por completo del selector. Ya se calculó arriba como
+    // `fincasEnAlcance`, no hace falta repetir la consulta.
+    const fincas = fincasEnAlcance;
 
     const fincasActivas = fincas.map((f) => {
       const cajasFinca = fincaCajasMap.get(f.id) || 0;
@@ -330,6 +352,10 @@ export const dashboardService = {
         id: f.id,
         codigo: f.codigo,
         nombre: f.nombre,
+        // Fincas externas: tienen cajas reales pero nunca racimos (ver
+        // comentario más arriba) — el frontend las puede marcar aparte para
+        // dejar claro que no entran en el ratio/gráficos generales.
+        esExterna: !!f.esExterna,
         seleccionada: fincaIds.length === 0 || fincaIds.includes(f.id),
         cajas: cajasFinca,
         recusados,
@@ -378,7 +404,7 @@ export const dashboardService = {
       return {
         numeroSemana: semana.numeroSemana,
         semanaCodigo: semana.codigo,
-        aprovechamiento: esFutura || pct == null ? null : pct,
+        aprovechamiento: esFutura || pct === null ? null : pct,
       };
     });
 
@@ -395,6 +421,7 @@ export const dashboardService = {
         codigo: primeraSemanaEmbolse.codigo,
       } : null,
       cajasProducidas,
+      cajasExternas,
       racimosCortados,
       ratio,
       cohortes,
