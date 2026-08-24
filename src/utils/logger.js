@@ -44,12 +44,10 @@ export const logger = winston.createLogger({
       ],
 });
 
-if (!env.isProduction || isServerless) {
-  logger.add(
-    new winston.transports.Console({
-      format: consoleFormat,
-    }),
-  );
-}
+logger.add(
+  new winston.transports.Console({
+    format: consoleFormat,
+  }),
+);
 
 export default logger;
