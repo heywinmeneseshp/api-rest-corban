@@ -40,10 +40,18 @@ const listFiles = (dir, { excluir } = {}) =>
 // detecta este caso puntual y se marca como aplicada igual.
 const ALREADY_APPLIED_SQLSTATES = new Set(['23000', '42S01', '42S21']); // duplicate entry / table exists / duplicate column
 const ALREADY_APPLIED_CODES = new Set(['1062', '1050', '1060', 'ER_DUP_ENTRY', 'ER_TABLE_EXISTS_ERROR', 'ER_DUP_FIELDNAME']);
-const isAlreadyAppliedError = (error) =>
-  ALREADY_APPLIED_SQLSTATES.has(error.sqlState) ||
-  ALREADY_APPLIED_CODES.has(String(error.code)) ||
-  /duplicate entry|already exists|duplicate column/i.test(error.message || '');
+const isAlreadyAppliedError = (error) => {
+  if (!error) return false;
+  if (ALREADY_APPLIED_SQLSTATES.has(error.sqlState) || ALREADY_APPLIED_CODES.has(String(error.code))) return true;
+  if (/duplicate entry|already exists|duplicate column/i.test(error.message || '')) return true;
+  if (error.name === 'SequelizeUniqueConstraintError') return true;
+  if (error.name === 'SequelizeValidationError' && /unique|duplicate/i.test((error.message || '') + (error.errors?.map((e) => e.message).join(' ') || ''))) return true;
+  // Errores envueltos por Sequelize (error.original / parent / cause)
+  if (error.original && isAlreadyAppliedError(error.original)) return true;
+  if (error.parent && isAlreadyAppliedError(error.parent)) return true;
+  if (error.cause && isAlreadyAppliedError(error.cause)) return true;
+  return false;
+};
 
 async function ensureTrackingTable(queryInterface, tableName) {
   const tables = await queryInterface.showAllTables();

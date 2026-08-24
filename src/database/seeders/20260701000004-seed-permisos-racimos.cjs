@@ -14,9 +14,16 @@ module.exports = {
       RACIMOS_PREFIXES.some((prefix) => p.codigo.startsWith(prefix)),
     );
 
+    const existentes = await queryInterface.sequelize.query(`SELECT codigo FROM permisos WHERE codigo LIKE 'motivo_repique.%' OR codigo LIKE 'motivo_recuse.%' OR codigo LIKE 'racimo_movimiento.%'`, {
+      type: queryInterface.sequelize.QueryTypes.SELECT,
+    });
+    const yaExisten = new Set(existentes.map((r) => r.codigo));
+    const pendientes = racimosPermisos.filter((p) => !yaExisten.has(p.codigo));
+    if (pendientes.length === 0) return;
+
     await queryInterface.bulkInsert(
       'permisos',
-      racimosPermisos.map((p) => ({
+      pendientes.map((p) => ({
         uuid: crypto.randomUUID(),
         codigo: p.codigo,
         nombre: p.nombre,
