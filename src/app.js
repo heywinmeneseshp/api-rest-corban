@@ -62,6 +62,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export const app = express();
 
+// Detrás de proxy inverso (Hostinger/Docker) Express recibe X-Forwarded-For.
+// Sin esto express-rate-limit lanza ERR_ERL_UNEXPECTED_X_FORWARDED_FOR.
+app.set('trust proxy', 1);
+
 app.disable('x-powered-by');
 app.use(
   helmet({
