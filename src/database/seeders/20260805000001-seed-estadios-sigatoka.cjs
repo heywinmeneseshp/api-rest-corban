@@ -27,18 +27,49 @@ const ESTADIOS = [
 module.exports = {
   async up(queryInterface) {
     const now = new Date();
-    await queryInterface.bulkInsert(
-      'estadios_sigatoka',
-      ESTADIOS.map((e) => ({
-        uuid: crypto.randomUUID(),
-        estadio: e.estadio,
-        valor: 0,
-        orden: e.orden,
-        estado: true,
-        created_at: now,
-        updated_at: now,
-      })),
-    );
+    // Idempotente: si ya hay datos (seed corrido antes del split), no reinsertar.
+    const [existe] = await queryInterface.sequelize.query('SELECT COUNT(*) as cnt FROM estadios_sigatoka', {
+      type: queryInterface.sequelize.QueryTypes.SELECT,
+    });
+    if (Number(existe.cnt) > 0) return;
+
+    // Compatibilidad con esquema pre/post split (valor vs valor_l3/l4/l5)
+    const cols = await queryInterface.sequelize.query('SHOW COLUMNS FROM estadios_sigatoka', {
+      type: queryInterface.sequelize.QueryTypes.SELECT,
+    });
+    const nombres = new Set(cols.map((c) => c.Field));
+    const tieneValor = nombres.has('valor');
+    const tieneL3 = nombres.has('valor_l3');
+
+    if (tieneValor) {
+      await queryInterface.bulkInsert(
+        'estadios_sigatoka',
+        ESTADIOS.map((e) => ({
+          uuid: crypto.randomUUID(),
+          estadio: e.estadio,
+          valor: 0,
+          orden: e.orden,
+          estado: true,
+          created_at: now,
+          updated_at: now,
+        })),
+      );
+    } else if (tieneL3) {
+      await queryInterface.bulkInsert(
+        'estadios_sigatoka',
+        ESTADIOS.map((e) => ({
+          uuid: crypto.randomUUID(),
+          estadio: e.estadio,
+          valor_l3: 0,
+          valor_l4: 0,
+          valor_l5: 0,
+          orden: e.orden,
+          estado: true,
+          created_at: now,
+          updated_at: now,
+        })),
+      );
+    }
   },
 
   async down(queryInterface) {
