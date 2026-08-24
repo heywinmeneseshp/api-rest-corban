@@ -3,6 +3,7 @@ import helmet from 'helmet';
 import cors from 'cors';
 import morgan from 'morgan';
 import compression from 'compression';
+import cookieParser from 'cookie-parser';
 import swaggerUi from 'swagger-ui-express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -67,6 +68,7 @@ export const app = express();
 app.set('trust proxy', 1);
 
 app.disable('x-powered-by');
+app.use(cookieParser());
 app.use(
   helmet({
     contentSecurityPolicy: {

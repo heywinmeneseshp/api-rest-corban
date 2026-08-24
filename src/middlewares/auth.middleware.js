@@ -4,11 +4,13 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 
 export const auth = asyncHandler(async (req, _res, next) => {
   const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
+  const token = header?.startsWith('Bearer ')
+    ? header.slice('Bearer '.length)
+    : req.cookies?.accessToken;
+
+  if (!token) {
     throw ApiError.unauthorized('Token de acceso no proporcionado');
   }
-
-  const token = header.slice('Bearer '.length);
 
   try {
     const payload = verifyAccessToken(token);

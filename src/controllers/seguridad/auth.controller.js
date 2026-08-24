@@ -2,20 +2,37 @@ import { authService } from '../../services/seguridad/auth.service.js';
 import { ApiResponse } from '../../utils/ApiResponse.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 
+const cookieOpts = (maxAgeMs) => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax',
+  path: '/',
+  maxAge: maxAgeMs,
+});
+
 export const authController = {
   login: asyncHandler(async (req, res) => {
     const { usuario, password } = req.body;
     const result = await authService.login(usuario, password);
+    // httpOnly cookies para web (móvil sigue usando Bearer del body)
+    res.cookie('accessToken', result.accessToken, cookieOpts(15 * 60 * 1000));
+    res.cookie('refreshToken', result.refreshToken, cookieOpts(7 * 24 * 60 * 60 * 1000));
     ApiResponse.send(res, { message: 'Inicio de sesión exitoso', data: result });
   }),
 
   refresh: asyncHandler(async (req, res) => {
-    const result = await authService.refresh(req.body.refreshToken);
+    const rawToken = req.body.refreshToken || req.cookies?.refreshToken;
+    const result = await authService.refresh(rawToken);
+    res.cookie('accessToken', result.accessToken, cookieOpts(15 * 60 * 1000));
+    res.cookie('refreshToken', result.refreshToken, cookieOpts(7 * 24 * 60 * 60 * 1000));
     ApiResponse.send(res, { message: 'Token renovado correctamente', data: result });
   }),
 
   logout: asyncHandler(async (req, res) => {
-    await authService.logout(req.body.refreshToken);
+    const rawToken = req.body.refreshToken || req.cookies?.refreshToken;
+    if (rawToken) await authService.logout(rawToken);
+    res.clearCookie('accessToken', { path: '/' });
+    res.clearCookie('refreshToken', { path: '/' });
     ApiResponse.send(res, { message: 'Sesión cerrada correctamente' });
   }),
 
