@@ -38,12 +38,12 @@ const listFiles = (dir, { excluir } = {}) =>
 // vuelve a correr desde cero y choca con sus propios datos ya insertados
 // (clave duplicada) o su propia tabla ya creada. En vez de abortar, se
 // detecta este caso puntual y se marca como aplicada igual.
-const ALREADY_APPLIED_SQLSTATES = new Set(['23000', '42S01']); // duplicate entry / table exists
-const ALREADY_APPLIED_CODES = new Set(['1062', '1050', 'ER_DUP_ENTRY', 'ER_TABLE_EXISTS_ERROR']);
+const ALREADY_APPLIED_SQLSTATES = new Set(['23000', '42S01', '42S21']); // duplicate entry / table exists / duplicate column
+const ALREADY_APPLIED_CODES = new Set(['1062', '1050', '1060', 'ER_DUP_ENTRY', 'ER_TABLE_EXISTS_ERROR', 'ER_DUP_FIELDNAME']);
 const isAlreadyAppliedError = (error) =>
   ALREADY_APPLIED_SQLSTATES.has(error.sqlState) ||
   ALREADY_APPLIED_CODES.has(String(error.code)) ||
-  /duplicate entry|already exists/i.test(error.message || '');
+  /duplicate entry|already exists|duplicate column/i.test(error.message || '');
 
 async function ensureTrackingTable(queryInterface, tableName) {
   const tables = await queryInterface.showAllTables();
