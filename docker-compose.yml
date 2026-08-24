@@ -54,7 +54,7 @@ services:
 
   app-banarica:
     build:
-      context: https://github.com/heywinmeneseshp/app-corbana.git
+      context: ../app-corbana
       dockerfile: Dockerfile
     image: heywinmeneseshp/app-corbana:latest
     container_name: app-banarica
