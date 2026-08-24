@@ -53,6 +53,9 @@ services:
       - "traefik.http.services.api-corbana.loadbalancer.server.port=3000"
 
   app-banarica:
+    build:
+      context: https://github.com/heywinmeneseshp/app-corbana.git
+      dockerfile: Dockerfile
     image: heywinmeneseshp/app-corbana:latest
     container_name: app-banarica
     restart: unless-stopped
