@@ -11,6 +11,15 @@
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
   async up(queryInterface) {
+    // Si las tablas aún no existen (se crean lazily por ensureTables() del
+    // service), no hay FK que agregar — se marca como hecha y el service las
+    // creará con el esquema correcto en el primer uso.
+    const tablas = await queryInterface.showAllTables();
+    const normaliza = (t) => String(t).toLowerCase();
+    if (!tablas.map(normaliza).includes('precipitacion_diaria_config') || !tablas.map(normaliza).includes('precipitacion_diaria')) {
+      return;
+    }
+
     // semana_inicio_uuid quedó como VARCHAR(36)/utf8mb4 pero semanas.uuid es
     // CHAR(36)/latin1_bin (columna vieja, inconsistente con el resto del
     // esquema) — MySQL exige mismo tipo y charset para poder crear la FK.
