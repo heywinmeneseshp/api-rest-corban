@@ -14,9 +14,16 @@ module.exports = {
       ESTADIO_SIGATOKA_PREFIXES.some((prefix) => p.codigo.startsWith(prefix)),
     );
 
+    const existentes = await queryInterface.sequelize.query(`SELECT codigo FROM permisos WHERE codigo LIKE 'estadio_sigatoka.%'`, {
+      type: queryInterface.sequelize.QueryTypes.SELECT,
+    });
+    const yaExisten = new Set(existentes.map((r) => r.codigo));
+    const pendientes = estadioPermisos.filter((p) => !yaExisten.has(p.codigo));
+    if (pendientes.length === 0) return;
+
     await queryInterface.bulkInsert(
       'permisos',
-      estadioPermisos.map((p) => ({
+      pendientes.map((p) => ({
         uuid: crypto.randomUUID(),
         codigo: p.codigo,
         nombre: p.nombre,
