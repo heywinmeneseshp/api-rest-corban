@@ -38,9 +38,17 @@ module.exports = {
 
     if (!adminRole || permisos.length === 0) return;
 
+    const existentes = await queryInterface.sequelize.query(
+      'SELECT permiso_id FROM rol_permisos WHERE role_id = :roleId AND permiso_id IN (:ids)',
+      { replacements: { roleId: adminRole.id, ids: permisos.map((p) => p.id) }, type: QueryTypes.SELECT },
+    );
+    const yaExisten = new Set(existentes.map((r) => r.permiso_id));
+    const pendientes = permisos.filter((p) => !yaExisten.has(p.id));
+    if (pendientes.length === 0) return;
+
     await queryInterface.bulkInsert(
       'rol_permisos',
-      permisos.map((p) => ({
+      pendientes.map((p) => ({
         role_id: adminRole.id,
         permiso_id: p.id,
         created_at: now,
