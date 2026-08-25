@@ -2,12 +2,14 @@ import { authService } from '../../services/seguridad/auth.service.js';
 import { ApiResponse } from '../../utils/ApiResponse.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 
+const isProd = process.env.NODE_ENV === 'production';
 const cookieOpts = (maxAgeMs) => ({
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax',
+  secure: isProd,
+  sameSite: isProd ? 'none' : 'lax',
   path: '/',
   maxAge: maxAgeMs,
+  ...(isProd ? { domain: '.banarica.cloud' } : {}),
 });
 
 export const authController = {
