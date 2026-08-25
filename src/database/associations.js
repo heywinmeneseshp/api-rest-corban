@@ -38,6 +38,10 @@ import { Producto } from './models/producto.model.js';
 import { RechazoCorte } from './models/rechazoCorte.model.js';
 import { PrecipitacionDiariaConfig } from './models/precipitacionDiariaConfig.model.js';
 import { PrecipitacionDiaria } from './models/precipitacionDiaria.model.js';
+import { ProductoCategoria } from './models/productoCategoria.model.js';
+import { UnidadMedida } from './models/unidadMedida.model.js';
+import { UnidadConversion } from './models/unidadConversion.model.js';
+import { Almacen } from './models/almacen.model.js';
 
 const withAuditAssociations = (TargetModel) => {
   TargetModel.belongsTo(User, { as: 'creadoPor', foreignKey: 'createdBy' });
@@ -325,6 +329,30 @@ export const setupAssociations = () => {
 
   User.hasMany(PrecipitacionDiaria, { foreignKey: 'usuarioId', as: 'precipitacionesDiarias' });
   PrecipitacionDiaria.belongsTo(User, { foreignKey: 'usuarioId', as: 'usuario' });
+
+  // Inventarios - FASE 1: Catálogo
+  ProductoCategoria.hasMany(Producto, { foreignKey: 'categoriaId', as: 'productos' });
+  Producto.belongsTo(ProductoCategoria, { foreignKey: 'categoriaId', as: 'categoria' });
+
+  UnidadMedida.hasMany(Producto, { foreignKey: 'unidadMedidaId', as: 'productos' });
+  Producto.belongsTo(UnidadMedida, { foreignKey: 'unidadMedidaId', as: 'unidadMedida' });
+
+  UnidadMedida.hasMany(UnidadConversion, { foreignKey: 'unidadOrigenId', as: 'conversionesOrigen' });
+  UnidadMedida.hasMany(UnidadConversion, { foreignKey: 'unidadDestinoId', as: 'conversionesDestino' });
+  UnidadConversion.belongsTo(UnidadMedida, { foreignKey: 'unidadOrigenId', as: 'unidadOrigen' });
+  UnidadConversion.belongsTo(UnidadMedida, { foreignKey: 'unidadDestinoId', as: 'unidadDestino' });
+
+  // Almacenes jerárquicos (self) + ubicación en finca + responsable
+  Almacen.hasMany(Almacen, { foreignKey: 'parentId', as: 'hijos' });
+  Almacen.belongsTo(Almacen, { foreignKey: 'parentId', as: 'padre' });
+  Almacen.belongsTo(Finca, { foreignKey: 'ubicacionFincaId', as: 'finca' });
+  Finca.hasMany(Almacen, { foreignKey: 'ubicacionFincaId', as: 'almacenes' });
+  Almacen.belongsTo(User, { foreignKey: 'responsableId', as: 'responsable' });
+
+  withAuditAssociations(ProductoCategoria);
+  withAuditAssociations(UnidadMedida);
+  withAuditAssociations(Almacen);
+  withAuditAssociationsNoDelete(UnidadConversion);
 };
 
 export {
@@ -369,6 +397,10 @@ export {
   RechazoCorte,
   PrecipitacionDiariaConfig,
   PrecipitacionDiaria,
+  ProductoCategoria,
+  UnidadMedida,
+  UnidadConversion,
+  Almacen,
 };
 
 export default setupAssociations;

@@ -58,6 +58,7 @@ import resetDatosRoutes from './routes/sistema/resetDatos.routes.js';
 import setupRoutes from './routes/sistema/setup.routes.js';
 import backupRoutes from './routes/sistema/backup.routes.js';
 import cronRoutes from './routes/sistema/cron.routes.js';
+import inventarioRoutes from './routes/inventario/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -152,9 +153,10 @@ router.use('/configuraciones', configuracionRoutes);
 router.use('/sistema', resetDatosRoutes);
 router.use('/sistema', setupRoutes);
 router.use('/sistema', backupRoutes);
-router.use('/cron', cronRoutes);
+  router.use('/cron', cronRoutes);
+  router.use('/inventarios', inventarioRoutes);
 
-app.use(env.apiPrefix, router);
+  app.use(env.apiPrefix, router);
 
 app.get('/health', (_req, res) => res.json({ success: true, message: 'OK', data: null }));
 
