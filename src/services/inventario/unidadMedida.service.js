@@ -1,5 +1,5 @@
 import { unidadMedidaRepository, unidadConversionRepository } from '../../repositories/inventario/unidadMedida.repository.js';
-import { UnidadMedida } from '../../database/associations.js';
+import { UnidadMedida, UnidadConversion } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 
@@ -52,7 +52,6 @@ export const unidadMedidaService = {
   // Conversiones
   async listConversiones() {
     // simple list, no pagination for now
-    const { UnidadConversion } = await import('../../database/associations.js');
     return UnidadConversion.findAll({ include: [{ model: UnidadMedida, as: 'unidadOrigen' }, { model: UnidadMedida, as: 'unidadDestino' }] });
   },
 

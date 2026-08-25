@@ -44,6 +44,20 @@ import { UnidadConversion } from './models/unidadConversion.model.js';
 import { Almacen } from './models/almacen.model.js';
 import { Motivo } from './models/motivo.model.js';
 import { MovimientoInventario } from './models/movimientoInventario.model.js';
+import { Mezcla } from './models/mezcla.model.js';
+import { MezclaVersion } from './models/mezclaVersion.model.js';
+import { MezclaComponente } from './models/mezclaComponente.model.js';
+import { Elaboracion } from './models/elaboracion.model.js';
+import { Proforma } from './models/proforma.model.js';
+import { ProformaDetalle } from './models/proformaDetalle.model.js';
+import { Equipo } from './models/equipo.model.js';
+import { EquipoComponente } from './models/equipoComponente.model.js';
+import { PlanMantenimiento } from './models/planMantenimiento.model.js';
+import { ProgramacionMantenimiento } from './models/programacionMantenimiento.model.js';
+import { OrdenMantenimiento } from './models/ordenMantenimiento.model.js';
+import { OrdenDetalle } from './models/ordenDetalle.model.js';
+import { OrdenManoObra } from './models/ordenManoObra.model.js';
+import { OrdenServicio } from './models/ordenServicio.model.js';
 
 const withAuditAssociations = (TargetModel) => {
   TargetModel.belongsTo(User, { as: 'creadoPor', foreignKey: 'createdBy' });
@@ -368,6 +382,102 @@ export const setupAssociations = () => {
   MovimientoInventario.belongsTo(Motivo, { foreignKey: 'motivoId', as: 'motivo' });
   User.hasMany(MovimientoInventario, { foreignKey: 'usuarioId', as: 'movimientosInventario' });
   MovimientoInventario.belongsTo(User, { foreignKey: 'usuarioId', as: 'usuario' });
+
+  // Inventarios - FASE 3: Mezclas y Elaboraciones
+  Mezcla.hasMany(MezclaVersion, { foreignKey: 'mezclaId', as: 'versiones' });
+  MezclaVersion.belongsTo(Mezcla, { foreignKey: 'mezclaId', as: 'mezcla' });
+
+  MezclaVersion.hasMany(MezclaComponente, { foreignKey: 'mezclaVersionId', as: 'componentes' });
+  MezclaComponente.belongsTo(MezclaVersion, { foreignKey: 'mezclaVersionId', as: 'version' });
+
+  Mezcla.belongsTo(Producto, { foreignKey: 'productoElaboradoId', as: 'productoElaborado' });
+  Producto.hasMany(Mezcla, { foreignKey: 'productoElaboradoId', as: 'mezclas' });
+
+  Mezcla.belongsTo(UnidadMedida, { foreignKey: 'unidadRendimientoId', as: 'unidadRendimiento' });
+  UnidadMedida.hasMany(Mezcla, { foreignKey: 'unidadRendimientoId', as: 'mezclasRendimiento' });
+
+  MezclaComponente.belongsTo(Producto, { foreignKey: 'productoId', as: 'producto' });
+  Producto.hasMany(MezclaComponente, { foreignKey: 'productoId', as: 'mezclaComponentes' });
+
+  MezclaComponente.belongsTo(UnidadMedida, { foreignKey: 'unidadId', as: 'unidad' });
+  UnidadMedida.hasMany(MezclaComponente, { foreignKey: 'unidadId', as: 'mezclaComponentes' });
+
+  MezclaVersion.hasMany(Elaboracion, { foreignKey: 'mezclaVersionId', as: 'elaboraciones' });
+  Elaboracion.belongsTo(MezclaVersion, { foreignKey: 'mezclaVersionId', as: 'version' });
+
+  Elaboracion.belongsTo(Almacen, { foreignKey: 'almacenId', as: 'almacen' });
+  Almacen.hasMany(Elaboracion, { foreignKey: 'almacenId', as: 'elaboraciones' });
+
+  Elaboracion.belongsTo(User, { foreignKey: 'usuarioId', as: 'usuario' });
+  User.hasMany(Elaboracion, { foreignKey: 'usuarioId', as: 'elaboraciones' });
+
+  withAuditAssociations(Mezcla);
+
+  // Inventarios - FASE 4: Proformas
+  Proforma.hasMany(ProformaDetalle, { foreignKey: 'proformaId', as: 'detalles' });
+  ProformaDetalle.belongsTo(Proforma, { foreignKey: 'proformaId', as: 'proforma' });
+  ProformaDetalle.belongsTo(Producto, { foreignKey: 'productoId', as: 'producto' });
+  Producto.hasMany(ProformaDetalle, { foreignKey: 'productoId', as: 'proformaDetalles' });
+  Proforma.belongsTo(User, { foreignKey: 'usuarioId', as: 'usuario' });
+  User.hasMany(Proforma, { foreignKey: 'usuarioId', as: 'proformas' });
+  withAuditAssociations(Proforma);
+
+  // Inventarios - FASE 5: Equipos + repuestos compatibles
+  Equipo.belongsTo(Almacen, { foreignKey: 'ubicacionId', as: 'ubicacion' });
+  Almacen.hasMany(Equipo, { foreignKey: 'ubicacionId', as: 'equiposUbicados' });
+  Equipo.belongsTo(Almacen, { foreignKey: 'centroCostoId', as: 'centroCosto' });
+  Almacen.hasMany(Equipo, { foreignKey: 'centroCostoId', as: 'equiposCentroCosto' });
+  Equipo.belongsTo(User, { foreignKey: 'responsableId', as: 'responsable' });
+  User.hasMany(Equipo, { foreignKey: 'responsableId', as: 'equiposResponsables' });
+  // M2M repuestos compatibles
+  Equipo.belongsToMany(Producto, { through: EquipoComponente, foreignKey: 'equipoId', otherKey: 'productoId', as: 'repuestosCompatibles' });
+  Producto.belongsToMany(Equipo, { through: EquipoComponente, foreignKey: 'productoId', otherKey: 'equipoId', as: 'equiposCompatibles' });
+  EquipoComponente.belongsTo(Equipo, { foreignKey: 'equipoId', as: 'equipo' });
+  EquipoComponente.belongsTo(Producto, { foreignKey: 'productoId', as: 'producto' });
+  Equipo.hasMany(EquipoComponente, { foreignKey: 'equipoId', as: 'componentes' });
+  Producto.hasMany(EquipoComponente, { foreignKey: 'productoId', as: 'equipoComponentes' });
+  withAuditAssociations(Equipo);
+
+  // Inventarios - FASE 6: Mantenimiento
+  PlanMantenimiento.belongsTo(Equipo, { foreignKey: 'equipoId', as: 'equipo' });
+  Equipo.hasMany(PlanMantenimiento, { foreignKey: 'equipoId', as: 'planesMantenimiento' });
+  withAuditAssociations(PlanMantenimiento);
+
+  ProgramacionMantenimiento.belongsTo(PlanMantenimiento, { foreignKey: 'planId', as: 'plan' });
+  PlanMantenimiento.hasMany(ProgramacionMantenimiento, { foreignKey: 'planId', as: 'programaciones' });
+  ProgramacionMantenimiento.belongsTo(Equipo, { foreignKey: 'equipoId', as: 'equipo' });
+  Equipo.hasMany(ProgramacionMantenimiento, { foreignKey: 'equipoId', as: 'programacionesMantenimiento' });
+  ProgramacionMantenimiento.belongsTo(User, { foreignKey: 'responsableId', as: 'responsable' });
+  User.hasMany(ProgramacionMantenimiento, { foreignKey: 'responsableId', as: 'programacionesMantenimiento' });
+  withAuditAssociations(ProgramacionMantenimiento);
+
+  OrdenMantenimiento.belongsTo(Equipo, { foreignKey: 'equipoId', as: 'equipo' });
+  Equipo.hasMany(OrdenMantenimiento, { foreignKey: 'equipoId', as: 'ordenesMantenimiento' });
+  OrdenMantenimiento.belongsTo(PlanMantenimiento, { foreignKey: 'planId', as: 'plan' });
+  PlanMantenimiento.hasMany(OrdenMantenimiento, { foreignKey: 'planId', as: 'ordenes' });
+  OrdenMantenimiento.belongsTo(ProgramacionMantenimiento, { foreignKey: 'programacionId', as: 'programacion' });
+  ProgramacionMantenimiento.hasMany(OrdenMantenimiento, { foreignKey: 'programacionId', as: 'ordenes' });
+  OrdenMantenimiento.belongsTo(Almacen, { foreignKey: 'almacenId', as: 'almacen' });
+  Almacen.hasMany(OrdenMantenimiento, { foreignKey: 'almacenId', as: 'ordenesMantenimiento' });
+  OrdenMantenimiento.belongsTo(User, { foreignKey: 'responsableId', as: 'responsable' });
+  User.hasMany(OrdenMantenimiento, { foreignKey: 'responsableId', as: 'ordenesResponsables' });
+  OrdenMantenimiento.belongsTo(User, { foreignKey: 'usuarioId', as: 'usuario' });
+  User.hasMany(OrdenMantenimiento, { foreignKey: 'usuarioId', as: 'ordenesCreadas' });
+
+  OrdenDetalle.belongsTo(OrdenMantenimiento, { foreignKey: 'ordenId', as: 'orden' });
+  OrdenMantenimiento.hasMany(OrdenDetalle, { foreignKey: 'ordenId', as: 'detalles' });
+  OrdenDetalle.belongsTo(Producto, { foreignKey: 'productoId', as: 'producto' });
+  Producto.hasMany(OrdenDetalle, { foreignKey: 'productoId', as: 'ordenDetalles' });
+  OrdenDetalle.belongsTo(Almacen, { foreignKey: 'almacenId', as: 'almacen' });
+
+  OrdenManoObra.belongsTo(OrdenMantenimiento, { foreignKey: 'ordenId', as: 'orden' });
+  OrdenMantenimiento.hasMany(OrdenManoObra, { foreignKey: 'ordenId', as: 'manoObra' });
+  OrdenManoObra.belongsTo(User, { foreignKey: 'responsableId', as: 'responsable' });
+
+  OrdenServicio.belongsTo(OrdenMantenimiento, { foreignKey: 'ordenId', as: 'orden' });
+  OrdenMantenimiento.hasMany(OrdenServicio, { foreignKey: 'ordenId', as: 'servicios' });
+
+  withAuditAssociations(OrdenMantenimiento);
 };
 
 export {
@@ -418,6 +528,20 @@ export {
   Almacen,
   Motivo,
   MovimientoInventario,
+  Mezcla,
+  MezclaVersion,
+  MezclaComponente,
+  Elaboracion,
+  Proforma,
+  ProformaDetalle,
+  Equipo,
+  EquipoComponente,
+  PlanMantenimiento,
+  ProgramacionMantenimiento,
+  OrdenMantenimiento,
+  OrdenDetalle,
+  OrdenManoObra,
+  OrdenServicio,
 };
 
 export default setupAssociations;

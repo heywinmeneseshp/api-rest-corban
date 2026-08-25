@@ -40,6 +40,5 @@ module.exports = {
     await queryInterface.removeColumn('productos', 'categoria_id');
     await queryInterface.removeColumn('productos', 'tipo');
     await queryInterface.removeColumn('productos', 'descripcion');
-    await queryInterface.sequelize.query("DROP TYPE IF EXISTS `enum_productos_tipo`;");
   },
 };

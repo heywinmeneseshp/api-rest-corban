@@ -44,6 +44,11 @@ export const getMovimientoSchema = Joi.object({
   uuid: Joi.string().uuid().required(),
 });
 
+export const existenciasSchema = Joi.object({
+  almacenUuid: Joi.string().uuid(),
+  productoUuid: Joi.string().uuid(),
+});
+
 export const kardexSchema = Joi.object({
   productoUuid: Joi.string().uuid().required(),
   almacenUuid: Joi.string().uuid(),

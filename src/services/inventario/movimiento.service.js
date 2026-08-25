@@ -1,11 +1,9 @@
 import { sequelize } from '../../database/connection.js';
 import { movimientoRepository } from '../../repositories/inventario/movimiento.repository.js';
-import { Almacen, Producto, UnidadMedida, Motivo } from '../../database/associations.js';
+import { Almacen, Producto, UnidadMedida, Motivo, UnidadConversion } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
-
-const TIPOS_ENTRADA = ['ENTRADA', 'AJUSTE_ENTRADA', 'TRANSFERENCIA_ENTRADA', 'ELABORACION_ENTRADA'];
-const TIPOS_SALIDA = ['SALIDA', 'AJUSTE_SALIDA', 'TRANSFERENCIA_SALIDA', 'ELABORACION_SALIDA'];
+import { assertStockSuficiente, TIPOS_SALIDA } from './stock.helper.js';
 
 // Convierte cantidad a unidad base del producto (usa factor de conversión si unidad distinta)
 async function toBaseCantidad(producto, unidadUuid, cantidad) {
@@ -14,25 +12,11 @@ async function toBaseCantidad(producto, unidadUuid, cantidad) {
   if (!unidad || unidad.id === producto.unidadMedidaId) return Number(cantidad);
 
   // Busca conversión directa
-  const { UnidadConversion } = await import('../../database/associations.js');
   const conv = await UnidadConversion.findOne({
     where: { unidadOrigenId: unidad.id, unidadDestinoId: producto.unidadMedidaId },
   });
   if (!conv) throw ApiError.badRequest(`No hay conversión de ${unidad.codigo} a unidad base del producto`);
   return Number(cantidad) * Number(conv.factor);
-}
-
-async function getExistencia(almacenId, productoId, transaction) {
-  const { MovimientoInventario } = await import('../../database/associations.js');
-  const { fn, literal } = await import('sequelize');
-  const tiposSuma = ['ENTRADA', 'AJUSTE_ENTRADA', 'TRANSFERENCIA_ENTRADA', 'ELABORACION_ENTRADA'];
-  const result = await MovimientoInventario.findOne({
-    where: { almacenId, productoId },
-    attributes: [[fn('SUM', literal(`CASE WHEN tipo IN ('${tiposSuma.join("','")}') THEN cantidad_base ELSE -cantidad_base END`)), 'saldo']],
-    raw: true,
-    transaction,
-  });
-  return Number(result?.saldo || 0);
 }
 
 export const movimientoService = {
@@ -86,33 +70,39 @@ export const movimientoService = {
     }
 
     const cantidadBase = await toBaseCantidad(producto, payload.unidadUuid, payload.cantidad);
-
-    // Valida stock para salidas
-    if (TIPOS_SALIDA.includes(payload.tipo)) {
-      const saldo = await getExistencia(almacen.id, producto.id);
-      if (saldo < cantidadBase) {
-        throw ApiError.badRequest(`Stock insuficiente. Disponible: ${saldo}, solicitado: ${cantidadBase}`);
-      }
-    }
-
     const costoTotal = Number(payload.costoUnitario || 0) * Number(payload.cantidad);
 
-    return movimientoRepository.create({
-      documento: payload.documento,
-      tipo: payload.tipo,
-      fecha: payload.fecha,
-      almacenId: almacen.id,
-      productoId: producto.id,
-      cantidad: payload.cantidad,
-      cantidadBase,
-      unidadId,
-      costoUnitario: payload.costoUnitario || 0,
-      costoTotal,
-      lote: payload.lote || null,
-      fechaVencimiento: payload.fechaVencimiento || null,
-      motivoId,
-      observaciones: payload.observaciones || null,
-      usuarioId: actorId,
+    return sequelize.transaction(async (t) => {
+      // Valida stock para salidas (bloqueo de fila dentro de la misma transacción
+      // en la que se inserta el movimiento, para que check e insert sean atómicos)
+      if (TIPOS_SALIDA.includes(payload.tipo)) {
+        await assertStockSuficiente(almacen.id, producto.id, cantidadBase, {
+          transaction: t,
+          nombreProducto: producto.nombre,
+          nombreAlmacen: almacen.nombre,
+        });
+      }
+
+      return movimientoRepository.create(
+        {
+          documento: payload.documento,
+          tipo: payload.tipo,
+          fecha: payload.fecha,
+          almacenId: almacen.id,
+          productoId: producto.id,
+          cantidad: payload.cantidad,
+          cantidadBase,
+          unidadId,
+          costoUnitario: payload.costoUnitario || 0,
+          costoTotal,
+          lote: payload.lote || null,
+          fechaVencimiento: payload.fechaVencimiento || null,
+          motivoId,
+          observaciones: payload.observaciones || null,
+          usuarioId: actorId,
+        },
+        { transaction: t },
+      );
     });
   },
 
@@ -126,8 +116,6 @@ export const movimientoService = {
     if (!producto) throw ApiError.notFound('Producto no encontrado');
 
     const cantidadBase = await toBaseCantidad(producto, payload.unidadUuid, payload.cantidad);
-    const saldo = await getExistencia(almacenOrigen.id, producto.id);
-    if (saldo < cantidadBase) throw ApiError.badRequest(`Stock insuficiente en origen. Disponible: ${saldo}`);
 
     let unidadId = null;
     if (payload.unidadUuid) {
@@ -138,6 +126,12 @@ export const movimientoService = {
     const costoTotal = Number(payload.costoUnitario || 0) * Number(payload.cantidad);
 
     return sequelize.transaction(async (t) => {
+      await assertStockSuficiente(almacenOrigen.id, producto.id, cantidadBase, {
+        transaction: t,
+        nombreProducto: producto.nombre,
+        nombreAlmacen: almacenOrigen.nombre,
+      });
+
       const salida = await movimientoRepository.create(
         {
           documento: payload.documento,

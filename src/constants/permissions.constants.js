@@ -268,6 +268,54 @@ export const PERMISSIONS = {
 
   MENU_INVENTARIOS_MOTIVOS: 'menu.inventarios.motivos',
   MENU_INVENTARIOS_MOVIMIENTOS: 'menu.inventarios.movimientos',
+
+  // Inventarios - FASE 3: Mezclas y Elaboraciones
+  INVENTARIO_MEZCLAS_VER: 'inventario.mezclas.ver',
+  INVENTARIO_MEZCLAS_CREAR: 'inventario.mezclas.crear',
+  INVENTARIO_MEZCLAS_EDITAR: 'inventario.mezclas.editar',
+  INVENTARIO_MEZCLAS_ELIMINAR: 'inventario.mezclas.eliminar',
+  INVENTARIO_MEZCLAS_ELABORAR: 'inventario.mezclas.elaborar',
+
+  MENU_INVENTARIOS_MEZCLAS: 'menu.inventarios.mezclas',
+  MENU_INVENTARIOS_ELABORACIONES: 'menu.inventarios.elaboraciones',
+
+  // Inventarios - FASE 4: Proformas
+  INVENTARIO_PROFORMAS_VER: 'inventario.proformas.ver',
+  INVENTARIO_PROFORMAS_CREAR: 'inventario.proformas.crear',
+  INVENTARIO_PROFORMAS_EDITAR: 'inventario.proformas.editar',
+  INVENTARIO_PROFORMAS_ELIMINAR: 'inventario.proformas.eliminar',
+  INVENTARIO_PROFORMAS_CONVERTIR: 'inventario.proformas.convertir',
+
+  MENU_INVENTARIOS_PROFORMAS: 'menu.inventarios.proformas',
+
+  // Inventarios - FASE 5: Equipos + repuestos compatibles
+  INVENTARIO_EQUIPOS_VER: 'inventario.equipos.ver',
+  INVENTARIO_EQUIPOS_CREAR: 'inventario.equipos.crear',
+  INVENTARIO_EQUIPOS_EDITAR: 'inventario.equipos.editar',
+  INVENTARIO_EQUIPOS_ELIMINAR: 'inventario.equipos.eliminar',
+
+  MENU_INVENTARIOS_EQUIPOS: 'menu.inventarios.equipos',
+
+  // Inventarios - FASE 6: Mantenimiento (planes / programaciones / órdenes)
+  INVENTARIO_PLANES_VER: 'inventario.planes.ver',
+  INVENTARIO_PLANES_CREAR: 'inventario.planes.crear',
+  INVENTARIO_PLANES_EDITAR: 'inventario.planes.editar',
+  INVENTARIO_PLANES_ELIMINAR: 'inventario.planes.eliminar',
+
+  INVENTARIO_PROGRAMACIONES_VER: 'inventario.programaciones.ver',
+  INVENTARIO_PROGRAMACIONES_CREAR: 'inventario.programaciones.crear',
+  INVENTARIO_PROGRAMACIONES_EDITAR: 'inventario.programaciones.editar',
+  INVENTARIO_PROGRAMACIONES_ELIMINAR: 'inventario.programaciones.eliminar',
+
+  INVENTARIO_ORDENES_VER: 'inventario.ordenes.ver',
+  INVENTARIO_ORDENES_CREAR: 'inventario.ordenes.crear',
+  INVENTARIO_ORDENES_EDITAR: 'inventario.ordenes.editar',
+  INVENTARIO_ORDENES_ELIMINAR: 'inventario.ordenes.eliminar',
+  INVENTARIO_ORDENES_CERRAR: 'inventario.ordenes.cerrar',
+
+  MENU_INVENTARIOS_PLANES: 'menu.inventarios.planes',
+  MENU_INVENTARIOS_PROGRAMACIONES: 'menu.inventarios.programaciones',
+  MENU_INVENTARIOS_ORDENES: 'menu.inventarios.ordenes',
 };
 
 export const PERMISSIONS_SEED = [
@@ -461,4 +509,38 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.INVENTARIO_MOVIMIENTOS_CREAR, nombre: 'Crear movimientos de inventario' },
   { codigo: PERMISSIONS.MENU_INVENTARIOS_MOTIVOS, nombre: 'Ver submenú Motivos (Inventarios)' },
   { codigo: PERMISSIONS.MENU_INVENTARIOS_MOVIMIENTOS, nombre: 'Ver submenú Movimientos (Inventarios)' },
+  { codigo: PERMISSIONS.INVENTARIO_MEZCLAS_VER, nombre: 'Ver mezclas (Inventarios)' },
+  { codigo: PERMISSIONS.INVENTARIO_MEZCLAS_CREAR, nombre: 'Crear mezclas' },
+  { codigo: PERMISSIONS.INVENTARIO_MEZCLAS_EDITAR, nombre: 'Editar mezclas' },
+  { codigo: PERMISSIONS.INVENTARIO_MEZCLAS_ELIMINAR, nombre: 'Eliminar mezclas' },
+  { codigo: PERMISSIONS.INVENTARIO_MEZCLAS_ELABORAR, nombre: 'Elaborar mezclas (genera movimientos de inventario)' },
+  { codigo: PERMISSIONS.MENU_INVENTARIOS_MEZCLAS, nombre: 'Ver submenú Mezclas (Inventarios)' },
+  { codigo: PERMISSIONS.MENU_INVENTARIOS_ELABORACIONES, nombre: 'Ver submenú Elaboraciones (Inventarios)' },
+  { codigo: PERMISSIONS.INVENTARIO_PROFORMAS_VER, nombre: 'Ver proformas (Inventarios)' },
+  { codigo: PERMISSIONS.INVENTARIO_PROFORMAS_CREAR, nombre: 'Crear proformas' },
+  { codigo: PERMISSIONS.INVENTARIO_PROFORMAS_EDITAR, nombre: 'Editar proformas' },
+  { codigo: PERMISSIONS.INVENTARIO_PROFORMAS_ELIMINAR, nombre: 'Eliminar proformas' },
+  { codigo: PERMISSIONS.INVENTARIO_PROFORMAS_CONVERTIR, nombre: 'Convertir proforma a factura' },
+  { codigo: PERMISSIONS.MENU_INVENTARIOS_PROFORMAS, nombre: 'Ver submenú Proformas (Inventarios)' },
+  { codigo: PERMISSIONS.INVENTARIO_EQUIPOS_VER, nombre: 'Ver equipos (Inventarios)' },
+  { codigo: PERMISSIONS.INVENTARIO_EQUIPOS_CREAR, nombre: 'Crear equipos' },
+  { codigo: PERMISSIONS.INVENTARIO_EQUIPOS_EDITAR, nombre: 'Editar equipos' },
+  { codigo: PERMISSIONS.INVENTARIO_EQUIPOS_ELIMINAR, nombre: 'Eliminar equipos' },
+  { codigo: PERMISSIONS.MENU_INVENTARIOS_EQUIPOS, nombre: 'Ver submenú Equipos (Inventarios)' },
+  { codigo: PERMISSIONS.INVENTARIO_PLANES_VER, nombre: 'Ver planes de mantenimiento' },
+  { codigo: PERMISSIONS.INVENTARIO_PLANES_CREAR, nombre: 'Crear planes de mantenimiento' },
+  { codigo: PERMISSIONS.INVENTARIO_PLANES_EDITAR, nombre: 'Editar planes de mantenimiento' },
+  { codigo: PERMISSIONS.INVENTARIO_PLANES_ELIMINAR, nombre: 'Eliminar planes de mantenimiento' },
+  { codigo: PERMISSIONS.INVENTARIO_PROGRAMACIONES_VER, nombre: 'Ver programaciones de mantenimiento' },
+  { codigo: PERMISSIONS.INVENTARIO_PROGRAMACIONES_CREAR, nombre: 'Crear programaciones de mantenimiento' },
+  { codigo: PERMISSIONS.INVENTARIO_PROGRAMACIONES_EDITAR, nombre: 'Editar programaciones de mantenimiento' },
+  { codigo: PERMISSIONS.INVENTARIO_PROGRAMACIONES_ELIMINAR, nombre: 'Eliminar programaciones de mantenimiento' },
+  { codigo: PERMISSIONS.INVENTARIO_ORDENES_VER, nombre: 'Ver órdenes de mantenimiento' },
+  { codigo: PERMISSIONS.INVENTARIO_ORDENES_CREAR, nombre: 'Crear órdenes de mantenimiento' },
+  { codigo: PERMISSIONS.INVENTARIO_ORDENES_EDITAR, nombre: 'Editar órdenes de mantenimiento' },
+  { codigo: PERMISSIONS.INVENTARIO_ORDENES_ELIMINAR, nombre: 'Eliminar órdenes de mantenimiento' },
+  { codigo: PERMISSIONS.INVENTARIO_ORDENES_CERRAR, nombre: 'Cerrar órdenes de mantenimiento (genera salida de inventario)' },
+  { codigo: PERMISSIONS.MENU_INVENTARIOS_PLANES, nombre: 'Ver submenú Planes de Mantenimiento (Inventarios)' },
+  { codigo: PERMISSIONS.MENU_INVENTARIOS_PROGRAMACIONES, nombre: 'Ver submenú Programaciones de Mantenimiento (Inventarios)' },
+  { codigo: PERMISSIONS.MENU_INVENTARIOS_ORDENES, nombre: 'Ver submenú Órdenes de Mantenimiento (Inventarios)' },
 ];

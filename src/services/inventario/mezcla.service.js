@@ -1,0 +1,252 @@
+import { sequelize } from '../../database/connection.js';
+import { mezclaRepository } from '../../repositories/inventario/mezcla.repository.js';
+import { MezclaVersion, MezclaComponente, Producto, UnidadMedida } from '../../database/associations.js';
+import { ApiError } from '../../utils/ApiError.js';
+import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
+
+async function resolveProducto(uuid) {
+  const p = await Producto.findOne({ where: { uuid } });
+  if (!p) throw ApiError.notFound('Producto no encontrado');
+  return p;
+}
+
+async function resolveUnidad(uuid) {
+  if (!uuid) return null;
+  const u = await UnidadMedida.findOne({ where: { uuid } });
+  if (!u) throw ApiError.notFound('Unidad de medida no encontrada');
+  return u;
+}
+
+async function calcularCostos(componentesPayload, rendimiento) {
+  let costoTotal = 0;
+  const detalles = [];
+  for (const comp of componentesPayload) {
+    const producto = await resolveProducto(comp.productoUuid);
+    let unidadId = null;
+    if (comp.unidadUuid) {
+      const unidad = await resolveUnidad(comp.unidadUuid);
+      unidadId = unidad.id;
+    }
+    const costoUnitarioSnapshot = Number(producto.costoCompra || 0);
+    const cantidad = Number(comp.cantidad);
+    const costoTotalSnapshot = costoUnitarioSnapshot * cantidad;
+    costoTotal += costoTotalSnapshot;
+    detalles.push({
+      productoId: producto.id,
+      cantidad,
+      unidadId,
+      costoUnitarioSnapshot,
+      costoTotalSnapshot,
+      producto,
+    });
+  }
+  const costoUnitario = rendimiento ? costoTotal / Number(rendimiento) : costoTotal;
+  return { costoTotal, costoUnitario, detalles };
+}
+
+export const mezclaService = {
+  async list(query) {
+    const { page, limit, offset } = getPagination(query);
+    const { rows, count } = await mezclaRepository.findAndCountAll({
+      limit,
+      offset,
+      search: query.search,
+      estado: query.estado,
+      productoElaboradoUuid: query.productoElaboradoUuid,
+    });
+    return { items: rows, meta: buildPaginationMeta({ page, limit, total: count }) };
+  },
+
+  async getByUuid(uuid) {
+    const mezcla = await mezclaRepository.findByUuid(uuid);
+    if (!mezcla) throw ApiError.notFound('Mezcla no encontrada');
+    return mezcla;
+  },
+
+  async create(payload, actorId) {
+    const productoElaborado = await resolveProducto(payload.productoElaboradoUuid);
+    let unidadRendimientoId = null;
+    if (payload.unidadRendimientoUuid) {
+      const unidad = await resolveUnidad(payload.unidadRendimientoUuid);
+      unidadRendimientoId = unidad.id;
+    }
+
+    const existingNombre = await mezclaRepository.findByNombre(payload.nombre);
+    if (existingNombre) throw ApiError.conflict('Ya existe una mezcla con ese nombre');
+
+    if (payload.codigo) {
+      const existingCodigo = await mezclaRepository.findByCodigo(payload.codigo);
+      if (existingCodigo) throw ApiError.conflict('Ya existe una mezcla con ese código');
+    }
+
+    const rendimiento = Number(payload.rendimiento);
+    const { costoTotal, costoUnitario, detalles } = await calcularCostos(payload.componentes, rendimiento);
+
+    return sequelize.transaction(async (t) => {
+      const mezcla = await mezclaRepository.create(
+        {
+          codigo: payload.codigo || null,
+          nombre: payload.nombre,
+          descripcion: payload.descripcion || null,
+          productoElaboradoId: productoElaborado.id,
+          unidadRendimientoId,
+          rendimiento,
+          precioVenta: payload.precioVenta ?? 0,
+          estado: payload.estado ?? true,
+          createdBy: actorId,
+        },
+        { transaction: t },
+      );
+
+      const version = await MezclaVersion.create(
+        {
+          mezclaId: mezcla.id,
+          version: 1,
+          activa: true,
+          costoTotal,
+          costoUnitario,
+          creadaPor: actorId,
+        },
+        { transaction: t },
+      );
+
+      for (const det of detalles) {
+        await MezclaComponente.create(
+          {
+            mezclaVersionId: version.id,
+            productoId: det.productoId,
+            cantidad: det.cantidad,
+            unidadId: det.unidadId,
+            costoUnitarioSnapshot: det.costoUnitarioSnapshot,
+            costoTotalSnapshot: det.costoTotalSnapshot,
+          },
+          { transaction: t },
+        );
+      }
+
+      return mezclaRepository.findByUuid(mezcla.uuid);
+    });
+  },
+
+  async update(uuid, payload, actorId) {
+    const mezcla = await this.getByUuid(uuid);
+
+    if (payload.nombre) {
+      const existing = await mezclaRepository.findByNombre(payload.nombre);
+      if (existing && existing.id !== mezcla.id) throw ApiError.conflict('Ya existe una mezcla con ese nombre');
+    }
+    if (payload.codigo) {
+      const existing = await mezclaRepository.findByCodigo(payload.codigo);
+      if (existing && existing.id !== mezcla.id) throw ApiError.conflict('Ya existe una mezcla con ese código');
+    }
+
+    let productoElaboradoId = mezcla.productoElaboradoId;
+    if (payload.productoElaboradoUuid) {
+      const p = await resolveProducto(payload.productoElaboradoUuid);
+      productoElaboradoId = p.id;
+    }
+    let unidadRendimientoId = mezcla.unidadRendimientoId;
+    if (payload.unidadRendimientoUuid !== undefined) {
+      if (!payload.unidadRendimientoUuid) unidadRendimientoId = null;
+      else {
+        const u = await resolveUnidad(payload.unidadRendimientoUuid);
+        unidadRendimientoId = u.id;
+      }
+    }
+
+    const data = {
+      ...(payload.codigo !== undefined ? { codigo: payload.codigo || null } : {}),
+      ...(payload.nombre ? { nombre: payload.nombre } : {}),
+      ...(payload.descripcion !== undefined ? { descripcion: payload.descripcion || null } : {}),
+      productoElaboradoId,
+      unidadRendimientoId,
+      ...(payload.rendimiento !== undefined ? { rendimiento: Number(payload.rendimiento) } : {}),
+      ...(payload.precioVenta !== undefined ? { precioVenta: payload.precioVenta } : {}),
+      ...(payload.estado !== undefined ? { estado: payload.estado } : {}),
+      updatedBy: actorId,
+    };
+
+    const necesitaNuevaVersion = payload.componentes !== undefined || payload.rendimiento !== undefined;
+
+    return sequelize.transaction(async (t) => {
+      await mezclaRepository.update(mezcla, data, { transaction: t });
+
+      if (!necesitaNuevaVersion) {
+        return mezclaRepository.findByUuid(uuid);
+      }
+
+      // Obtener versión activa actual
+      const activa = await mezclaRepository.findActiveVersion(mezcla.id, { transaction: t });
+      let componentesPayload;
+      let rendimientoNuevo = payload.rendimiento !== undefined ? Number(payload.rendimiento) : Number(mezcla.rendimiento);
+
+      if (payload.componentes) {
+        componentesPayload = payload.componentes;
+      } else if (activa) {
+        const componentesActivos = await MezclaComponente.findAll({ where: { mezclaVersionId: activa.id }, transaction: t });
+        // Necesitamos mapear a payload con uuids
+        componentesPayload = await Promise.all(
+          componentesActivos.map(async (c) => {
+            const prod = await Producto.findByPk(c.productoId, { transaction: t });
+            let unidadUuid = null;
+            if (c.unidadId) {
+              const uni = await UnidadMedida.findByPk(c.unidadId, { transaction: t });
+              unidadUuid = uni?.uuid || null;
+            }
+            return {
+              productoUuid: prod.uuid,
+              cantidad: Number(c.cantidad),
+              unidadUuid,
+            };
+          }),
+        );
+        // si el rendimiento viene de payload ya actualizado, usar ese
+        if (payload.rendimiento !== undefined) rendimientoNuevo = Number(payload.rendimiento);
+      } else {
+        throw ApiError.badRequest('No hay versión activa previa para clonar componentes');
+      }
+
+      const { costoTotal, costoUnitario, detalles } = await calcularCostos(componentesPayload, rendimientoNuevo);
+
+      if (activa) {
+        await activa.update({ activa: false }, { transaction: t });
+      }
+
+      const nuevoVersionNum = activa ? activa.version + 1 : 1;
+      const nuevaVersion = await MezclaVersion.create(
+        {
+          mezclaId: mezcla.id,
+          version: nuevoVersionNum,
+          activa: true,
+          costoTotal,
+          costoUnitario,
+          creadaPor: actorId,
+        },
+        { transaction: t },
+      );
+
+      for (const det of detalles) {
+        await MezclaComponente.create(
+          {
+            mezclaVersionId: nuevaVersion.id,
+            productoId: det.productoId,
+            cantidad: det.cantidad,
+            unidadId: det.unidadId,
+            costoUnitarioSnapshot: det.costoUnitarioSnapshot,
+            costoTotalSnapshot: det.costoTotalSnapshot,
+          },
+          { transaction: t },
+        );
+      }
+
+      return mezclaRepository.findByUuid(uuid);
+    });
+  },
+
+  async delete(uuid, actorId) {
+    const mezcla = await this.getByUuid(uuid);
+    await mezclaRepository.softDelete(mezcla, actorId);
+  },
+};
+
+export default mezclaService;
