@@ -42,6 +42,8 @@ import { ProductoCategoria } from './models/productoCategoria.model.js';
 import { UnidadMedida } from './models/unidadMedida.model.js';
 import { UnidadConversion } from './models/unidadConversion.model.js';
 import { Almacen } from './models/almacen.model.js';
+import { Motivo } from './models/motivo.model.js';
+import { MovimientoInventario } from './models/movimientoInventario.model.js';
 
 const withAuditAssociations = (TargetModel) => {
   TargetModel.belongsTo(User, { as: 'creadoPor', foreignKey: 'createdBy' });
@@ -353,6 +355,19 @@ export const setupAssociations = () => {
   withAuditAssociations(UnidadMedida);
   withAuditAssociations(Almacen);
   withAuditAssociationsNoDelete(UnidadConversion);
+
+  // Inventarios - FASE 2: Motor de movimientos
+  withAuditAssociations(Motivo);
+  Almacen.hasMany(MovimientoInventario, { foreignKey: 'almacenId', as: 'movimientos' });
+  MovimientoInventario.belongsTo(Almacen, { foreignKey: 'almacenId', as: 'almacen' });
+  Producto.hasMany(MovimientoInventario, { foreignKey: 'productoId', as: 'movimientos' });
+  MovimientoInventario.belongsTo(Producto, { foreignKey: 'productoId', as: 'producto' });
+  UnidadMedida.hasMany(MovimientoInventario, { foreignKey: 'unidadId', as: 'movimientos' });
+  MovimientoInventario.belongsTo(UnidadMedida, { foreignKey: 'unidadId', as: 'unidad' });
+  Motivo.hasMany(MovimientoInventario, { foreignKey: 'motivoId', as: 'movimientos' });
+  MovimientoInventario.belongsTo(Motivo, { foreignKey: 'motivoId', as: 'motivo' });
+  User.hasMany(MovimientoInventario, { foreignKey: 'usuarioId', as: 'movimientosInventario' });
+  MovimientoInventario.belongsTo(User, { foreignKey: 'usuarioId', as: 'usuario' });
 };
 
 export {
@@ -401,6 +416,8 @@ export {
   UnidadMedida,
   UnidadConversion,
   Almacen,
+  Motivo,
+  MovimientoInventario,
 };
 
 export default setupAssociations;

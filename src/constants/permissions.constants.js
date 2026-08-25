@@ -257,6 +257,17 @@ export const PERMISSIONS = {
   MENU_INVENTARIOS_CATEGORIAS: 'menu.inventarios.categorias',
   MENU_INVENTARIOS_UNIDADES: 'menu.inventarios.unidades',
   MENU_INVENTARIOS_ALMACENES: 'menu.inventarios.almacenes',
+
+  // Inventarios - FASE 2: Movimientos
+  INVENTARIO_MOTIVOS_VER: 'inventario.motivos.ver',
+  INVENTARIO_MOTIVOS_CREAR: 'inventario.motivos.crear',
+  INVENTARIO_MOTIVOS_EDITAR: 'inventario.motivos.editar',
+  INVENTARIO_MOTIVOS_ELIMINAR: 'inventario.motivos.eliminar',
+  INVENTARIO_MOVIMIENTOS_VER: 'inventario.movimientos.ver',
+  INVENTARIO_MOVIMIENTOS_CREAR: 'inventario.movimientos.crear',
+
+  MENU_INVENTARIOS_MOTIVOS: 'menu.inventarios.motivos',
+  MENU_INVENTARIOS_MOVIMIENTOS: 'menu.inventarios.movimientos',
 };
 
 export const PERMISSIONS_SEED = [
@@ -442,4 +453,12 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.MENU_INVENTARIOS_CATEGORIAS, nombre: 'Ver submenú Categorías (Inventarios)' },
   { codigo: PERMISSIONS.MENU_INVENTARIOS_UNIDADES, nombre: 'Ver submenú Unidades (Inventarios)' },
   { codigo: PERMISSIONS.MENU_INVENTARIOS_ALMACENES, nombre: 'Ver submenú Almacenes (Inventarios)' },
+  { codigo: PERMISSIONS.INVENTARIO_MOTIVOS_VER, nombre: 'Ver motivos (Inventarios)' },
+  { codigo: PERMISSIONS.INVENTARIO_MOTIVOS_CREAR, nombre: 'Crear motivos' },
+  { codigo: PERMISSIONS.INVENTARIO_MOTIVOS_EDITAR, nombre: 'Editar motivos' },
+  { codigo: PERMISSIONS.INVENTARIO_MOTIVOS_ELIMINAR, nombre: 'Eliminar motivos' },
+  { codigo: PERMISSIONS.INVENTARIO_MOVIMIENTOS_VER, nombre: 'Ver movimientos de inventario' },
+  { codigo: PERMISSIONS.INVENTARIO_MOVIMIENTOS_CREAR, nombre: 'Crear movimientos de inventario' },
+  { codigo: PERMISSIONS.MENU_INVENTARIOS_MOTIVOS, nombre: 'Ver submenú Motivos (Inventarios)' },
+  { codigo: PERMISSIONS.MENU_INVENTARIOS_MOVIMIENTOS, nombre: 'Ver submenú Movimientos (Inventarios)' },
 ];
