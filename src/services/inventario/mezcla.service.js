@@ -105,7 +105,7 @@ export const mezclaService = {
           activa: true,
           costoTotal,
           costoUnitario,
-          creadaPor: actorId,
+          createdBy: actorId,
         },
         { transaction: t },
       );
@@ -220,7 +220,7 @@ export const mezclaService = {
           activa: true,
           costoTotal,
           costoUnitario,
-          creadaPor: actorId,
+          createdBy: actorId,
         },
         { transaction: t },
       );

@@ -4,10 +4,8 @@ import { Equipo, PlanMantenimiento, ProgramacionMantenimiento, Almacen, User, Pr
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { assertStockSuficiente } from './stock.helper.js';
-
-function generateNumero() {
-  return `OM-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
-}
+import { generarCorrelativo } from '../../utils/correlativo.js';
+import { OrdenMantenimiento } from '../../database/associations.js';
 
 async function resolveEquipo(uuid) {
   const e = await Equipo.findOne({ where: { uuid } });
@@ -98,10 +96,10 @@ export const ordenMantenimientoService = {
     if (plan && plan.equipoId !== equipo.id) throw ApiError.badRequest('El plan no pertenece al equipo');
     if (prog && prog.equipoId !== equipo.id) throw ApiError.badRequest('La programación no pertenece al equipo');
 
-    const numero = generateNumero();
     const costoTotal = await calcularCostoTotal(payload.detalles, payload.manoObra, payload.servicios);
 
     return sequelize.transaction(async (t) => {
+      const numero = await generarCorrelativo(OrdenMantenimiento, { prefijo: 'OM', transaction: t });
       const orden = await ordenMantenimientoRepository.create(
         {
           numero,

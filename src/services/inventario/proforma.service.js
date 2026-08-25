@@ -1,13 +1,9 @@
 import { sequelize } from '../../database/connection.js';
 import { proformaRepository } from '../../repositories/inventario/proforma.repository.js';
-import { ProformaDetalle, Producto } from '../../database/associations.js';
+import { Proforma, ProformaDetalle, Producto } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
-
-function generateNumero() {
-  const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
-  return `PROF-${Date.now().toString(36).toUpperCase()}-${rand}`;
-}
+import { generarCorrelativo } from '../../utils/correlativo.js';
 
 async function resolveProducto(uuid) {
   const p = await Producto.findOne({ where: { uuid } });
@@ -59,9 +55,8 @@ export const proformaService = {
 
     const { subtotal, total, detallesCalculados } = calcularTotales(payload.detalles, descuentoGlobal, impuestosGlobal);
 
-    const numero = generateNumero();
-
     return sequelize.transaction(async (t) => {
+      const numero = await generarCorrelativo(Proforma, { prefijo: 'PROF', transaction: t });
       const proforma = await proformaRepository.create(
         {
           numero,

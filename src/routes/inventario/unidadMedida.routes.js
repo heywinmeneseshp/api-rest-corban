@@ -8,13 +8,13 @@ import { createUnidadSchema, updateUnidadSchema, getUnidadSchema, listUnidadSche
 
 const router = Router();
 
-router.get('/', auth, permission(PERMISSIONS.INVENTARIO_UNIDADES_VER), validate(listUnidadSchema, 'query'), unidadMedidaController.list);
+router.get('/', auth, permission(PERMISSIONS.INVENTARIO_UNIDADES_VER), validate(listUnidadSchema), unidadMedidaController.list);
 router.post('/', auth, permission(PERMISSIONS.INVENTARIO_UNIDADES_CREAR), validate(createUnidadSchema), unidadMedidaController.create);
 router.get('/conversiones', auth, permission(PERMISSIONS.INVENTARIO_UNIDADES_VER), unidadMedidaController.listConversiones);
 router.post('/conversiones', auth, permission(PERMISSIONS.INVENTARIO_UNIDADES_CREAR), validate(createConversionSchema), unidadMedidaController.createConversion);
-router.delete('/conversiones/:uuid', auth, permission(PERMISSIONS.INVENTARIO_UNIDADES_ELIMINAR), validate(getConversionSchema, 'params'), unidadMedidaController.deleteConversion);
-router.get('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_UNIDADES_VER), validate(getUnidadSchema, 'params'), unidadMedidaController.getByUuid);
+router.delete('/conversiones/:uuid', auth, permission(PERMISSIONS.INVENTARIO_UNIDADES_ELIMINAR), validate(getConversionSchema), unidadMedidaController.deleteConversion);
+router.get('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_UNIDADES_VER), validate(getUnidadSchema), unidadMedidaController.getByUuid);
 router.put('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_UNIDADES_EDITAR), validate(updateUnidadSchema), unidadMedidaController.update);
-router.delete('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_UNIDADES_ELIMINAR), validate(getUnidadSchema, 'params'), unidadMedidaController.remove);
+router.delete('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_UNIDADES_ELIMINAR), validate(getUnidadSchema), unidadMedidaController.remove);
 
 export default router;

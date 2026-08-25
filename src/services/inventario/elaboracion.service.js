@@ -1,10 +1,11 @@
 import { sequelize } from '../../database/connection.js';
 import { elaboracionRepository } from '../../repositories/inventario/elaboracion.repository.js';
-import { MezclaVersion, Mezcla, MezclaComponente, Producto, UnidadMedida, Almacen, MovimientoInventario } from '../../database/associations.js';
+import { MezclaVersion, Mezcla, MezclaComponente, Producto, UnidadMedida, Almacen, MovimientoInventario, Elaboracion } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { movimientoService } from './movimiento.service.js';
 import { getExistencia, assertStockSuficiente } from './stock.helper.js';
+import { generarCorrelativo } from '../../utils/correlativo.js';
 
 export const elaboracionService = {
   async list(query) {
@@ -67,7 +68,6 @@ export const elaboracionService = {
       }
     }
 
-    const documento = payload.documento || `ELAB-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
     const fecha = payload.fecha;
     const observaciones = payload.observaciones || null;
 
@@ -81,6 +81,8 @@ export const elaboracionService = {
     const costoUnitario = cantidadElaborada ? costoTotal / cantidadElaborada : 0;
 
     return sequelize.transaction(async (t) => {
+      const documento = payload.documento || (await generarCorrelativo(Elaboracion, { prefijo: 'ELAB', columna: 'documento', transaction: t }));
+
       // Re-validar stock dentro de transacción, con bloqueo de fila
       for (const comp of version.componentes) {
         const cantidadRequerida = Number(comp.cantidad) * factor;

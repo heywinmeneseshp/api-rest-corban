@@ -12,7 +12,7 @@ MezclaVersion.init(
     activa: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
     costoTotal: { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 0, field: 'costo_total' },
     costoUnitario: { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 0, field: 'costo_unitario' },
-    creadaPor: { type: DataTypes.INTEGER, allowNull: true, field: 'creada_por' },
+    createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
   },
   {
     sequelize,

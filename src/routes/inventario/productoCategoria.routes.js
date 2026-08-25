@@ -8,10 +8,10 @@ import { createCategoriaSchema, updateCategoriaSchema, getCategoriaSchema, listC
 
 const router = Router();
 
-router.get('/', auth, permission(PERMISSIONS.INVENTARIO_CATEGORIAS_VER), validate(listCategoriaSchema, 'query'), productoCategoriaController.list);
+router.get('/', auth, permission(PERMISSIONS.INVENTARIO_CATEGORIAS_VER), validate(listCategoriaSchema), productoCategoriaController.list);
 router.post('/', auth, permission(PERMISSIONS.INVENTARIO_CATEGORIAS_CREAR), validate(createCategoriaSchema), productoCategoriaController.create);
-router.get('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_CATEGORIAS_VER), validate(getCategoriaSchema, 'params'), productoCategoriaController.getByUuid);
+router.get('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_CATEGORIAS_VER), validate(getCategoriaSchema), productoCategoriaController.getByUuid);
 router.put('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_CATEGORIAS_EDITAR), validate(updateCategoriaSchema), productoCategoriaController.update);
-router.delete('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_CATEGORIAS_ELIMINAR), validate(getCategoriaSchema, 'params'), productoCategoriaController.remove);
+router.delete('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_CATEGORIAS_ELIMINAR), validate(getCategoriaSchema), productoCategoriaController.remove);
 
 export default router;

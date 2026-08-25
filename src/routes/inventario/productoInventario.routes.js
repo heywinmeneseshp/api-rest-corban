@@ -8,10 +8,10 @@ import { createProductoInventarioSchema, updateProductoInventarioSchema, getProd
 
 const router = Router();
 
-router.get('/', auth, permission(PERMISSIONS.INVENTARIO_PRODUCTOS_VER), validate(listProductoSchema, 'query'), productoInventarioController.list);
+router.get('/', auth, permission(PERMISSIONS.INVENTARIO_PRODUCTOS_VER), validate(listProductoSchema), productoInventarioController.list);
 router.post('/', auth, permission(PERMISSIONS.INVENTARIO_PRODUCTOS_CREAR), validate(createProductoInventarioSchema), productoInventarioController.create);
-router.get('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_PRODUCTOS_VER), validate(getProductoSchema, 'params'), productoInventarioController.getByUuid);
+router.get('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_PRODUCTOS_VER), validate(getProductoSchema), productoInventarioController.getByUuid);
 router.put('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_PRODUCTOS_EDITAR), validate(updateProductoInventarioSchema), productoInventarioController.update);
-router.delete('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_PRODUCTOS_ELIMINAR), validate(getProductoSchema, 'params'), productoInventarioController.remove);
+router.delete('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_PRODUCTOS_ELIMINAR), validate(getProductoSchema), productoInventarioController.remove);
 
 export default router;

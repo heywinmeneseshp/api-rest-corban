@@ -8,10 +8,10 @@ import { createMovimientoSchema, createTransferenciaSchema, listMovimientoSchema
 
 const router = Router();
 
-router.get('/', auth, permission(PERMISSIONS.INVENTARIO_MOVIMIENTOS_VER), validate(listMovimientoSchema, 'query'), movimientoController.list);
-router.get('/existencias', auth, permission(PERMISSIONS.INVENTARIO_MOVIMIENTOS_VER), validate(existenciasSchema, 'query'), movimientoController.existencias);
-router.get('/kardex', auth, permission(PERMISSIONS.INVENTARIO_MOVIMIENTOS_VER), validate(kardexSchema, 'query'), movimientoController.kardex);
-router.get('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_MOVIMIENTOS_VER), validate(getMovimientoSchema, 'params'), movimientoController.getByUuid);
+router.get('/', auth, permission(PERMISSIONS.INVENTARIO_MOVIMIENTOS_VER), validate(listMovimientoSchema), movimientoController.list);
+router.get('/existencias', auth, permission(PERMISSIONS.INVENTARIO_MOVIMIENTOS_VER), validate(existenciasSchema), movimientoController.existencias);
+router.get('/kardex', auth, permission(PERMISSIONS.INVENTARIO_MOVIMIENTOS_VER), validate(kardexSchema), movimientoController.kardex);
+router.get('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_MOVIMIENTOS_VER), validate(getMovimientoSchema), movimientoController.getByUuid);
 router.post('/', auth, permission(PERMISSIONS.INVENTARIO_MOVIMIENTOS_CREAR), validate(createMovimientoSchema), movimientoController.create);
 router.post('/transferencias', auth, permission(PERMISSIONS.INVENTARIO_MOVIMIENTOS_CREAR), validate(createTransferenciaSchema), movimientoController.createTransferencia);
 
