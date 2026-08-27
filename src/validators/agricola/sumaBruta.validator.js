@@ -19,7 +19,10 @@ export const getSumaBrutaSchema = Joi.object({
 export const createSumaBrutaSchema = Joi.object({
   body: Joi.object({
     hojasFuncionales: Joi.number().integer().min(0).required(),
-    candela: Joi.number().min(0).precision(2),
+    // Candela es una fracción (ej. 0.80), no un conteo — valores >= 1 casi
+    // siempre son un error de tipeo (falta el punto decimal, ej. "6" en vez
+    // de "0.6"), que distorsiona la Suma Bruta al restar candela*10.
+    candela: Joi.number().min(0).less(1).precision(2),
     estadios: Joi.array().items(estadioSchema).default([]),
   }),
   params: Joi.object({ uuid: uuidParam }),
@@ -29,7 +32,10 @@ export const createSumaBrutaSchema = Joi.object({
 export const updateSumaBrutaSchema = Joi.object({
   body: Joi.object({
     hojasFuncionales: Joi.number().integer().min(0),
-    candela: Joi.number().min(0).precision(2),
+    // Candela es una fracción (ej. 0.80), no un conteo — valores >= 1 casi
+    // siempre son un error de tipeo (falta el punto decimal, ej. "6" en vez
+    // de "0.6"), que distorsiona la Suma Bruta al restar candela*10.
+    candela: Joi.number().min(0).less(1).precision(2),
     estado: Joi.boolean(),
     estadios: Joi.array().items(estadioSchema),
   }).min(1),
