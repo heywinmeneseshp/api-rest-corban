@@ -4,6 +4,7 @@ import { Finca, Semana } from '../../database/associations.js';
 import { parseBulkFile } from '../../utils/bulkFileParser.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { expandirFincaUuids, getFincaIdsPermitidas } from '../../utils/fincaScope.js';
+import { toMysqlDatetime } from '../../utils/mysqlDatetime.js';
 import { semanaRepository } from '../../repositories/agricola/semana.repository.js';
 
 // Mismo tope que el resto de los cargues masivos (ver produccionSemanal.service.js
@@ -235,7 +236,7 @@ export const climaService = {
           temperatura: temperatura ?? null,
           humedadRelativa: humedadRelativa ?? null,
           usuarioNombre: usuarioNombre || null,
-          createdAt: createdAt || new Date().toISOString(),
+          createdAt: toMysqlDatetime(createdAt || new Date().toISOString()),
         },
         type: 'INSERT',
       },
@@ -363,7 +364,7 @@ export const climaService = {
         )
         .join(',');
       const replacements = {};
-      const ahora = new Date().toISOString();
+      const ahora = toMysqlDatetime(new Date().toISOString());
       lote.forEach((f, i) => {
         replacements[`uuid${i}`] = crypto.randomUUID();
         replacements[`fincaUuid${i}`] = f.fincaUuid;

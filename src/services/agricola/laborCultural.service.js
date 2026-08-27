@@ -3,6 +3,7 @@ import { sequelize } from '../../database/connection.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { climaService } from './clima.service.js';
 import { expandirFincaUuids, expandirFincaIds, getFincaIdsPermitidas } from '../../utils/fincaScope.js';
+import { toMysqlDatetime } from '../../utils/mysqlDatetime.js';
 import { ROLES } from '../../constants/roles.constants.js';
 import { cargarFotosLaborCultural, descargarArchivoDeDrive } from '../googleDrive/cargueFotosLabor.js';
 import { Role, User, Finca } from '../../database/associations.js';
@@ -294,7 +295,7 @@ export const laborCulturalService = {
           usuarioNombre: usuarioNombreCompleto,
           usuarioUuid: usuarioUuidReal,
           usuarioCargo,
-          createdAt: createdAt || new Date().toISOString(),
+          createdAt: toMysqlDatetime(createdAt || new Date().toISOString()),
           mokoPresente: mokoPresente ? 1 : 0,
           mokoLotes: mokoPresente && mokoLotes?.length ? JSON.stringify(mokoLotes) : null,
           fusariumPresente: fusariumPresente ? 1 : 0,
@@ -667,7 +668,7 @@ export const laborCulturalService = {
             urlDrive: foto.urlDrive || null,
             nombreOriginal: foto.nombreOriginal || null,
             usuarioUuid: actorId ? String(actorId) : null,
-            createdAt: new Date().toISOString(),
+            createdAt: toMysqlDatetime(new Date().toISOString()),
           },
           type: 'INSERT',
         },
@@ -772,7 +773,7 @@ export const laborCulturalService = {
           uuid: user?.uuid || null,
           nombre: nombreRevisor,
           cargo: revisor?.cargo || null,
-          ahora: new Date().toISOString(),
+          ahora: toMysqlDatetime(new Date().toISOString()),
           visitaUuid,
         },
       },
