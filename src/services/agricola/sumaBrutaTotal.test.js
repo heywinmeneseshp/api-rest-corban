@@ -128,3 +128,37 @@ test('CASO 10: caso conocido — San Francisco, semana 19, 15 plantas', () => {
 test('grupo vacío devuelve null (no divide por cero)', () => {
   assert.equal(calcularIndicadorHoja([], 3), null);
 });
+
+test('CASO 11: piso en 0 por planta — una planta sana con candela alta no resta del grupo', () => {
+  const plantas = [
+    planta({ candela: 0.8, h3: 0 }), // sana (sin síntomas) pero mucha candela: valor-CC = 0-8 = -8 → aporta 0, no -8
+    planta({ candela: 0.2, h3: 60 }), // valor-CC = 60-2 = 58
+  ];
+  // Antes (restando al final): ((60-10)/2)*10 = 250. Ahora (piso por planta):
+  // aporte1=max(0,-8)=0, aporte2=58 → (58/2)*10 = 290.
+  assert.equal(calcularIndicadorHoja(plantas, 3), 290);
+});
+
+test('CASO 12: caso real — finca PALMA, semana S33-2026 (10 plantas sanas en H3, candela variable)', () => {
+  // Reproducido de la base real: todas las plantas con estadio "0" (sin
+  // síntomas) en hoja 3, pero con candela > 0 registrada. Antes del piso
+  // por planta esto daba SB_H3 = -20 (candela dominando sobre severidad
+  // real = 0). Con el piso, cada planta sana aporta 0, no un negativo.
+  const candelas = [0.2, 0.4, 0.4, 0.2, 0.2, 0, 0, 0.2, 0, 0.4];
+  const plantas = candelas.map((candela) => planta({ candela, h3: 0 }));
+  assert.equal(calcularIndicadorHoja(plantas, 3), 0);
+});
+
+test('CASO 13: caso real — finca PALMA, semana S34-2026 (15 plantas, solo 1 con severidad detectada)', () => {
+  // Antes daba SB_H3 = -9.33 (la candela de las 14 plantas sanas superaba
+  // a la severidad real detectada en la única planta enferma). Con el piso
+  // por planta, solo esa planta enferma aporta al grupo.
+  const candelasSanas = [0.4, 0.2, 0.8, 0.6, 0.8, 0.8, 0, 0.4, 0.6, 0.8, 0.2, 0.2, 0.4, 0.4];
+  const plantas = [
+    ...candelasSanas.map((candela) => planta({ candela, h3: 0 })),
+    planta({ candela: 0.8, h3: 60 }), // la única con estadio "1-"
+  ];
+  assert.equal(plantas.length, 15);
+  // aporte planta enferma = max(0, 60 - 0.8*10) = 52 → (52/15)*10 = 34.67
+  assert.equal(calcularIndicadorHoja(plantas, 3), 34.67);
+});

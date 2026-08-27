@@ -89,9 +89,19 @@ export async function adjuntarTotales(sumasBruta, { transaction } = {}) {
 // equivalente de 10 plantas — independiente de cuántas plantas se hayan
 // evaluado realmente en el grupo (finca + semana).
 //
-//   CC_hoja  = candela × 10, SOLO si esa hoja fue evaluada en esa planta
-//              (si la hoja está vacía, tanto su valor como su CC son 0).
-//   SB_hoja  = ((Σ valor_hoja − Σ CC_hoja) / N_plantas) × 10
+//   CC_hoja      = candela × 10, SOLO si esa hoja fue evaluada en esa planta
+//                  (si la hoja está vacía, tanto su valor como su CC son 0).
+//   aporte_hoja  = max(0, valor_hoja − CC_hoja)  — por planta, nunca negativo
+//   SB_hoja      = (Σ aporte_hoja / N_plantas) × 10
+//
+// El máx(0, ...) es POR PLANTA, no al final del promedio: una planta sana
+// (sin síntomas en esa hoja) con candela alta no debe "restar" puntos que
+// enmascaren enfermedad real detectada en otras plantas del mismo grupo —
+// su aporte es 0, nunca negativo. Antes se sumaba valor y CC por separado
+// y se restaba una sola vez al final, lo que sí podía dar un SB_hoja
+// negativo para el grupo entero aun cuando la severidad real detectada
+// fuera positiva (candela alto en plantas sanas dominaba sobre la
+// severidad real de las pocas plantas enfermas).
 //
 // N_plantas es SIEMPRE el total de plantas del grupo analizado (todas las
 // que tienen sumaBruta registrada), no solo las que tienen esa hoja
@@ -110,17 +120,17 @@ export function calcularIndicadorHoja(sumasBruta, numeroHoja) {
   const nPlantas = sumasBruta?.length || 0;
   if (nPlantas === 0) return null;
 
-  let sumaValor = 0;
-  let sumaCC = 0;
+  let sumaAportes = 0;
   for (const sb of sumasBruta) {
     const estadio = (sb.estadios || []).find((e) => e.numeroHoja === numeroHoja);
-    if (!estadio) continue; // hoja vacía en esta planta: aporta 0 al valor y al CC
-    sumaValor += estadio.valor || 0;
-    sumaCC += (Number(sb.candela) || 0) * 10;
+    if (!estadio) continue; // hoja vacía en esta planta: no aporta nada
+    const valor = estadio.valor || 0;
+    const cc = (Number(sb.candela) || 0) * 10;
+    sumaAportes += Math.max(0, valor - cc);
   }
 
   const normalizacion = 10 / nPlantas;
-  return Number(((sumaValor - sumaCC) * normalizacion).toFixed(2));
+  return Number((sumaAportes * normalizacion).toFixed(2));
 }
 
 export default { calcularTotal, adjuntarTotales, adjuntarValoresPorHoja, calcularIndicadorHoja };
