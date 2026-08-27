@@ -56,6 +56,14 @@ services:
     build:
       context: ../app-corbana
       dockerfile: Dockerfile
+      args:
+        # NEXT_PUBLIC_* de Next.js se hornea en el JS del cliente en tiempo de
+        # build, no se lee en runtime — la variable de entorno de abajo NO
+        # alcanza para que el navegador le pegue a la URL correcta. Sin este
+        # build-arg, la imagen queda con el fallback/valor viejo horneado y el
+        # login falla con "Failed to fetch" (el navegador intenta conectar a
+        # una API equivocada, no hay error de red real).
+        NEXT_PUBLIC_API_URL: https://api-corbana.banarica.cloud/api/v1
     image: heywinmeneseshp/app-corbana:latest
     container_name: app-banarica
     restart: unless-stopped
@@ -73,7 +81,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=banarica-network"
-      - "traefik.http.routers.app-corbana.rule=Host(`app-corbana.banarica.cloud`)"
+      - "traefik.http.routers.app-corbana.rule=Host(`banarica.cloud`) || Host(`www.banarica.cloud`)"
       - "traefik.http.routers.app-corbana.entrypoints=websecure"
       - "traefik.http.routers.app-corbana.tls=true"
       - "traefik.http.routers.app-corbana.tls.certresolver=letsencrypt"
