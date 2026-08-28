@@ -1,5 +1,5 @@
-import { Op, fn, literal } from 'sequelize';
-import { Producto, Almacen, MovimientoInventario, Equipo, ProgramacionMantenimiento, PlanMantenimiento, Proforma } from '../../database/associations.js';
+import { Op, fn, col } from 'sequelize';
+import { Producto, Almacen, Existencia, Equipo, ProgramacionMantenimiento, PlanMantenimiento, Proforma } from '../../database/associations.js';
 import { sequelize } from '../../database/connection.js';
 
 export const dashboardService = {
@@ -11,13 +11,12 @@ export const dashboardService = {
       Proforma.count(),
     ]);
 
-    // Valor inventario: SUM existencias * costoCompra (o costo promedio?) -> usar SUM(saldo * costoCompra)
-    // Obtener existencias por producto
-    const tiposSuma = ['ENTRADA', 'AJUSTE_ENTRADA', 'TRANSFERENCIA_ENTRADA', 'ELABORACION_ENTRADA'];
-
-    // Saldos por producto (sum across almacenes)
-    const saldos = await MovimientoInventario.findAll({
-      attributes: ['productoId', [fn('SUM', literal(`CASE WHEN tipo IN ('${tiposSuma.join("','")}') THEN cantidad_base ELSE -cantidad_base END`)), 'saldo']],
+    // Valor inventario: SUM(saldo * costoCompra) por producto, agrupando el
+    // saldo across almacenes. Lee del cache `existencias` (ver
+    // stock.helper.js) en vez de recalcular sumando todo el histórico de
+    // movimientos_inventario — mismo motivo que movimiento.repository.js#getExistencias.
+    const saldos = await Existencia.findAll({
+      attributes: ['productoId', [fn('SUM', col('saldo')), 'saldo']],
       group: ['productoId'],
       raw: true,
     });

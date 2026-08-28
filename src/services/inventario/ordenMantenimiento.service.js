@@ -3,7 +3,7 @@ import { ordenMantenimientoRepository } from '../../repositories/inventario/orde
 import { Equipo, PlanMantenimiento, ProgramacionMantenimiento, Almacen, User, Producto, OrdenDetalle, OrdenManoObra, OrdenServicio, MovimientoInventario, Proveedor } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
-import { assertStockSuficiente } from './stock.helper.js';
+import { assertStockSuficiente, registrarMovimientoEnCache } from './stock.helper.js';
 import { generarCorrelativo } from '../../utils/correlativo.js';
 import { OrdenMantenimiento } from '../../database/associations.js';
 
@@ -417,6 +417,7 @@ export const ordenMantenimientoService = {
           },
           { transaction: t },
         );
+        await registrarMovimientoEnCache(almacen.id, producto.id, 'SALIDA', cantidad, t);
       }
 
       // Actualizar orden a CERRADA

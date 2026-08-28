@@ -3,7 +3,7 @@ import { movimientoRepository } from '../../repositories/inventario/movimiento.r
 import { Almacen, Producto, UnidadMedida, Motivo, UnidadConversion } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
-import { assertStockSuficiente, TIPOS_SALIDA } from './stock.helper.js';
+import { assertStockSuficiente, registrarMovimientoEnCache, TIPOS_SALIDA } from './stock.helper.js';
 
 // Convierte cantidad a unidad base del producto (usa factor de conversión si unidad distinta)
 async function toBaseCantidad(producto, unidadUuid, cantidad) {
@@ -83,7 +83,7 @@ export const movimientoService = {
         });
       }
 
-      return movimientoRepository.create(
+      const movimiento = await movimientoRepository.create(
         {
           documento: payload.documento,
           tipo: payload.tipo,
@@ -103,6 +103,10 @@ export const movimientoService = {
         },
         { transaction: t },
       );
+
+      await registrarMovimientoEnCache(almacen.id, producto.id, payload.tipo, cantidadBase, t);
+
+      return movimiento;
     });
   },
 
@@ -168,6 +172,9 @@ export const movimientoService = {
         },
         { transaction: t },
       );
+
+      await registrarMovimientoEnCache(almacenOrigen.id, producto.id, 'TRANSFERENCIA_SALIDA', cantidadBase, t);
+      await registrarMovimientoEnCache(almacenDestino.id, producto.id, 'TRANSFERENCIA_ENTRADA', cantidadBase, t);
 
       return { salida, entrada };
     });

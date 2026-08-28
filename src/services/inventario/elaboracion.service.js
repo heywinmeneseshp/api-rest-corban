@@ -4,7 +4,7 @@ import { MezclaVersion, Mezcla, MezclaComponente, Producto, UnidadMedida, Almace
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { movimientoService } from './movimiento.service.js';
-import { getExistencia, assertStockSuficiente } from './stock.helper.js';
+import { getExistencia, assertStockSuficiente, registrarMovimientoEnCache } from './stock.helper.js';
 import { generarCorrelativo } from '../../utils/correlativo.js';
 
 export const elaboracionService = {
@@ -71,11 +71,17 @@ export const elaboracionService = {
     const fecha = payload.fecha;
     const observaciones = payload.observaciones || null;
 
-    // Calcular costos totales
+    // Costo de cada componente al COSTO ACTUAL del insumo (comp.producto.costoCompra),
+    // no el costoUnitarioSnapshot congelado desde que se creó/versionó la
+    // mezcla — cada elaboración es un "movimiento" real y debe quedar
+    // costeada con el precio vigente al momento de elaborar, guardando ESE
+    // valor como histórico en el movimiento/elaboración resultante (que ya
+    // no cambia después). El snapshot de mezcla_componentes sigue existiendo
+    // como referencia de la receta, pero deja de ser la fuente del costo real.
     let costoTotal = 0;
     for (const comp of version.componentes) {
       const cantidadRequerida = Number(comp.cantidad) * factor;
-      const costoUnit = Number(comp.costoUnitarioSnapshot || 0);
+      const costoUnit = Number(comp.producto.costoCompra || 0);
       costoTotal += costoUnit * cantidadRequerida;
     }
     const costoUnitario = cantidadElaborada ? costoTotal / cantidadElaborada : 0;
@@ -96,7 +102,7 @@ export const elaboracionService = {
       // Crear movimientos SALIDA para cada componente
       for (const comp of version.componentes) {
         const cantidadRequerida = Number(comp.cantidad) * factor;
-        const costoUnit = Number(comp.costoUnitarioSnapshot || 0);
+        const costoUnit = Number(comp.producto.costoCompra || 0);
         const costoTot = costoUnit * cantidadRequerida;
         await MovimientoInventario.create(
           {
@@ -115,6 +121,7 @@ export const elaboracionService = {
           },
           { transaction: t },
         );
+        await registrarMovimientoEnCache(almacen.id, comp.productoId, 'ELABORACION_SALIDA', cantidadRequerida, t);
       }
 
       // Crear movimiento ENTRADA para producto elaborado
@@ -136,6 +143,7 @@ export const elaboracionService = {
         },
         { transaction: t },
       );
+      await registrarMovimientoEnCache(almacen.id, productoElaboradoId, 'ELABORACION_ENTRADA', cantidadElaborada, t);
 
       // Crear registro de elaboración
       const elaboracion = await elaboracionRepository.create(

@@ -1,5 +1,5 @@
-import { Op, fn, col, literal } from 'sequelize';
-import { MovimientoInventario, Almacen, Producto, UnidadMedida, Motivo, User } from '../../database/associations.js';
+import { Op } from 'sequelize';
+import { MovimientoInventario, Existencia, Almacen, Producto, UnidadMedida, Motivo, User } from '../../database/associations.js';
 
 const INCLUDE = [
   { model: Almacen, as: 'almacen', attributes: ['uuid', 'nombre'] },
@@ -38,7 +38,10 @@ export const movimientoRepository = {
     return MovimientoInventario.create(data, { transaction });
   },
 
-  // Para existencias: suma por almacen+producto
+  // Lee del cache `existencias` (ver stock.helper.js) en vez de sumar todo
+  // el histórico de movimientos_inventario en cada consulta — antes esto
+  // era un GROUP BY + SUM() sobre la tabla completa, que crece con el total
+  // histórico de movimientos y no con el stock actual.
   async getExistencias({ almacenUuid, productoUuid }) {
     const where = {};
     if (almacenUuid) {
@@ -50,29 +53,18 @@ export const movimientoRepository = {
       where.productoId = prod ? prod.id : -1;
     }
 
-    // Tipos que suman y restan
-    const tiposSuma = ['ENTRADA', 'AJUSTE_ENTRADA', 'TRANSFERENCIA_ENTRADA', 'ELABORACION_ENTRADA'];
-    const tiposResta = ['SALIDA', 'AJUSTE_SALIDA', 'TRANSFERENCIA_SALIDA', 'ELABORACION_SALIDA'];
-
-    const movimientos = await MovimientoInventario.findAll({
+    const filas = await Existencia.findAll({
       where,
-      attributes: ['almacenId', 'productoId', [fn('SUM', literal(`CASE WHEN tipo IN ('${tiposSuma.join("','")}') THEN cantidad_base ELSE -cantidad_base END`)), 'saldo']],
-      group: ['almacenId', 'productoId'],
-      raw: true,
+      include: [
+        { model: Almacen, as: 'almacen', attributes: ['uuid', 'nombre'] },
+        { model: Producto, as: 'producto', attributes: ['uuid', 'nombre', 'codigo'] },
+      ],
     });
 
-    // Hidrata nombres
-    const almacenIds = [...new Set(movimientos.map((m) => m.almacenId))];
-    const productoIds = [...new Set(movimientos.map((m) => m.productoId))];
-    const almacenes = await Almacen.findAll({ where: { id: almacenIds }, attributes: ['id', 'uuid', 'nombre'] });
-    const productos = await Producto.findAll({ where: { id: productoIds }, attributes: ['id', 'uuid', 'nombre', 'codigo'] });
-    const almMap = new Map(almacenes.map((a) => [a.id, a]));
-    const prodMap = new Map(productos.map((p) => [p.id, p]));
-
-    return movimientos.map((m) => ({
-      almacen: almMap.get(m.almacenId),
-      producto: prodMap.get(m.productoId),
-      saldo: Number(m.saldo),
+    return filas.map((f) => ({
+      almacen: f.almacen,
+      producto: f.producto,
+      saldo: Number(f.saldo),
     }));
   },
 

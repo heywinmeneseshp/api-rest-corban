@@ -59,6 +59,7 @@ import { OrdenDetalle } from './models/ordenDetalle.model.js';
 import { OrdenManoObra } from './models/ordenManoObra.model.js';
 import { OrdenServicio } from './models/ordenServicio.model.js';
 import { Proveedor } from './models/proveedor.model.js';
+import { Existencia } from './models/existencia.model.js';
 
 const withAuditAssociations = (TargetModel) => {
   TargetModel.belongsTo(User, { as: 'creadoPor', foreignKey: 'createdBy' });
@@ -384,6 +385,14 @@ export const setupAssociations = () => {
   User.hasMany(MovimientoInventario, { foreignKey: 'usuarioId', as: 'movimientosInventario' });
   MovimientoInventario.belongsTo(User, { foreignKey: 'usuarioId', as: 'usuario' });
 
+  // Cache de saldo por (almacén, producto) — ver stock.helper.js. La fuente
+  // de verdad sigue siendo movimientos_inventario (kárdex); esto solo evita
+  // recalcular SUM() sobre todo el histórico en cada lectura/escritura.
+  Almacen.hasMany(Existencia, { foreignKey: 'almacenId', as: 'existencias' });
+  Existencia.belongsTo(Almacen, { foreignKey: 'almacenId', as: 'almacen' });
+  Producto.hasMany(Existencia, { foreignKey: 'productoId', as: 'existencias' });
+  Existencia.belongsTo(Producto, { foreignKey: 'productoId', as: 'producto' });
+
   // Inventarios - FASE 3: Mezclas y Elaboraciones
   Mezcla.hasMany(MezclaVersion, { foreignKey: 'mezclaId', as: 'versiones' });
   MezclaVersion.belongsTo(Mezcla, { foreignKey: 'mezclaId', as: 'mezcla' });
@@ -548,6 +557,7 @@ export {
   OrdenManoObra,
   OrdenServicio,
   Proveedor,
+  Existencia,
 };
 
 export default setupAssociations;
