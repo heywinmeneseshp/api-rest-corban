@@ -5,10 +5,17 @@ import { EquipoComponente } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 
-async function resolveAlmacen(uuid, fieldName) {
+// `almacenes.tipo` distingue ALMACEN de CENTRO_COSTO en la misma tabla (ver
+// associations.js) pero no hay ninguna restricción a nivel de FK que impida
+// poner un almacén físico en `centroCostoId` o un centro de costo en
+// `ubicacionId` — se valida acá, a nivel de aplicación.
+async function resolveAlmacen(uuid, fieldName, tipoEsperado) {
   if (!uuid) return null;
   const alm = await Almacen.findOne({ where: { uuid } });
   if (!alm) throw ApiError.notFound(`${fieldName} no encontrado`);
+  if (tipoEsperado && alm.tipo !== tipoEsperado) {
+    throw ApiError.badRequest(`${fieldName} debe ser un registro de tipo ${tipoEsperado} (este es ${alm.tipo})`);
+  }
   return alm;
 }
 
@@ -50,8 +57,8 @@ export const equipoService = {
     const existing = await equipoRepository.findByCodigo(payload.codigo);
     if (existing) throw ApiError.conflict('Ya existe un equipo con ese código');
 
-    const ubicacion = await resolveAlmacen(payload.ubicacionUuid, 'Ubicación (almacén)');
-    const centroCosto = await resolveAlmacen(payload.centroCostoUuid, 'Centro de costo');
+    const ubicacion = await resolveAlmacen(payload.ubicacionUuid, 'Ubicación (almacén)', 'ALMACEN');
+    const centroCosto = await resolveAlmacen(payload.centroCostoUuid, 'Centro de costo', 'CENTRO_COSTO');
     const responsable = await resolveUser(payload.responsableUuid);
 
     return sequelize.transaction(async (t) => {
@@ -100,7 +107,7 @@ export const equipoService = {
     if (payload.ubicacionUuid !== undefined) {
       if (!payload.ubicacionUuid) ubicacionId = null;
       else {
-        const alm = await resolveAlmacen(payload.ubicacionUuid, 'Ubicación');
+        const alm = await resolveAlmacen(payload.ubicacionUuid, 'Ubicación', 'ALMACEN');
         ubicacionId = alm.id;
       }
     }
@@ -109,7 +116,7 @@ export const equipoService = {
     if (payload.centroCostoUuid !== undefined) {
       if (!payload.centroCostoUuid) centroCostoId = null;
       else {
-        const alm = await resolveAlmacen(payload.centroCostoUuid, 'Centro de costo');
+        const alm = await resolveAlmacen(payload.centroCostoUuid, 'Centro de costo', 'CENTRO_COSTO');
         centroCostoId = alm.id;
       }
     }
@@ -168,16 +175,35 @@ export const equipoService = {
   async addComponente(uuid, productoUuid, notas) {
     const equipo = await this.getByUuid(uuid);
     const producto = await resolveProducto(productoUuid);
-    const existing = await EquipoComponente.findOne({ where: { equipoId: equipo.id, productoId: producto.id } });
-    if (existing) throw ApiError.conflict('El repuesto ya es compatible con este equipo');
-    await EquipoComponente.create({ equipoId: equipo.id, productoId: producto.id, notas: notas || null });
+    try {
+      await sequelize.transaction(async (t) => {
+        // Lock de fila para que el chequeo de duplicado y el insert queden
+        // atómicos — dos requests concurrentes agregando el mismo repuesto
+        // ya no pueden pasar ambas el chequeo antes de que cualquiera cree
+        // la fila (antes, sin transacción/lock, era un check-then-act real).
+        const existing = await EquipoComponente.findOne({
+          where: { equipoId: equipo.id, productoId: producto.id },
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+        if (existing) throw ApiError.conflict('El repuesto ya es compatible con este equipo');
+        await EquipoComponente.create({ equipoId: equipo.id, productoId: producto.id, notas: notas || null }, { transaction: t });
+      });
+    } catch (err) {
+      // Constraint único (uniq_equipo_producto) como última defensa si dos
+      // transacciones concurrentes igual llegan a chocar.
+      if (err?.name === 'SequelizeUniqueConstraintError') throw ApiError.conflict('El repuesto ya es compatible con este equipo');
+      throw err;
+    }
     return this.getByUuid(uuid);
   },
 
   async removeComponente(uuid, productoUuid) {
     const equipo = await this.getByUuid(uuid);
     const producto = await resolveProducto(productoUuid);
-    const deleted = await EquipoComponente.destroy({ where: { equipoId: equipo.id, productoId: producto.id } });
+    const deleted = await sequelize.transaction((t) =>
+      EquipoComponente.destroy({ where: { equipoId: equipo.id, productoId: producto.id }, transaction: t }),
+    );
     if (!deleted) throw ApiError.notFound('Relación equipo-repuesto no encontrada');
     return this.getByUuid(uuid);
   },

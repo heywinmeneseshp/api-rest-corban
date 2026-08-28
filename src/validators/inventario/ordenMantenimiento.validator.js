@@ -21,6 +21,11 @@ const manoObraSchema = Joi.object({
 
 const servicioSchema = Joi.object({
   descripcion: Joi.string().trim().max(500).required(),
+  // proveedorUuid resuelve contra el catálogo de proveedores; `proveedor`
+  // sigue aceptándose como texto libre (para un proveedor puntual que no
+  // amerita darlo de alta) — si viene proveedorUuid, ese nombre se usa como
+  // snapshot y pisa el texto libre (ver ordenMantenimiento.service.js).
+  proveedorUuid: Joi.string().uuid().allow(null, ''),
   proveedor: Joi.string().trim().max(150).allow(null, ''),
   costo: Joi.number().min(0).required(),
   observaciones: Joi.string().allow(null, '').max(500),
@@ -31,7 +36,7 @@ export const createOrdenSchema = Joi.object({
     equipoUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
     planUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
     programacionUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
-    tipo: Joi.string().valid('PREVENTIVO', 'CORRECTIVO', 'PREDICTIVO', 'OTRO').default('PREVENTIVO'),
+    tipo: Joi.string().valid('PREVENTIVO', 'RUTINARIO', 'CORRECTIVO', 'PREDICTIVO', 'ADECUACION', 'OTRO').default('PREVENTIVO'),
     descripcion: Joi.string().trim().max(2000).required(),
     fecha: Joi.date().iso().required(),
     responsableUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
@@ -52,7 +57,7 @@ export const updateOrdenSchema = Joi.object({
     equipoUuid: Joi.string().guid({ version: 'uuidv4' }),
     planUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
     programacionUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
-    tipo: Joi.string().valid('PREVENTIVO', 'CORRECTIVO', 'PREDICTIVO', 'OTRO'),
+    tipo: Joi.string().valid('PREVENTIVO', 'RUTINARIO', 'CORRECTIVO', 'PREDICTIVO', 'ADECUACION', 'OTRO'),
     descripcion: Joi.string().trim().max(2000),
     fecha: Joi.date().iso(),
     fechaCierre: Joi.date().iso().allow(null, ''),
@@ -85,7 +90,7 @@ export const listOrdenSchema = Joi.object({
     planUuid: Joi.string().guid({ version: 'uuidv4' }),
     estado: Joi.string().valid('ABIERTA', 'EN_PROCESO', 'CERRADA', 'CANCELADA'),
     prioridad: Joi.string().valid('BAJA', 'MEDIA', 'ALTA', 'CRITICA'),
-    tipo: Joi.string().valid('PREVENTIVO', 'CORRECTIVO', 'PREDICTIVO', 'OTRO'),
+    tipo: Joi.string().valid('PREVENTIVO', 'RUTINARIO', 'CORRECTIVO', 'PREDICTIVO', 'ADECUACION', 'OTRO'),
     fechaDesde: Joi.date().iso(),
     fechaHasta: Joi.date().iso(),
     search: Joi.string().allow('', null),

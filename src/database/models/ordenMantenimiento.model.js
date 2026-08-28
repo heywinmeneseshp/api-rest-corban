@@ -12,7 +12,7 @@ OrdenMantenimiento.init(
     planId: { type: DataTypes.INTEGER, allowNull: true, field: 'plan_id' },
     programacionId: { type: DataTypes.INTEGER, allowNull: true, field: 'programacion_id' },
     tipo: {
-      type: DataTypes.ENUM('PREVENTIVO', 'CORRECTIVO', 'PREDICTIVO', 'OTRO'),
+      type: DataTypes.ENUM('PREVENTIVO', 'RUTINARIO', 'CORRECTIVO', 'PREDICTIVO', 'ADECUACION', 'OTRO'),
       allowNull: false,
       defaultValue: 'PREVENTIVO',
     },

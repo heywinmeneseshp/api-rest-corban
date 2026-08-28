@@ -316,6 +316,19 @@ export const PERMISSIONS = {
   MENU_INVENTARIOS_PLANES: 'menu.inventarios.planes',
   MENU_INVENTARIOS_PROGRAMACIONES: 'menu.inventarios.programaciones',
   MENU_INVENTARIOS_ORDENES: 'menu.inventarios.ordenes',
+
+  // Inventarios - Proveedores (catálogo para orden_servicios, antes texto libre)
+  INVENTARIO_PROVEEDORES_VER: 'inventario.proveedores.ver',
+  INVENTARIO_PROVEEDORES_CREAR: 'inventario.proveedores.crear',
+  INVENTARIO_PROVEEDORES_EDITAR: 'inventario.proveedores.editar',
+  INVENTARIO_PROVEEDORES_ELIMINAR: 'inventario.proveedores.eliminar',
+
+  MENU_INVENTARIOS_PROVEEDORES: 'menu.inventarios.proveedores',
+
+  // Inventarios - Facturas (generadas al convertir una proforma)
+  INVENTARIO_FACTURAS_VER: 'inventario.facturas.ver',
+
+  MENU_INVENTARIOS_FACTURAS: 'menu.inventarios.facturas',
 };
 
 export const PERMISSIONS_SEED = [
@@ -543,4 +556,13 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.MENU_INVENTARIOS_PLANES, nombre: 'Ver submenú Planes de Mantenimiento (Inventarios)' },
   { codigo: PERMISSIONS.MENU_INVENTARIOS_PROGRAMACIONES, nombre: 'Ver submenú Programaciones de Mantenimiento (Inventarios)' },
   { codigo: PERMISSIONS.MENU_INVENTARIOS_ORDENES, nombre: 'Ver submenú Órdenes de Mantenimiento (Inventarios)' },
+
+  { codigo: PERMISSIONS.INVENTARIO_PROVEEDORES_VER, nombre: 'Ver proveedores (Inventarios)' },
+  { codigo: PERMISSIONS.INVENTARIO_PROVEEDORES_CREAR, nombre: 'Crear proveedores' },
+  { codigo: PERMISSIONS.INVENTARIO_PROVEEDORES_EDITAR, nombre: 'Editar proveedores' },
+  { codigo: PERMISSIONS.INVENTARIO_PROVEEDORES_ELIMINAR, nombre: 'Eliminar proveedores' },
+  { codigo: PERMISSIONS.MENU_INVENTARIOS_PROVEEDORES, nombre: 'Ver submenú Proveedores (Inventarios)' },
+
+  { codigo: PERMISSIONS.INVENTARIO_FACTURAS_VER, nombre: 'Ver facturas generadas desde proformas (Inventarios)' },
+  { codigo: PERMISSIONS.MENU_INVENTARIOS_FACTURAS, nombre: 'Ver submenú Facturas (Inventarios)' },
 ];

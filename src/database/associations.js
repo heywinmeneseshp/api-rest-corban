@@ -58,6 +58,7 @@ import { OrdenMantenimiento } from './models/ordenMantenimiento.model.js';
 import { OrdenDetalle } from './models/ordenDetalle.model.js';
 import { OrdenManoObra } from './models/ordenManoObra.model.js';
 import { OrdenServicio } from './models/ordenServicio.model.js';
+import { Proveedor } from './models/proveedor.model.js';
 
 const withAuditAssociations = (TargetModel) => {
   TargetModel.belongsTo(User, { as: 'creadoPor', foreignKey: 'createdBy' });
@@ -477,6 +478,10 @@ export const setupAssociations = () => {
   OrdenServicio.belongsTo(OrdenMantenimiento, { foreignKey: 'ordenId', as: 'orden' });
   OrdenMantenimiento.hasMany(OrdenServicio, { foreignKey: 'ordenId', as: 'servicios' });
 
+  OrdenServicio.belongsTo(Proveedor, { foreignKey: 'proveedorId', as: 'proveedorRef' });
+  Proveedor.hasMany(OrdenServicio, { foreignKey: 'proveedorId', as: 'servicios' });
+  withAuditAssociations(Proveedor);
+
   withAuditAssociations(OrdenMantenimiento);
 };
 
@@ -542,6 +547,7 @@ export {
   OrdenDetalle,
   OrdenManoObra,
   OrdenServicio,
+  Proveedor,
 };
 
 export default setupAssociations;

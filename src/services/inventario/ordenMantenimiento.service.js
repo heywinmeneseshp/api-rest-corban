@@ -1,11 +1,35 @@
 import { sequelize } from '../../database/connection.js';
 import { ordenMantenimientoRepository } from '../../repositories/inventario/ordenMantenimiento.repository.js';
-import { Equipo, PlanMantenimiento, ProgramacionMantenimiento, Almacen, User, Producto, OrdenDetalle, OrdenManoObra, OrdenServicio, MovimientoInventario } from '../../database/associations.js';
+import { Equipo, PlanMantenimiento, ProgramacionMantenimiento, Almacen, User, Producto, OrdenDetalle, OrdenManoObra, OrdenServicio, MovimientoInventario, Proveedor } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { assertStockSuficiente } from './stock.helper.js';
 import { generarCorrelativo } from '../../utils/correlativo.js';
 import { OrdenMantenimiento } from '../../database/associations.js';
+
+async function resolveProveedor(uuid) {
+  if (!uuid) return null;
+  const p = await Proveedor.findOne({ where: { uuid } });
+  if (!p) throw ApiError.notFound('Proveedor no encontrado');
+  return p;
+}
+
+// Arma los datos de un servicio resolviendo el proveedor del catálogo si
+// viene `proveedorUuid` — el nombre se guarda como snapshot en `proveedor`
+// (igual criterio que finca_nombre/usuario_nombre en el resto del módulo),
+// de forma que el historial no dependa de que el proveedor siga existiendo.
+// Si no viene proveedorUuid, se admite texto libre en `proveedor` (proveedor
+// puntual que no amerita darlo de alta en el catálogo).
+async function armarDatosServicio(serv) {
+  const proveedorRef = await resolveProveedor(serv.proveedorUuid);
+  return {
+    descripcion: serv.descripcion,
+    proveedorId: proveedorRef ? proveedorRef.id : null,
+    proveedor: proveedorRef ? proveedorRef.nombre : serv.proveedor || null,
+    costo: serv.costo || 0,
+    observaciones: serv.observaciones || null,
+  };
+}
 
 async function resolveEquipo(uuid) {
   const e = await Equipo.findOne({ where: { uuid } });
@@ -164,13 +188,7 @@ export const ordenMantenimientoService = {
       if (payload.servicios && payload.servicios.length) {
         for (const serv of payload.servicios) {
           await OrdenServicio.create(
-            {
-              ordenId: orden.id,
-              descripcion: serv.descripcion,
-              proveedor: serv.proveedor || null,
-              costo: serv.costo || 0,
-              observaciones: serv.observaciones || null,
-            },
+            { ordenId: orden.id, ...(await armarDatosServicio(serv)) },
             { transaction: t },
           );
         }
@@ -224,12 +242,18 @@ export const ordenMantenimientoService = {
       }
     }
 
-    // Si vienen detalles/manoObra/servicios, recalcular costoTotal
+    // Si vienen detalles/manoObra/servicios, recalcular costoTotal.
+    // Cuando `payload.detalles` viene con `productoUuid` (no un costoUnitario
+    // ya resuelto), calcularCostoTotal() no sabe resolver el fallback contra
+    // el costoCompra del producto — antes se llamaba igual y su resultado se
+    // pisaba enseguida con el cálculo manual de abajo (cálculo doble
+    // redundante). Ahora solo se usa calcularCostoTotal() cuando NO cambian
+    // los detalles (los que ya tiene la orden ya vienen con costoUnitario
+    // guardado), y el cálculo manual (con resolución de producto) solo
+    // cuando sí cambian.
     let costoTotal = Number(orden.costoTotal);
     const shouldRecalc = payload.detalles !== undefined || payload.manoObra !== undefined || payload.servicios !== undefined;
     if (shouldRecalc) {
-      costoTotal = await calcularCostoTotal(payload.detalles ?? orden.detalles, payload.manoObra ?? orden.manoObra, payload.servicios ?? orden.servicios);
-      // Si payload trae detalles en formato con productoUuid, calcular correcto
       if (payload.detalles) {
         let tot = 0;
         for (const d of payload.detalles) {
@@ -244,6 +268,8 @@ export const ordenMantenimientoService = {
         if (!payload.manoObra && orden.manoObra) for (const m of orden.manoObra) tot += Number(m.costoTotal);
         if (!payload.servicios && orden.servicios) for (const s of orden.servicios) tot += Number(s.costo);
         costoTotal = tot;
+      } else {
+        costoTotal = await calcularCostoTotal(orden.detalles, payload.manoObra ?? orden.manoObra, payload.servicios ?? orden.servicios);
       }
     }
 
@@ -314,13 +340,7 @@ export const ordenMantenimientoService = {
         if (Array.isArray(payload.servicios) && payload.servicios.length) {
           for (const serv of payload.servicios) {
             await OrdenServicio.create(
-              {
-                ordenId: orden.id,
-                descripcion: serv.descripcion,
-                proveedor: serv.proveedor || null,
-                costo: serv.costo || 0,
-                observaciones: serv.observaciones || null,
-              },
+              { ordenId: orden.id, ...(await armarDatosServicio(serv)) },
               { transaction: t },
             );
           }

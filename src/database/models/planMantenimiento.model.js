@@ -11,7 +11,7 @@ PlanMantenimiento.init(
     nombre: { type: DataTypes.STRING(150), allowNull: false },
     descripcion: { type: DataTypes.TEXT, allowNull: true },
     tipo: {
-      type: DataTypes.ENUM('PREVENTIVO', 'CORRECTIVO', 'PREDICTIVO', 'OTRO'),
+      type: DataTypes.ENUM('PREVENTIVO', 'RUTINARIO', 'CORRECTIVO', 'PREDICTIVO', 'ADECUACION', 'OTRO'),
       allowNull: false,
       defaultValue: 'PREVENTIVO',
     },
