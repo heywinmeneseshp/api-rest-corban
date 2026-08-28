@@ -60,6 +60,8 @@ import { OrdenManoObra } from './models/ordenManoObra.model.js';
 import { OrdenServicio } from './models/ordenServicio.model.js';
 import { Proveedor } from './models/proveedor.model.js';
 import { Existencia } from './models/existencia.model.js';
+import { Factura } from './models/factura.model.js';
+import { FacturaDetalle } from './models/facturaDetalle.model.js';
 
 const withAuditAssociations = (TargetModel) => {
   TargetModel.belongsTo(User, { as: 'creadoPor', foreignKey: 'createdBy' });
@@ -432,6 +434,18 @@ export const setupAssociations = () => {
   User.hasMany(Proforma, { foreignKey: 'usuarioId', as: 'proformas' });
   withAuditAssociations(Proforma);
 
+  // Factura real, generada al convertir una proforma (proforma.service.js#convertir).
+  Proforma.hasOne(Factura, { foreignKey: 'proformaId', as: 'factura' });
+  Factura.belongsTo(Proforma, { foreignKey: 'proformaId', as: 'proforma' });
+  Factura.hasMany(FacturaDetalle, { foreignKey: 'facturaId', as: 'detalles' });
+  FacturaDetalle.belongsTo(Factura, { foreignKey: 'facturaId', as: 'factura' });
+  FacturaDetalle.belongsTo(Producto, { foreignKey: 'productoId', as: 'producto' });
+  Producto.hasMany(FacturaDetalle, { foreignKey: 'productoId', as: 'facturaDetalles' });
+  Factura.belongsTo(User, { foreignKey: 'usuarioId', as: 'usuario' });
+  User.hasMany(Factura, { foreignKey: 'usuarioId', as: 'facturas' });
+  // Sin soft-delete: una factura emitida no se borra, se ANULA (ver `estado`).
+  withAuditAssociationsNoDelete(Factura);
+
   // Inventarios - FASE 5: Equipos + repuestos compatibles
   Equipo.belongsTo(Almacen, { foreignKey: 'ubicacionId', as: 'ubicacion' });
   Almacen.hasMany(Equipo, { foreignKey: 'ubicacionId', as: 'equiposUbicados' });
@@ -558,6 +572,8 @@ export {
   OrdenServicio,
   Proveedor,
   Existencia,
+  Factura,
+  FacturaDetalle,
 };
 
 export default setupAssociations;

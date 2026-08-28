@@ -1,9 +1,10 @@
 import { sequelize } from '../../database/connection.js';
 import { proformaRepository } from '../../repositories/inventario/proforma.repository.js';
-import { Proforma, ProformaDetalle, Producto } from '../../database/associations.js';
+import { Proforma, ProformaDetalle, Producto, Factura } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { generarCorrelativo } from '../../utils/correlativo.js';
+import { facturaRepository } from '../../repositories/inventario/factura.repository.js';
 
 async function resolveProducto(uuid) {
   const p = await Producto.findOne({ where: { uuid } });
@@ -165,36 +166,65 @@ export const proformaService = {
     await proformaRepository.softDelete(proforma, actorId);
   },
 
+  // Convierte la proforma en una factura REAL (persistida en `facturas` +
+  // `factura_detalles`, con su propia numeración correlativa FACT-####) —
+  // antes esto solo cambiaba el estado y devolvía un objeto en memoria sin
+  // guardar nada. Sigue sin afectar inventario (una factura no genera
+  // movimientos de stock, solo formaliza la venta ya cotizada).
   async convertir(uuid, actorId) {
     const proforma = await this.getByUuid(uuid);
     if (proforma.estado === 'CONVERTIDA') throw ApiError.badRequest('La proforma ya fue convertida');
     if (proforma.estado === 'CANCELADA' || proforma.estado === 'VENCIDA') throw ApiError.badRequest(`No se puede convertir una proforma en estado ${proforma.estado}`);
 
-    // No afecta inventario, solo cambia estado y prepara datos para factura
-    await proformaRepository.update(proforma, { estado: 'CONVERTIDA', updatedBy: actorId });
+    // Defensa extra ante el unique(proforma_id) de `facturas`: si por algún
+    // motivo ya existe una factura para esta proforma (no debería, dado el
+    // chequeo de estado de arriba, pero evita un 500 feo si pasa) se informa
+    // con claridad en vez de dejar reventar el constraint.
+    const yaExiste = await facturaRepository.findByProformaId(proforma.id);
+    if (yaExiste) throw ApiError.conflict(`Esta proforma ya tiene la factura ${yaExiste.numero}`);
 
-    // Retorna estructura lista para factura (no crea factura real aún)
-    const fresh = await proformaRepository.findByUuid(uuid);
-    return {
-      proforma: fresh,
-      facturaPreview: {
-        numero: `FACT-${fresh.numero}`,
-        cliente: fresh.cliente,
-        fecha: new Date().toISOString().slice(0, 10),
-        subtotal: fresh.subtotal,
-        descuento: fresh.descuento,
-        impuestos: fresh.impuestos,
-        total: fresh.total,
-        detalles: fresh.detalles.map((d) => ({
-          producto: d.producto,
-          cantidad: d.cantidad,
-          precioUnitario: d.precioUnitario,
-          descuento: d.descuento,
-          subtotal: d.subtotal,
-        })),
-        observaciones: `Convertida de proforma ${fresh.numero}`,
-      },
-    };
+    return sequelize.transaction(async (t) => {
+      await proformaRepository.update(proforma, { estado: 'CONVERTIDA', updatedBy: actorId }, { transaction: t });
+
+      const numero = await generarCorrelativo(Factura, { prefijo: 'FACT', transaction: t });
+      const factura = await facturaRepository.create(
+        {
+          numero,
+          proformaId: proforma.id,
+          cliente: proforma.cliente,
+          clienteIdentificacion: proforma.clienteIdentificacion,
+          clienteEmail: proforma.clienteEmail,
+          fecha: new Date().toISOString().slice(0, 10),
+          descuento: proforma.descuento,
+          impuestos: proforma.impuestos,
+          subtotal: proforma.subtotal,
+          total: proforma.total,
+          observaciones: `Generada desde proforma ${proforma.numero}`,
+          usuarioId: actorId,
+          createdBy: actorId,
+        },
+        { transaction: t },
+      );
+
+      const detalles = proforma.detalles.map((d) => ({
+        facturaId: factura.id,
+        productoId: d.productoId,
+        cantidad: d.cantidad,
+        precioUnitario: d.precioUnitario,
+        descuento: d.descuento,
+        subtotal: d.subtotal,
+        observaciones: d.observaciones,
+      }));
+      if (detalles.length) await facturaRepository.bulkCreateDetalles(detalles, { transaction: t });
+
+      return factura.uuid;
+    }).then(async (facturaUuid) => ({
+      // Se lee DESPUÉS de que la transacción confirmó — leer con el mismo
+      // `uuid`/`facturaUuid` pero sin pasar `transaction` dentro del
+      // callback vería la fila sin commitear todavía bajo REPEATABLE READ.
+      proforma: await proformaRepository.findByUuid(uuid),
+      factura: await facturaRepository.findByUuid(facturaUuid),
+    }));
   },
 };
 
