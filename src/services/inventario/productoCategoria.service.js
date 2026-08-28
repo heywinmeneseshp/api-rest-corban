@@ -1,6 +1,9 @@
 import { productoCategoriaRepository } from '../../repositories/inventario/productoCategoria.repository.js';
+import { ProductoCategoria } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
+import { assertSinDuplicado } from '../../utils/duplicadoGuard.js';
+import { sequelize } from '../../database/connection.js';
 
 export const productoCategoriaService = {
   async list(query) {
@@ -22,25 +25,29 @@ export const productoCategoriaService = {
   },
 
   async create(payload, actorId) {
-    const existing = await productoCategoriaRepository.findByNombre(payload.nombre);
-    if (existing) throw ApiError.conflict('Ya existe una categoría con ese nombre');
-
-    return productoCategoriaRepository.create({
-      nombre: payload.nombre,
-      descripcion: payload.descripcion,
-      tipo: payload.tipo || 'GENERAL',
-      estado: payload.estado ?? true,
-      createdBy: actorId,
+    return sequelize.transaction(async (t) => {
+      await assertSinDuplicado(ProductoCategoria, { nombre: payload.nombre }, t, 'Ya existe una categoría con ese nombre');
+      return productoCategoriaRepository.create(
+        {
+          nombre: payload.nombre,
+          descripcion: payload.descripcion,
+          tipo: payload.tipo || 'GENERAL',
+          estado: payload.estado ?? true,
+          createdBy: actorId,
+        },
+        { transaction: t },
+      );
     });
   },
 
   async update(uuid, payload, actorId) {
     const cat = await this.getByUuid(uuid);
-    if (payload.nombre) {
-      const existing = await productoCategoriaRepository.findByNombre(payload.nombre);
-      if (existing && existing.id !== cat.id) throw ApiError.conflict('Ya existe una categoría con ese nombre');
-    }
-    return productoCategoriaRepository.update(cat, { ...payload, updatedBy: actorId });
+    return sequelize.transaction(async (t) => {
+      if (payload.nombre) {
+        await assertSinDuplicado(ProductoCategoria, { nombre: payload.nombre }, t, 'Ya existe una categoría con ese nombre', cat.id);
+      }
+      return productoCategoriaRepository.update(cat, { ...payload, updatedBy: actorId }, { transaction: t });
+    });
   },
 
   async delete(uuid, actorId) {

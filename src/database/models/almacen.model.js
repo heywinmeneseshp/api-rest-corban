@@ -8,7 +8,7 @@ Almacen.init(
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     uuid: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, allowNull: false, unique: true },
     codigo: { type: DataTypes.STRING(20), allowNull: true },
-    nombre: { type: DataTypes.STRING(150), allowNull: false },
+    nombre: { type: DataTypes.STRING(150), allowNull: false, unique: true },
     descripcion: { type: DataTypes.TEXT, allowNull: true },
     tipo: { type: DataTypes.ENUM('ALMACEN', 'CENTRO_COSTO'), allowNull: false, defaultValue: 'ALMACEN' },
     parentId: { type: DataTypes.INTEGER, allowNull: true, field: 'parent_id' },

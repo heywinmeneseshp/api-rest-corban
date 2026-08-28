@@ -1,8 +1,10 @@
 import { sequelize } from '../../database/connection.js';
 import { mezclaRepository } from '../../repositories/inventario/mezcla.repository.js';
-import { MezclaVersion, MezclaComponente, Producto, UnidadMedida } from '../../database/associations.js';
+import { Mezcla, MezclaVersion, MezclaComponente, Producto, UnidadMedida } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
+import { evaluarMargen } from '../../utils/margenComercial.js';
+import { assertSinDuplicado } from '../../utils/duplicadoGuard.js';
 
 async function resolveProducto(uuid) {
   const p = await Producto.findOne({ where: { uuid } });
@@ -71,18 +73,19 @@ export const mezclaService = {
       unidadRendimientoId = unidad.id;
     }
 
-    const existingNombre = await mezclaRepository.findByNombre(payload.nombre);
-    if (existingNombre) throw ApiError.conflict('Ya existe una mezcla con ese nombre');
-
-    if (payload.codigo) {
-      const existingCodigo = await mezclaRepository.findByCodigo(payload.codigo);
-      if (existingCodigo) throw ApiError.conflict('Ya existe una mezcla con ese código');
-    }
-
     const rendimiento = Number(payload.rendimiento);
     const { costoTotal, costoUnitario, detalles } = await calcularCostos(payload.componentes, rendimiento);
 
     return sequelize.transaction(async (t) => {
+      // Chequeo de duplicado CON lock, dentro de la misma transacción del
+      // create — antes era un check-then-act suelto antes de abrir la
+      // transacción, y mezclas.nombre/codigo no tienen UNIQUE en la base
+      // (a diferencia de producto_categorias/unidades_medida/productos).
+      await assertSinDuplicado(Mezcla, { nombre: payload.nombre }, t, 'Ya existe una mezcla con ese nombre');
+      if (payload.codigo) {
+        await assertSinDuplicado(Mezcla, { codigo: payload.codigo }, t, 'Ya existe una mezcla con ese código');
+      }
+
       const mezcla = await mezclaRepository.create(
         {
           codigo: payload.codigo || null,
@@ -124,21 +127,13 @@ export const mezclaService = {
         );
       }
 
-      return mezclaRepository.findByUuid(mezcla.uuid);
+      const resultado = await mezclaRepository.findByUuid(mezcla.uuid);
+      return { ...resultado.toJSON(), advertencias: evaluarMargen(payload.precioVenta, costoUnitario) };
     });
   },
 
   async update(uuid, payload, actorId) {
     const mezcla = await this.getByUuid(uuid);
-
-    if (payload.nombre) {
-      const existing = await mezclaRepository.findByNombre(payload.nombre);
-      if (existing && existing.id !== mezcla.id) throw ApiError.conflict('Ya existe una mezcla con ese nombre');
-    }
-    if (payload.codigo) {
-      const existing = await mezclaRepository.findByCodigo(payload.codigo);
-      if (existing && existing.id !== mezcla.id) throw ApiError.conflict('Ya existe una mezcla con ese código');
-    }
 
     let productoElaboradoId = mezcla.productoElaboradoId;
     if (payload.productoElaboradoUuid) {
@@ -168,11 +163,24 @@ export const mezclaService = {
 
     const necesitaNuevaVersion = payload.componentes !== undefined || payload.rendimiento !== undefined;
 
+    const precioVentaFinal = payload.precioVenta !== undefined ? payload.precioVenta : mezcla.precioVenta;
+
     return sequelize.transaction(async (t) => {
+      if (payload.nombre) {
+        await assertSinDuplicado(Mezcla, { nombre: payload.nombre }, t, 'Ya existe una mezcla con ese nombre', mezcla.id);
+      }
+      if (payload.codigo) {
+        await assertSinDuplicado(Mezcla, { codigo: payload.codigo }, t, 'Ya existe una mezcla con ese código', mezcla.id);
+      }
+
       await mezclaRepository.update(mezcla, data, { transaction: t });
 
       if (!necesitaNuevaVersion) {
-        return mezclaRepository.findByUuid(uuid);
+        // No se recalculan componentes/costo — se compara contra el costo
+        // de la versión activa actual (no cambió).
+        const activaActual = await mezclaRepository.findActiveVersion(mezcla.id, { transaction: t });
+        const resultado = await mezclaRepository.findByUuid(uuid);
+        return { ...resultado.toJSON(), advertencias: evaluarMargen(precioVentaFinal, activaActual?.costoUnitario) };
       }
 
       // Obtener versión activa actual
@@ -239,7 +247,8 @@ export const mezclaService = {
         );
       }
 
-      return mezclaRepository.findByUuid(uuid);
+      const resultado = await mezclaRepository.findByUuid(uuid);
+      return { ...resultado.toJSON(), advertencias: evaluarMargen(precioVentaFinal, costoUnitario) };
     });
   },
 

@@ -1,7 +1,10 @@
 import { productoInventarioRepository } from '../../repositories/inventario/productoInventario.repository.js';
-import { ProductoCategoria, UnidadMedida } from '../../database/associations.js';
+import { ProductoCategoria, UnidadMedida, Producto } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
+import { assertSinDuplicado } from '../../utils/duplicadoGuard.js';
+import { evaluarMargen } from '../../utils/margenComercial.js';
+import { sequelize } from '../../database/connection.js';
 
 export const productoInventarioService = {
   async list(query) {
@@ -26,9 +29,6 @@ export const productoInventarioService = {
   },
 
   async create(payload, actorId) {
-    const existing = await productoInventarioRepository.findByNombre(payload.nombre);
-    if (existing) throw ApiError.conflict('Ya existe un producto con ese nombre');
-
     let categoriaId = null;
     if (payload.categoriaUuid) {
       const cat = await ProductoCategoria.findOne({ where: { uuid: payload.categoriaUuid } });
@@ -42,29 +42,32 @@ export const productoInventarioService = {
       unidadMedidaId = uni.id;
     }
 
-    return productoInventarioRepository.create({
-      codigo: payload.codigo || null,
-      nombre: payload.nombre,
-      descripcion: payload.descripcion,
-      tipo: payload.tipo || 'GENERAL',
-      categoriaId,
-      unidadMedidaId,
-      costoCompra: payload.costoCompra ?? 0,
-      precioVenta: payload.precioVenta ?? 0,
-      manejaInventario: payload.manejaInventario ?? true,
-      stockMinimo: payload.stockMinimo ?? 0,
-      stockMaximo: payload.stockMaximo ?? null,
-      estado: payload.estado ?? true,
-      createdBy: actorId,
+    const producto = await sequelize.transaction(async (t) => {
+      await assertSinDuplicado(Producto, { nombre: payload.nombre }, t, 'Ya existe un producto con ese nombre');
+      return productoInventarioRepository.create(
+        {
+          codigo: payload.codigo || null,
+          nombre: payload.nombre,
+          descripcion: payload.descripcion,
+          tipo: payload.tipo || 'GENERAL',
+          categoriaId,
+          unidadMedidaId,
+          costoCompra: payload.costoCompra ?? 0,
+          precioVenta: payload.precioVenta ?? 0,
+          manejaInventario: payload.manejaInventario ?? true,
+          stockMinimo: payload.stockMinimo ?? 0,
+          stockMaximo: payload.stockMaximo ?? null,
+          estado: payload.estado ?? true,
+          createdBy: actorId,
+        },
+        { transaction: t },
+      );
     });
+    return { ...producto.toJSON(), advertencias: evaluarMargen(payload.precioVenta, payload.costoCompra) };
   },
 
   async update(uuid, payload, actorId) {
     const prod = await this.getByUuid(uuid);
-    if (payload.nombre) {
-      const existing = await productoInventarioRepository.findByNombre(payload.nombre);
-      if (existing && existing.id !== prod.id) throw ApiError.conflict('Ya existe un producto con ese nombre');
-    }
 
     const data = { ...payload, updatedBy: actorId };
     if (payload.categoriaUuid !== undefined) {
@@ -86,7 +89,15 @@ export const productoInventarioService = {
       delete data.unidadMedidaUuid;
     }
 
-    return productoInventarioRepository.update(prod, data);
+    const actualizado = await sequelize.transaction(async (t) => {
+      if (payload.nombre) {
+        await assertSinDuplicado(Producto, { nombre: payload.nombre }, t, 'Ya existe un producto con ese nombre', prod.id);
+      }
+      return productoInventarioRepository.update(prod, data, { transaction: t });
+    });
+    const costoCompraFinal = payload.costoCompra !== undefined ? payload.costoCompra : prod.costoCompra;
+    const precioVentaFinal = payload.precioVenta !== undefined ? payload.precioVenta : prod.precioVenta;
+    return { ...actualizado.toJSON(), advertencias: evaluarMargen(precioVentaFinal, costoCompraFinal) };
   },
 
   async delete(uuid, actorId) {

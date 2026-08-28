@@ -2,6 +2,8 @@ import { almacenRepository } from '../../repositories/inventario/almacen.reposit
 import { Almacen, Finca, User } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
+import { assertSinDuplicado } from '../../utils/duplicadoGuard.js';
+import { sequelize } from '../../database/connection.js';
 
 export const almacenService = {
   async list(query) {
@@ -58,16 +60,23 @@ export const almacenService = {
       responsableId = user.id;
     }
 
-    return almacenRepository.create({
-      codigo: payload.codigo || null,
-      nombre: payload.nombre,
-      descripcion: payload.descripcion,
-      tipo: payload.tipo || 'ALMACEN',
-      parentId,
-      ubicacionFincaId,
-      responsableId,
-      estado: payload.estado ?? true,
-      createdBy: actorId,
+    return sequelize.transaction(async (t) => {
+      // No había ningún chequeo de nombre duplicado acá antes.
+      await assertSinDuplicado(Almacen, { nombre: payload.nombre }, t, 'Ya existe un almacén con ese nombre');
+      return almacenRepository.create(
+        {
+          codigo: payload.codigo || null,
+          nombre: payload.nombre,
+          descripcion: payload.descripcion,
+          tipo: payload.tipo || 'ALMACEN',
+          parentId,
+          ubicacionFincaId,
+          responsableId,
+          estado: payload.estado ?? true,
+          createdBy: actorId,
+        },
+        { transaction: t },
+      );
     });
   },
 
@@ -104,7 +113,12 @@ export const almacenService = {
       delete data.responsableUuid;
     }
 
-    return almacenRepository.update(alm, data);
+    return sequelize.transaction(async (t) => {
+      if (payload.nombre) {
+        await assertSinDuplicado(Almacen, { nombre: payload.nombre }, t, 'Ya existe un almacén con ese nombre', alm.id);
+      }
+      return almacenRepository.update(alm, data, { transaction: t });
+    });
   },
 
   async delete(uuid, actorId) {

@@ -2,6 +2,8 @@ import { unidadMedidaRepository, unidadConversionRepository } from '../../reposi
 import { UnidadMedida, UnidadConversion } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
+import { assertSinDuplicado } from '../../utils/duplicadoGuard.js';
+import { sequelize } from '../../database/connection.js';
 
 export const unidadMedidaService = {
   async list(query) {
@@ -23,25 +25,30 @@ export const unidadMedidaService = {
   },
 
   async create(payload, actorId) {
-    const existing = await unidadMedidaRepository.findByCodigo(payload.codigo);
-    if (existing) throw ApiError.conflict('Ya existe una unidad con ese código');
-    return unidadMedidaRepository.create({
-      codigo: payload.codigo,
-      nombre: payload.nombre,
-      simbolo: payload.simbolo,
-      tipo: payload.tipo || 'OTRO',
-      estado: payload.estado ?? true,
-      createdBy: actorId,
+    return sequelize.transaction(async (t) => {
+      await assertSinDuplicado(UnidadMedida, { codigo: payload.codigo }, t, 'Ya existe una unidad con ese código');
+      return unidadMedidaRepository.create(
+        {
+          codigo: payload.codigo,
+          nombre: payload.nombre,
+          simbolo: payload.simbolo,
+          tipo: payload.tipo || 'OTRO',
+          estado: payload.estado ?? true,
+          createdBy: actorId,
+        },
+        { transaction: t },
+      );
     });
   },
 
   async update(uuid, payload, actorId) {
     const uni = await this.getByUuid(uuid);
-    if (payload.codigo) {
-      const existing = await unidadMedidaRepository.findByCodigo(payload.codigo);
-      if (existing && existing.id !== uni.id) throw ApiError.conflict('Ya existe una unidad con ese código');
-    }
-    return unidadMedidaRepository.update(uni, { ...payload, updatedBy: actorId });
+    return sequelize.transaction(async (t) => {
+      if (payload.codigo) {
+        await assertSinDuplicado(UnidadMedida, { codigo: payload.codigo }, t, 'Ya existe una unidad con ese código', uni.id);
+      }
+      return unidadMedidaRepository.update(uni, { ...payload, updatedBy: actorId }, { transaction: t });
+    });
   },
 
   async delete(uuid, actorId) {
