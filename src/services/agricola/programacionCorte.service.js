@@ -551,6 +551,23 @@ export const programacionCorteService = {
 
     const filasLogistica = await fetchProgramacionCorteLogistica();
 
+    // En Logística, la semana de una fila se deriva SOLO de
+    // fila.id_embarque → Embarque.semana (ver api-rest-banarica
+    // programacionCorte.service.js#listar, ambos LEFT JOIN opcionales) — la
+    // fila misma no tiene ningún campo propio de semana. Si todavía no
+    // tiene booking/embarque asignado (normal: el corte se programa antes
+    // de reservar el buque), queda sin forma de saber a qué semana
+    // pertenece y esta sincronización la descarta en silencio — eso deja a
+    // esa finca "desaparecida" de la semana hasta que se le asigne booking
+    // (bug real detectado y corregido: antes ni siquiera se recalculaba
+    // Producción Semanal para avisar del vacío). Se advierte para que no
+    // pase inadvertido.
+    const sinSemanaAsignada = filasLogistica.filter((r) => !r.Embarque?.semana?.consecutivo);
+    const fincasSinSemana = [...new Set(sinSemanaAsignada.map((r) => r.almacen?.consecutivo).filter(Boolean))];
+    const advertenciaSinSemana = fincasSinSemana.length > 0
+      ? [`Logística tiene ${sinSemanaAsignada.length} fila(s) de la(s) finca(s) [${fincasSinSemana.join(', ')}] sin booking/semana asignada todavía — no se pudieron incluir en ninguna sincronización hasta que se les asigne.`]
+      : [];
+
     const filas = filasLogistica
       .filter((r) => r.Embarque?.semana?.consecutivo === semana.codigo)
       .map((r) => ({
@@ -567,10 +584,18 @@ export const programacionCorteService = {
     });
 
     if (filas.length === 0) {
-      return { totalFilas: 0, creados: 0, borrados: 0, errores: undefined };
+      return {
+        totalFilas: 0,
+        creados: 0,
+        borrados: 0,
+        errores: undefined,
+        advertencias: advertenciaSinSemana.length > 0 ? advertenciaSinSemana : undefined,
+      };
     }
 
-    return reemplazarFilasSemana(filas, actorId, user, semana.id);
+    const resultado = await reemplazarFilasSemana(filas, actorId, user, semana.id);
+    const advertencias = [...(resultado.advertencias || []), ...advertenciaSinSemana];
+    return { ...resultado, advertencias: advertencias.length > 0 ? advertencias : undefined };
   },
 
   // Igual que syncFromBanarica, pero llamado por el propio api-rest-banarica
