@@ -11,7 +11,10 @@ Producto.init(
     codigo: { type: DataTypes.STRING(20), allowNull: true },
     nombre: { type: DataTypes.STRING(150), allowNull: false, unique: true },
     descripcion: { type: DataTypes.TEXT, allowNull: true },
-    tipo: { type: DataTypes.ENUM('INSUMO', 'REPUESTO', 'ELABORADO', 'GENERAL'), allowNull: false, defaultValue: 'GENERAL' },
+    // El "tipo" de un producto (INSUMO/REPUESTO/ELABORADO/GENERAL) es
+    // SIEMPRE el de su categoría — se eliminó la columna propia que
+    // duplicaba el mismo ENUM sin ninguna validación que las mantuviera
+    // sincronizadas (ver migración 20260901000001-remove-tipo-productos).
     categoriaId: { type: DataTypes.INTEGER, allowNull: true, field: 'categoria_id' },
     unidadMedidaId: { type: DataTypes.INTEGER, allowNull: true, field: 'unidad_medida_id' },
     costoCompra: { type: DataTypes.DECIMAL(12, 2), allowNull: true, defaultValue: 0, field: 'costo_compra' },

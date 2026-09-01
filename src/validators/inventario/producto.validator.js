@@ -5,7 +5,6 @@ export const createProductoInventarioSchema = Joi.object({
     codigo: Joi.string().trim().max(20).allow(null, ''),
     nombre: Joi.string().trim().max(150).required(),
     descripcion: Joi.string().allow(null, '').max(1000),
-    tipo: Joi.string().valid('INSUMO', 'REPUESTO', 'ELABORADO', 'GENERAL').default('GENERAL'),
     categoriaUuid: Joi.string().uuid().allow(null),
     unidadMedidaUuid: Joi.string().uuid().allow(null),
     costoCompra: Joi.number().min(0).default(0),
@@ -24,7 +23,6 @@ export const updateProductoInventarioSchema = Joi.object({
     codigo: Joi.string().trim().max(20).allow(null, ''),
     nombre: Joi.string().trim().max(150),
     descripcion: Joi.string().allow(null, '').max(1000),
-    tipo: Joi.string().valid('INSUMO', 'REPUESTO', 'ELABORADO', 'GENERAL'),
     categoriaUuid: Joi.string().uuid().allow(null),
     unidadMedidaUuid: Joi.string().uuid().allow(null),
     costoCompra: Joi.number().min(0),
@@ -51,6 +49,8 @@ export const listProductoSchema = Joi.object({
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(50),
     search: Joi.string().allow('', null),
+    // Filtra por el tipo de la CATEGORÍA del producto (producto ya no tiene
+    // su propio `tipo` — ver producto.model.js).
     tipo: Joi.string().valid('INSUMO', 'REPUESTO', 'ELABORADO', 'GENERAL'),
     categoriaUuid: Joi.string().uuid(),
     unidadMedidaUuid: Joi.string().uuid(),

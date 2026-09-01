@@ -16,13 +16,13 @@ const DETAIL_INCLUDE = [
   {
     model: Producto,
     as: 'repuestosCompatibles',
-    attributes: ['uuid', 'nombre', 'codigo', 'tipo'],
+    attributes: ['uuid', 'nombre', 'codigo'],
     through: { attributes: ['uuid', 'notas'] },
   },
   {
     model: EquipoComponente,
     as: 'componentes',
-    include: [{ model: Producto, as: 'producto', attributes: ['uuid', 'nombre', 'codigo', 'tipo'] }],
+    include: [{ model: Producto, as: 'producto', attributes: ['uuid', 'nombre', 'codigo'] }],
   },
 ];
 

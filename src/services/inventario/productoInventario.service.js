@@ -49,7 +49,6 @@ export const productoInventarioService = {
           codigo: payload.codigo || null,
           nombre: payload.nombre,
           descripcion: payload.descripcion,
-          tipo: payload.tipo || 'GENERAL',
           categoriaId,
           unidadMedidaId,
           costoCompra: payload.costoCompra ?? 0,
