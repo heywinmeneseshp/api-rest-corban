@@ -1,0 +1,96 @@
+import { Op } from 'sequelize';
+import { Equipo, EquipoComponente, Producto, Almacen, User } from '../../database/associations.js';
+
+const LIST_INCLUDE = [
+  { model: Almacen, as: 'ubicacion', attributes: ['uuid', 'nombre', 'codigo'] },
+  { model: Almacen, as: 'centroCosto', attributes: ['uuid', 'nombre', 'codigo'] },
+  { model: User, as: 'responsable', attributes: ['uuid', 'usuario', 'nombre'] },
+];
+
+const DETAIL_INCLUDE = [
+  { model: Almacen, as: 'ubicacion', attributes: ['uuid', 'nombre', 'codigo'] },
+  { model: Almacen, as: 'centroCosto', attributes: ['uuid', 'nombre', 'codigo'] },
+  { model: User, as: 'responsable', attributes: ['uuid', 'usuario', 'nombre'] },
+  { model: User, as: 'creadoPor', attributes: ['uuid', 'usuario'] },
+  { model: User, as: 'actualizadoPor', attributes: ['uuid', 'usuario'] },
+  {
+    model: Producto,
+    as: 'repuestosCompatibles',
+    attributes: ['uuid', 'nombre', 'codigo', 'tipo'],
+    through: { attributes: ['uuid', 'notas'] },
+  },
+  {
+    model: EquipoComponente,
+    as: 'componentes',
+    include: [{ model: Producto, as: 'producto', attributes: ['uuid', 'nombre', 'codigo', 'tipo'] }],
+  },
+];
+
+export const equipoRepository = {
+  async findAndCountAll({ limit, offset, search, tipo, estado, ubicacionUuid, centroCostoUuid }) {
+    const where = {};
+    if (search) {
+      where[Op.or] = [
+        { nombre: { [Op.like]: `%${search}%` } },
+        { codigo: { [Op.like]: `%${search}%` } },
+        { marca: { [Op.like]: `%${search}%` } },
+      ];
+    }
+    if (tipo) where.tipo = tipo;
+    if (estado) where.estado = estado;
+    if (ubicacionUuid) {
+      const alm = await Almacen.findOne({ where: { uuid: ubicacionUuid } });
+      where.ubicacionId = alm ? alm.id : -1;
+    }
+    if (centroCostoUuid) {
+      const alm = await Almacen.findOne({ where: { uuid: centroCostoUuid } });
+      where.centroCostoId = alm ? alm.id : -1;
+    }
+    return Equipo.findAndCountAll({
+      where,
+      limit,
+      offset,
+      order: [['nombre', 'ASC']],
+      include: LIST_INCLUDE,
+      distinct: true,
+    });
+  },
+
+  findByUuid(uuid) {
+    return Equipo.findOne({ where: { uuid }, include: DETAIL_INCLUDE });
+  },
+
+  findByCodigo(codigo) {
+    if (!codigo) return null;
+    return Equipo.findOne({ where: { codigo } });
+  },
+
+  create(data, { transaction } = {}) {
+    return Equipo.create(data, { transaction });
+  },
+
+  async update(equipo, data, { transaction } = {}) {
+    await equipo.update(data, { transaction });
+    return equipo;
+  },
+
+  async softDelete(equipo, deletedBy, { transaction } = {}) {
+    await equipo.update({ deletedBy }, { transaction });
+    await equipo.destroy({ transaction });
+    return equipo;
+  },
+
+  async addComponente(equipoId, productoId, notas, { transaction } = {}) {
+    return EquipoComponente.create({ equipoId, productoId, notas: notas || null }, { transaction });
+  },
+
+  async removeComponente(equipoId, productoId, { transaction } = {}) {
+    return EquipoComponente.destroy({ where: { equipoId, productoId }, transaction });
+  },
+
+  async getComponentes(equipoId) {
+    return EquipoComponente.findAll({ where: { equipoId }, include: [{ model: Producto, as: 'producto' }] });
+  },
+};
+
+export default equipoRepository;
