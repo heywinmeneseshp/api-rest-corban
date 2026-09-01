@@ -39,11 +39,25 @@ export const produccionSemanalRepository = {
   // existen para esa finca+semana (mismo índice único que usa el cargue
   // normal para detectar duplicados) — una sola sentencia, sin transacción
   // aparte porque ya es atómica a nivel de esa sentencia.
+  //
+  // También RESTAURA la fila si había quedado soft-deleted (ProduccionSemanal
+  // es paranoid) — bug real detectado: una finca+semana que en algún
+  // recálculo anterior dio totalPeso 0 se borraba (deleteByFincaYSemana /
+  // deleteMuchosPares), y si más tarde volvía a tener cajas (ej. al
+  // corregirse un producto sin peso neto), este upsert actualizaba
+  // `cajas20kg` con el valor correcto pero dejaba `deletedAt` intacto — la
+  // fila quedaba con el dato bueno pero invisible para SIEMPRE en cualquier
+  // lectura normal (paranoid excluye deletedAt no nulo), incluido el
+  // dashboard ("Fincas Activas" mostraba "—" pese a tener el valor real
+  // guardado). Ahora se limpia `deletedAt`/`deletedBy` en cada upsert.
   bulkUpsert(dataArray, { transaction } = {}) {
-    return ProduccionSemanal.bulkCreate(dataArray, {
-      updateOnDuplicate: ['cajas20kg', 'updatedBy'],
-      transaction,
-    });
+    return ProduccionSemanal.bulkCreate(
+      dataArray.map((d) => ({ ...d, deletedAt: null, deletedBy: null })),
+      {
+        updateOnDuplicate: ['cajas20kg', 'updatedBy', 'deletedAt', 'deletedBy'],
+        transaction,
+      },
+    );
   },
 
   findByUuid(uuid) {
