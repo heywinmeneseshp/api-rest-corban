@@ -93,6 +93,18 @@ export const produccionSemanalRepository = {
     });
   },
 
+  // Todas las fincas que HOY tienen un cálculo guardado para una semana —
+  // usado por programacionCorteService.reemplazarFilasSemana (sincronización
+  // con Logística) para saber a cuáles hay que recalcular además de las que
+  // trae la respuesta nueva: deleteBySemana borra TODA la Programación de
+  // Corte de la semana sin importar la finca, así que una finca que
+  // Logística ya no trae en esta corrida igual debe recalcularse (a 0 o
+  // borrarse), no solo las que sí aparecen en la respuesta nueva.
+  async findFincaIdsBySemana(semanaId) {
+    const filas = await ProduccionSemanal.findAll({ where: { semanaId }, attributes: ['fincaId'], raw: true });
+    return filas.map((f) => f.fincaId);
+  },
+
   // Cajas 20kg agregadas por finca y semana, para el pronóstico y para
   // calcular el ratio histórico real (cajas ÷ racimos cosechados). No existe
   // hoy ningún método que agregue esto entre varias fincas a la vez.

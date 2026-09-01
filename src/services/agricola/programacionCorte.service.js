@@ -378,15 +378,18 @@ async function reemplazarFilasSemana(filas, actorId, user, semanaId) {
   if (aInsertar.length > 0) await actualizarPrimeraSemanaSiAplica([semanaId]);
 
   // Recalcula todas las fincas de esta semana: las que tienen filas nuevas
-  // (aInsertar) Y las que tenían un cálculo previo pero se quedaron sin
-  // ninguna fila tras el reemplazo (para no dejar un valor viejo).
-  const previos = await produccionSemanalRepository.findAllBySemanaYFinca({
-    semanaIds: [semanaId],
-    fincaIds: [...new Set(filasValidas.map((f) => f.fincaId))],
-  });
+  // (aInsertar) Y TODAS las que ya tenían un cálculo previo para esta semana
+  // — deleteBySemana borra la Programación de Corte de la semana COMPLETA
+  // sin importar la finca, así que una finca que Logística ya no trae en
+  // esta corrida debe recalcularse igual (a 0/borrarse), no solo las que
+  // aparecen en la respuesta nueva. Bug real detectado: antes solo miraba
+  // las fincas de `filasValidas` (la respuesta nueva), dejando el valor
+  // viejo de Producción Semanal de cualquier finca que Logística dejara de
+  // traer en esa sincronización puntual.
+  const fincaIdsConCalculoPrevio = await produccionSemanalRepository.findFincaIdsBySemana(semanaId);
   const fincasAfectadas = new Set([
     ...aInsertar.map((f) => f.fincaId),
-    ...previos.map((p) => p.fincaId),
+    ...fincaIdsConCalculoPrevio,
   ]);
   await recalcularProduccionSemanal(
     [...fincasAfectadas].map((fincaId) => ({ fincaId, semanaId })),
