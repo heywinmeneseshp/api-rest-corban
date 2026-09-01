@@ -8,7 +8,7 @@ FacturaDetalle.init(
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     uuid: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, allowNull: false, unique: true },
     facturaId: { type: DataTypes.INTEGER, allowNull: false, field: 'factura_id' },
-    productoId: { type: DataTypes.INTEGER, allowNull: false, field: 'producto_id' },
+    articuloId: { type: DataTypes.INTEGER, allowNull: false, field: 'articulo_id' },
     cantidad: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
     precioUnitario: { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 0, field: 'precio_unitario' },
     descuento: { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 0 },

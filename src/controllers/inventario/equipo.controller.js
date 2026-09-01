@@ -30,12 +30,12 @@ export const equipoController = {
   }),
 
   addComponente: asyncHandler(async (req, res) => {
-    const equipo = await equipoService.addComponente(req.params.uuid, req.body.productoUuid, req.body.notas);
+    const equipo = await equipoService.addComponente(req.params.uuid, req.body.articuloUuid, req.body.notas);
     ApiResponse.send(res, { message: 'Repuesto compatible agregado', data: equipo });
   }),
 
   removeComponente: asyncHandler(async (req, res) => {
-    const equipo = await equipoService.removeComponente(req.params.uuid, req.params.productoUuid);
+    const equipo = await equipoService.removeComponente(req.params.uuid, req.params.articuloUuid);
     ApiResponse.send(res, { message: 'Repuesto compatible eliminado', data: equipo });
   }),
 };

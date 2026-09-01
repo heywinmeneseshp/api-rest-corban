@@ -1,6 +1,6 @@
 import { sequelize } from '../../database/connection.js';
 import { ordenMantenimientoRepository } from '../../repositories/inventario/ordenMantenimiento.repository.js';
-import { Equipo, PlanMantenimiento, ProgramacionMantenimiento, Almacen, User, Producto, OrdenDetalle, OrdenManoObra, OrdenServicio, MovimientoInventario, Proveedor } from '../../database/associations.js';
+import { Equipo, PlanMantenimiento, ProgramacionMantenimiento, Almacen, User, Articulo, OrdenDetalle, OrdenManoObra, OrdenServicio, MovimientoInventario, Proveedor } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { assertStockSuficiente, registrarMovimientoEnCache } from './stock.helper.js';
@@ -60,9 +60,9 @@ async function resolveUser(uuid) {
   if (!u) throw ApiError.notFound('Usuario no encontrado');
   return u;
 }
-async function resolveProducto(uuid) {
-  const p = await Producto.findOne({ where: { uuid } });
-  if (!p) throw ApiError.notFound('Producto no encontrado');
+async function resolveArticulo(uuid) {
+  const p = await Articulo.findOne({ where: { uuid } });
+  if (!p) throw ApiError.notFound('Artículo no encontrado');
   return p;
 }
 
@@ -147,14 +147,14 @@ export const ordenMantenimientoService = {
 
       if (payload.detalles && payload.detalles.length) {
         for (const det of payload.detalles) {
-          const producto = await resolveProducto(det.productoUuid);
+          const articulo = await resolveArticulo(det.articuloUuid);
           const almDet = await resolveAlmacen(det.almacenUuid);
-          const costoUnit = Number(det.costoUnitario || producto.costoCompra || 0);
+          const costoUnit = Number(det.costoUnitario || articulo.costoCompra || 0);
           const costoTot = costoUnit * Number(det.cantidad);
           await OrdenDetalle.create(
             {
               ordenId: orden.id,
-              productoId: producto.id,
+              articuloId: articulo.id,
               cantidad: det.cantidad,
               costoUnitario: costoUnit,
               costoTotal: costoTot,
@@ -243,13 +243,13 @@ export const ordenMantenimientoService = {
     }
 
     // Si vienen detalles/manoObra/servicios, recalcular costoTotal.
-    // Cuando `payload.detalles` viene con `productoUuid` (no un costoUnitario
+    // Cuando `payload.detalles` viene con `articuloUuid` (no un costoUnitario
     // ya resuelto), calcularCostoTotal() no sabe resolver el fallback contra
-    // el costoCompra del producto — antes se llamaba igual y su resultado se
+    // el costoCompra del articulo — antes se llamaba igual y su resultado se
     // pisaba enseguida con el cálculo manual de abajo (cálculo doble
     // redundante). Ahora solo se usa calcularCostoTotal() cuando NO cambian
     // los detalles (los que ya tiene la orden ya vienen con costoUnitario
-    // guardado), y el cálculo manual (con resolución de producto) solo
+    // guardado), y el cálculo manual (con resolución de articulo) solo
     // cuando sí cambian.
     let costoTotal = Number(orden.costoTotal);
     const shouldRecalc = payload.detalles !== undefined || payload.manoObra !== undefined || payload.servicios !== undefined;
@@ -257,7 +257,7 @@ export const ordenMantenimientoService = {
       if (payload.detalles) {
         let tot = 0;
         for (const d of payload.detalles) {
-          const prod = await resolveProducto(d.productoUuid);
+          const prod = await resolveArticulo(d.articuloUuid);
           const cu = Number(d.costoUnitario ?? prod.costoCompra ?? 0);
           tot += cu * Number(d.cantidad);
         }
@@ -296,13 +296,13 @@ export const ordenMantenimientoService = {
         await OrdenDetalle.destroy({ where: { ordenId: orden.id }, transaction: t });
         if (Array.isArray(payload.detalles) && payload.detalles.length) {
           for (const det of payload.detalles) {
-            const producto = await resolveProducto(det.productoUuid);
+            const articulo = await resolveArticulo(det.articuloUuid);
             const almDet = await resolveAlmacen(det.almacenUuid);
-            const costoUnit = Number(det.costoUnitario || producto.costoCompra || 0);
+            const costoUnit = Number(det.costoUnitario || articulo.costoCompra || 0);
             await OrdenDetalle.create(
               {
                 ordenId: orden.id,
-                productoId: producto.id,
+                articuloId: articulo.id,
                 cantidad: det.cantidad,
                 costoUnitario: costoUnit,
                 costoTotal: costoUnit * Number(det.cantidad),
@@ -370,7 +370,7 @@ export const ordenMantenimientoService = {
       const detalles = await OrdenDetalle.findAll({ where: { ordenId: orden.id }, transaction: t });
 
       for (const det of detalles) {
-        const producto = await Producto.findByPk(det.productoId, { transaction: t });
+        const articulo = await Articulo.findByPk(det.articuloId, { transaction: t });
         const almacenId = det.almacenId || orden.almacenId;
         let almacen = null;
         if (almacenId) {
@@ -390,15 +390,15 @@ export const ordenMantenimientoService = {
         // Si la cantidad es 0, skip
         if (cantidad <= 0) continue;
 
-        // El movimientoService.create espera payload con almacenUuid, productoUuid etc
+        // El movimientoService.create espera payload con almacenUuid, articuloUuid etc
         // Lo hacemos manualmente aquí para mantener transacción: usar MovimientoInventario.create
-        await assertStockSuficiente(almacen.id, producto.id, cantidad, {
+        await assertStockSuficiente(almacen.id, articulo.id, cantidad, {
           transaction: t,
-          nombreProducto: producto.nombre,
+          nombreArticulo: articulo.nombre,
           nombreAlmacen: almacen.nombre,
         });
 
-        const costoUnit = Number(det.costoUnitario || producto.costoCompra || 0);
+        const costoUnit = Number(det.costoUnitario || articulo.costoCompra || 0);
         const documento = orden.numero;
         await MovimientoInventario.create(
           {
@@ -406,10 +406,10 @@ export const ordenMantenimientoService = {
             tipo: 'SALIDA',
             fecha: orden.fechaCierre || new Date().toISOString().slice(0, 10),
             almacenId: almacen.id,
-            productoId: producto.id,
+            articuloId: articulo.id,
             cantidad,
             cantidadBase: cantidad,
-            unidadId: producto.unidadMedidaId || null,
+            unidadId: articulo.unidadMedidaId || null,
             costoUnitario: costoUnit,
             costoTotal: costoUnit * cantidad,
             observaciones: `Salida por orden mantenimiento ${orden.numero} - ${orden.descripcion.slice(0, 80)}`,
@@ -417,7 +417,7 @@ export const ordenMantenimientoService = {
           },
           { transaction: t },
         );
-        await registrarMovimientoEnCache(almacen.id, producto.id, 'SALIDA', cantidad, t);
+        await registrarMovimientoEnCache(almacen.id, articulo.id, 'SALIDA', cantidad, t);
       }
 
       // Actualizar orden a CERRADA

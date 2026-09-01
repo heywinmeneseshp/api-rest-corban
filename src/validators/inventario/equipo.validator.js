@@ -70,7 +70,7 @@ export const listEquipoSchema = Joi.object({
 
 export const addComponenteSchema = Joi.object({
   body: Joi.object({
-    productoUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
+    articuloUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
     notas: Joi.string().allow(null, '').max(500),
   }),
   params: Joi.object({ uuid: uuidParam }),
@@ -79,6 +79,6 @@ export const addComponenteSchema = Joi.object({
 
 export const removeComponenteSchema = Joi.object({
   body: Joi.object({}),
-  params: Joi.object({ uuid: uuidParam, productoUuid: Joi.string().guid({ version: 'uuidv4' }).required() }),
+  params: Joi.object({ uuid: uuidParam, articuloUuid: Joi.string().guid({ version: 'uuidv4' }).required() }),
   query: Joi.object({}),
 });

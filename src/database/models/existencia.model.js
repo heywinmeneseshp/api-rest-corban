@@ -7,7 +7,7 @@ Existencia.init(
   {
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     almacenId: { type: DataTypes.INTEGER, allowNull: false, field: 'almacen_id' },
-    productoId: { type: DataTypes.INTEGER, allowNull: false, field: 'producto_id' },
+    articuloId: { type: DataTypes.INTEGER, allowNull: false, field: 'articulo_id' },
     saldo: { type: DataTypes.DECIMAL(14, 2), allowNull: false, defaultValue: 0 },
   },
   {

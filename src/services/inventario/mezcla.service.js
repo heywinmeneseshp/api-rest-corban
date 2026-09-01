@@ -1,14 +1,14 @@
 import { sequelize } from '../../database/connection.js';
 import { mezclaRepository } from '../../repositories/inventario/mezcla.repository.js';
-import { Mezcla, MezclaVersion, MezclaComponente, Producto, UnidadMedida } from '../../database/associations.js';
+import { Mezcla, MezclaVersion, MezclaComponente, Articulo, UnidadMedida } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { evaluarMargen } from '../../utils/margenComercial.js';
 import { assertSinDuplicado } from '../../utils/duplicadoGuard.js';
 
-async function resolveProducto(uuid) {
-  const p = await Producto.findOne({ where: { uuid } });
-  if (!p) throw ApiError.notFound('Producto no encontrado');
+async function resolveArticulo(uuid) {
+  const p = await Articulo.findOne({ where: { uuid } });
+  if (!p) throw ApiError.notFound('Artículo no encontrado');
   return p;
 }
 
@@ -23,23 +23,23 @@ async function calcularCostos(componentesPayload, rendimiento) {
   let costoTotal = 0;
   const detalles = [];
   for (const comp of componentesPayload) {
-    const producto = await resolveProducto(comp.productoUuid);
+    const articulo = await resolveArticulo(comp.articuloUuid);
     let unidadId = null;
     if (comp.unidadUuid) {
       const unidad = await resolveUnidad(comp.unidadUuid);
       unidadId = unidad.id;
     }
-    const costoUnitarioSnapshot = Number(producto.costoCompra || 0);
+    const costoUnitarioSnapshot = Number(articulo.costoCompra || 0);
     const cantidad = Number(comp.cantidad);
     const costoTotalSnapshot = costoUnitarioSnapshot * cantidad;
     costoTotal += costoTotalSnapshot;
     detalles.push({
-      productoId: producto.id,
+      articuloId: articulo.id,
       cantidad,
       unidadId,
       costoUnitarioSnapshot,
       costoTotalSnapshot,
-      producto,
+      articulo,
     });
   }
   const costoUnitario = rendimiento ? costoTotal / Number(rendimiento) : costoTotal;
@@ -54,7 +54,7 @@ export const mezclaService = {
       offset,
       search: query.search,
       estado: query.estado,
-      productoElaboradoUuid: query.productoElaboradoUuid,
+      articuloElaboradoUuid: query.articuloElaboradoUuid,
     });
     return { items: rows, meta: buildPaginationMeta({ page, limit, total: count }) };
   },
@@ -66,7 +66,7 @@ export const mezclaService = {
   },
 
   async create(payload, actorId) {
-    const productoElaborado = await resolveProducto(payload.productoElaboradoUuid);
+    const articuloElaborado = await resolveArticulo(payload.articuloElaboradoUuid);
     let unidadRendimientoId = null;
     if (payload.unidadRendimientoUuid) {
       const unidad = await resolveUnidad(payload.unidadRendimientoUuid);
@@ -80,7 +80,7 @@ export const mezclaService = {
       // Chequeo de duplicado CON lock, dentro de la misma transacción del
       // create — antes era un check-then-act suelto antes de abrir la
       // transacción, y mezclas.nombre/codigo no tienen UNIQUE en la base
-      // (a diferencia de producto_categorias/unidades_medida/productos).
+      // (a diferencia de articulo_categorias/unidades_medida/articulos).
       await assertSinDuplicado(Mezcla, { nombre: payload.nombre }, t, 'Ya existe una mezcla con ese nombre');
       if (payload.codigo) {
         await assertSinDuplicado(Mezcla, { codigo: payload.codigo }, t, 'Ya existe una mezcla con ese código');
@@ -91,7 +91,7 @@ export const mezclaService = {
           codigo: payload.codigo || null,
           nombre: payload.nombre,
           descripcion: payload.descripcion || null,
-          productoElaboradoId: productoElaborado.id,
+          articuloElaboradoId: articuloElaborado.id,
           unidadRendimientoId,
           rendimiento,
           precioVenta: payload.precioVenta ?? 0,
@@ -117,7 +117,7 @@ export const mezclaService = {
         await MezclaComponente.create(
           {
             mezclaVersionId: version.id,
-            productoId: det.productoId,
+            articuloId: det.articuloId,
             cantidad: det.cantidad,
             unidadId: det.unidadId,
             costoUnitarioSnapshot: det.costoUnitarioSnapshot,
@@ -135,10 +135,10 @@ export const mezclaService = {
   async update(uuid, payload, actorId) {
     const mezcla = await this.getByUuid(uuid);
 
-    let productoElaboradoId = mezcla.productoElaboradoId;
-    if (payload.productoElaboradoUuid) {
-      const p = await resolveProducto(payload.productoElaboradoUuid);
-      productoElaboradoId = p.id;
+    let articuloElaboradoId = mezcla.articuloElaboradoId;
+    if (payload.articuloElaboradoUuid) {
+      const p = await resolveArticulo(payload.articuloElaboradoUuid);
+      articuloElaboradoId = p.id;
     }
     let unidadRendimientoId = mezcla.unidadRendimientoId;
     if (payload.unidadRendimientoUuid !== undefined) {
@@ -153,7 +153,7 @@ export const mezclaService = {
       ...(payload.codigo !== undefined ? { codigo: payload.codigo || null } : {}),
       ...(payload.nombre ? { nombre: payload.nombre } : {}),
       ...(payload.descripcion !== undefined ? { descripcion: payload.descripcion || null } : {}),
-      productoElaboradoId,
+      articuloElaboradoId,
       unidadRendimientoId,
       ...(payload.rendimiento !== undefined ? { rendimiento: Number(payload.rendimiento) } : {}),
       ...(payload.precioVenta !== undefined ? { precioVenta: payload.precioVenta } : {}),
@@ -195,14 +195,14 @@ export const mezclaService = {
         // Necesitamos mapear a payload con uuids
         componentesPayload = await Promise.all(
           componentesActivos.map(async (c) => {
-            const prod = await Producto.findByPk(c.productoId, { transaction: t });
+            const prod = await Articulo.findByPk(c.articuloId, { transaction: t });
             let unidadUuid = null;
             if (c.unidadId) {
               const uni = await UnidadMedida.findByPk(c.unidadId, { transaction: t });
               unidadUuid = uni?.uuid || null;
             }
             return {
-              productoUuid: prod.uuid,
+              articuloUuid: prod.uuid,
               cantidad: Number(c.cantidad),
               unidadUuid,
             };
@@ -237,7 +237,7 @@ export const mezclaService = {
         await MezclaComponente.create(
           {
             mezclaVersionId: nuevaVersion.id,
-            productoId: det.productoId,
+            articuloId: det.articuloId,
             cantidad: det.cantidad,
             unidadId: det.unidadId,
             costoUnitarioSnapshot: det.costoUnitarioSnapshot,

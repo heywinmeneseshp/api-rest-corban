@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import productoCategoriaRoutes from './productoCategoria.routes.js';
+import articuloCategoriaRoutes from './articuloCategoria.routes.js';
 import unidadMedidaRoutes from './unidadMedida.routes.js';
-import productoInventarioRoutes from './productoInventario.routes.js';
+import articuloRoutes from './articulo.routes.js';
 import almacenRoutes from './almacen.routes.js';
 import motivoRoutes from './motivo.routes.js';
 import movimientoRoutes from './movimiento.routes.js';
@@ -18,9 +18,9 @@ import dashboardRoutes from './dashboard.routes.js';
 
 const router = Router();
 
-router.use('/categorias', productoCategoriaRoutes);
+router.use('/categorias', articuloCategoriaRoutes);
 router.use('/unidades', unidadMedidaRoutes);
-router.use('/productos', productoInventarioRoutes);
+router.use('/articulos', articuloRoutes);
 router.use('/almacenes', almacenRoutes);
 router.use('/motivos', motivoRoutes);
 router.use('/movimientos', movimientoRoutes);

@@ -1,13 +1,13 @@
 import { Op } from 'sequelize';
-import { Mezcla, MezclaVersion, MezclaComponente, Producto, UnidadMedida, User } from '../../database/associations.js';
+import { Mezcla, MezclaVersion, MezclaComponente, Articulo, UnidadMedida, User } from '../../database/associations.js';
 
 const LIST_INCLUDE = [
-  { model: Producto, as: 'productoElaborado', attributes: ['uuid', 'nombre', 'codigo'] },
+  { model: Articulo, as: 'articuloElaborado', attributes: ['uuid', 'nombre', 'codigo'] },
   { model: UnidadMedida, as: 'unidadRendimiento', attributes: ['uuid', 'nombre', 'simbolo'] },
 ];
 
 const DETAIL_INCLUDE = [
-  { model: Producto, as: 'productoElaborado', attributes: ['uuid', 'nombre', 'codigo', 'costoCompra', 'precioVenta'] },
+  { model: Articulo, as: 'articuloElaborado', attributes: ['uuid', 'nombre', 'codigo', 'costoCompra', 'precioVenta'] },
   { model: UnidadMedida, as: 'unidadRendimiento', attributes: ['uuid', 'nombre', 'simbolo', 'codigo'] },
   { model: User, as: 'creadoPor', attributes: ['uuid', 'usuario'] },
   { model: User, as: 'actualizadoPor', attributes: ['uuid', 'usuario'] },
@@ -21,7 +21,7 @@ const DETAIL_INCLUDE = [
         model: MezclaComponente,
         as: 'componentes',
         include: [
-          { model: Producto, as: 'producto', attributes: ['uuid', 'nombre', 'codigo', 'costoCompra'] },
+          { model: Articulo, as: 'articulo', attributes: ['uuid', 'nombre', 'codigo', 'costoCompra'] },
           { model: UnidadMedida, as: 'unidad', attributes: ['uuid', 'nombre', 'simbolo', 'codigo'] },
         ],
       },
@@ -30,7 +30,7 @@ const DETAIL_INCLUDE = [
 ];
 
 export const mezclaRepository = {
-  async findAndCountAll({ limit, offset, search, estado, productoElaboradoUuid }) {
+  async findAndCountAll({ limit, offset, search, estado, articuloElaboradoUuid }) {
     const where = {
       ...(search
         ? {
@@ -43,9 +43,9 @@ export const mezclaRepository = {
       ...(estado !== undefined ? { estado } : {}),
     };
 
-    if (productoElaboradoUuid) {
-      const prod = await Producto.findOne({ where: { uuid: productoElaboradoUuid } });
-      where.productoElaboradoId = prod ? prod.id : -1;
+    if (articuloElaboradoUuid) {
+      const prod = await Articulo.findOne({ where: { uuid: articuloElaboradoUuid } });
+      where.articuloElaboradoId = prod ? prod.id : -1;
     }
 
     return Mezcla.findAndCountAll({
@@ -92,7 +92,7 @@ export const mezclaRepository = {
       where: { uuid },
       include: [
         { model: Mezcla, as: 'mezcla', include: LIST_INCLUDE },
-        { model: MezclaComponente, as: 'componentes', include: [{ model: Producto, as: 'producto' }, { model: UnidadMedida, as: 'unidad' }] },
+        { model: MezclaComponente, as: 'componentes', include: [{ model: Articulo, as: 'articulo' }, { model: UnidadMedida, as: 'unidad' }] },
       ],
     });
   },

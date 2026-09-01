@@ -1,15 +1,15 @@
-import { productoInventarioRepository } from '../../repositories/inventario/productoInventario.repository.js';
-import { ProductoCategoria, UnidadMedida, Producto } from '../../database/associations.js';
+import { articuloRepository } from '../../repositories/inventario/articulo.repository.js';
+import { ArticuloCategoria, UnidadMedida, Articulo } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { assertSinDuplicado } from '../../utils/duplicadoGuard.js';
 import { evaluarMargen } from '../../utils/margenComercial.js';
 import { sequelize } from '../../database/connection.js';
 
-export const productoInventarioService = {
+export const articuloService = {
   async list(query) {
     const { page, limit, offset } = getPagination(query);
-    const { rows, count } = await productoInventarioRepository.findAndCountAll({
+    const { rows, count } = await articuloRepository.findAndCountAll({
       limit,
       offset,
       search: query.search,
@@ -23,15 +23,15 @@ export const productoInventarioService = {
   },
 
   async getByUuid(uuid) {
-    const prod = await productoInventarioRepository.findByUuid(uuid);
-    if (!prod) throw ApiError.notFound('Producto no encontrado');
-    return prod;
+    const art = await articuloRepository.findByUuid(uuid);
+    if (!art) throw ApiError.notFound('Artículo no encontrado');
+    return art;
   },
 
   async create(payload, actorId) {
     let categoriaId = null;
     if (payload.categoriaUuid) {
-      const cat = await ProductoCategoria.findOne({ where: { uuid: payload.categoriaUuid } });
+      const cat = await ArticuloCategoria.findOne({ where: { uuid: payload.categoriaUuid } });
       if (!cat) throw ApiError.notFound('Categoría no encontrada');
       categoriaId = cat.id;
     }
@@ -42,9 +42,9 @@ export const productoInventarioService = {
       unidadMedidaId = uni.id;
     }
 
-    const producto = await sequelize.transaction(async (t) => {
-      await assertSinDuplicado(Producto, { nombre: payload.nombre }, t, 'Ya existe un producto con ese nombre');
-      return productoInventarioRepository.create(
+    const articulo = await sequelize.transaction(async (t) => {
+      await assertSinDuplicado(Articulo, { nombre: payload.nombre }, t, 'Ya existe un artículo con ese nombre');
+      return articuloRepository.create(
         {
           codigo: payload.codigo || null,
           nombre: payload.nombre,
@@ -62,17 +62,17 @@ export const productoInventarioService = {
         { transaction: t },
       );
     });
-    return { ...producto.toJSON(), advertencias: evaluarMargen(payload.precioVenta, payload.costoCompra) };
+    return { ...articulo.toJSON(), advertencias: evaluarMargen(payload.precioVenta, payload.costoCompra) };
   },
 
   async update(uuid, payload, actorId) {
-    const prod = await this.getByUuid(uuid);
+    const art = await this.getByUuid(uuid);
 
     const data = { ...payload, updatedBy: actorId };
     if (payload.categoriaUuid !== undefined) {
       if (payload.categoriaUuid === null) data.categoriaId = null;
       else {
-        const cat = await ProductoCategoria.findOne({ where: { uuid: payload.categoriaUuid } });
+        const cat = await ArticuloCategoria.findOne({ where: { uuid: payload.categoriaUuid } });
         if (!cat) throw ApiError.notFound('Categoría no encontrada');
         data.categoriaId = cat.id;
       }
@@ -90,19 +90,19 @@ export const productoInventarioService = {
 
     const actualizado = await sequelize.transaction(async (t) => {
       if (payload.nombre) {
-        await assertSinDuplicado(Producto, { nombre: payload.nombre }, t, 'Ya existe un producto con ese nombre', prod.id);
+        await assertSinDuplicado(Articulo, { nombre: payload.nombre }, t, 'Ya existe un artículo con ese nombre', art.id);
       }
-      return productoInventarioRepository.update(prod, data, { transaction: t });
+      return articuloRepository.update(art, data, { transaction: t });
     });
-    const costoCompraFinal = payload.costoCompra !== undefined ? payload.costoCompra : prod.costoCompra;
-    const precioVentaFinal = payload.precioVenta !== undefined ? payload.precioVenta : prod.precioVenta;
+    const costoCompraFinal = payload.costoCompra !== undefined ? payload.costoCompra : art.costoCompra;
+    const precioVentaFinal = payload.precioVenta !== undefined ? payload.precioVenta : art.precioVenta;
     return { ...actualizado.toJSON(), advertencias: evaluarMargen(precioVentaFinal, costoCompraFinal) };
   },
 
   async delete(uuid, actorId) {
-    const prod = await this.getByUuid(uuid);
-    await productoInventarioRepository.softDelete(prod, actorId);
+    const art = await this.getByUuid(uuid);
+    await articuloRepository.softDelete(art, actorId);
   },
 };
 
-export default productoInventarioService;
+export default articuloService;

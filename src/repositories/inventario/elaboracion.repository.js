@@ -1,5 +1,5 @@
 import { Op } from 'sequelize';
-import { Elaboracion, MezclaVersion, Mezcla, MezclaComponente, Producto, UnidadMedida, Almacen, User } from '../../database/associations.js';
+import { Elaboracion, MezclaVersion, Mezcla, MezclaComponente, Articulo, UnidadMedida, Almacen, User } from '../../database/associations.js';
 
 const INCLUDE = [
   {
@@ -11,7 +11,7 @@ const INCLUDE = [
         as: 'mezcla',
         attributes: ['uuid', 'nombre', 'codigo', 'rendimiento'],
         include: [
-          { model: Producto, as: 'productoElaborado', attributes: ['uuid', 'nombre', 'codigo'] },
+          { model: Articulo, as: 'articuloElaborado', attributes: ['uuid', 'nombre', 'codigo'] },
           { model: UnidadMedida, as: 'unidadRendimiento', attributes: ['uuid', 'nombre', 'simbolo'] },
         ],
       },
@@ -19,7 +19,7 @@ const INCLUDE = [
         model: MezclaComponente,
         as: 'componentes',
         include: [
-          { model: Producto, as: 'producto', attributes: ['uuid', 'nombre', 'codigo'] },
+          { model: Articulo, as: 'articulo', attributes: ['uuid', 'nombre', 'codigo'] },
           { model: UnidadMedida, as: 'unidad', attributes: ['uuid', 'nombre', 'simbolo'] },
         ],
       },

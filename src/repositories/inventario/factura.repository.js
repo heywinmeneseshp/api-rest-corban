@@ -1,8 +1,8 @@
 import { Op } from 'sequelize';
-import { Factura, FacturaDetalle, Producto, Proforma, User } from '../../database/associations.js';
+import { Factura, FacturaDetalle, Articulo, Proforma, User } from '../../database/associations.js';
 
 const INCLUDE = [
-  { model: FacturaDetalle, as: 'detalles', include: [{ model: Producto, as: 'producto', attributes: ['uuid', 'nombre', 'codigo'] }] },
+  { model: FacturaDetalle, as: 'detalles', include: [{ model: Articulo, as: 'articulo', attributes: ['uuid', 'nombre', 'codigo'] }] },
   { model: Proforma, as: 'proforma', attributes: ['uuid', 'numero'] },
   { model: User, as: 'usuario', attributes: ['uuid', 'usuario', 'nombre'] },
 ];

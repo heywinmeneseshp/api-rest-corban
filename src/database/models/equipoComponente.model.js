@@ -8,7 +8,7 @@ EquipoComponente.init(
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     uuid: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, allowNull: false, unique: true },
     equipoId: { type: DataTypes.INTEGER, allowNull: false, field: 'equipo_id' },
-    productoId: { type: DataTypes.INTEGER, allowNull: false, field: 'producto_id' },
+    articuloId: { type: DataTypes.INTEGER, allowNull: false, field: 'articulo_id' },
     notas: { type: DataTypes.TEXT, allowNull: true },
   },
   {

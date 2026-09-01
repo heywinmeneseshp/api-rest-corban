@@ -1,9 +1,9 @@
 import { DataTypes, Model } from 'sequelize';
 import { sequelize } from '../connection.js';
 
-export class ProductoCategoria extends Model {}
+export class ArticuloCategoria extends Model {}
 
-ProductoCategoria.init(
+ArticuloCategoria.init(
   {
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     uuid: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, allowNull: false, unique: true },
@@ -17,11 +17,11 @@ ProductoCategoria.init(
   },
   {
     sequelize,
-    modelName: 'ProductoCategoria',
-    tableName: 'producto_categorias',
+    modelName: 'ArticuloCategoria',
+    tableName: 'articulo_categorias',
     underscored: true,
     paranoid: true,
   },
 );
 
-export default ProductoCategoria;
+export default ArticuloCategoria;

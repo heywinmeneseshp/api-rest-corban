@@ -7,7 +7,7 @@ import {
   OrdenDetalle,
   OrdenManoObra,
   OrdenServicio,
-  Producto,
+  Articulo,
   Almacen,
   User,
 } from '../../database/associations.js';
@@ -23,7 +23,7 @@ const INCLUDE = [
     model: OrdenDetalle,
     as: 'detalles',
     include: [
-      { model: Producto, as: 'producto', attributes: ['uuid', 'nombre', 'codigo'] },
+      { model: Articulo, as: 'articulo', attributes: ['uuid', 'nombre', 'codigo'] },
       { model: Almacen, as: 'almacen', attributes: ['uuid', 'nombre'] },
     ],
   },

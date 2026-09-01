@@ -1,14 +1,14 @@
 import { sequelize } from '../../database/connection.js';
 import { proformaRepository } from '../../repositories/inventario/proforma.repository.js';
-import { Proforma, ProformaDetalle, Producto, Factura } from '../../database/associations.js';
+import { Proforma, ProformaDetalle, Articulo, Factura } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { generarCorrelativo } from '../../utils/correlativo.js';
 import { facturaRepository } from '../../repositories/inventario/factura.repository.js';
 
-async function resolveProducto(uuid) {
-  const p = await Producto.findOne({ where: { uuid } });
-  if (!p) throw ApiError.notFound('Producto no encontrado');
+async function resolveArticulo(uuid) {
+  const p = await Articulo.findOne({ where: { uuid } });
+  if (!p) throw ApiError.notFound('Artículo no encontrado');
   return p;
 }
 
@@ -22,7 +22,7 @@ function calcularTotales(detallesPayload, descuentoGlobal, impuestosGlobal) {
     const sub = cantidad * precio - descuento;
     if (sub < 0) throw ApiError.badRequest('Subtotal de detalle no puede ser negativo');
     subtotal += sub;
-    detallesCalculados.push({ cantidad, precioUnitario: precio, descuento, subtotal: sub, productoUuid: det.productoUuid, observaciones: det.observaciones || null });
+    detallesCalculados.push({ cantidad, precioUnitario: precio, descuento, subtotal: sub, articuloUuid: det.articuloUuid, observaciones: det.observaciones || null });
   }
   const total = subtotal - Number(descuentoGlobal || 0) + Number(impuestosGlobal || 0);
   return { subtotal, total, detallesCalculados };
@@ -80,10 +80,10 @@ export const proformaService = {
 
       const detalles = [];
       for (const calc of detallesCalculados) {
-        const producto = await resolveProducto(calc.productoUuid);
+        const articulo = await resolveArticulo(calc.articuloUuid);
         detalles.push({
           proformaId: proforma.id,
-          productoId: producto.id,
+          articuloId: articulo.id,
           cantidad: calc.cantidad,
           precioUnitario: calc.precioUnitario,
           descuento: calc.descuento,
@@ -142,10 +142,10 @@ export const proformaService = {
         await ProformaDetalle.destroy({ where: { proformaId: proforma.id }, transaction: t });
         const toCreate = [];
         for (const calc of nuevosDetalles) {
-          const producto = await resolveProducto(calc.productoUuid);
+          const articulo = await resolveArticulo(calc.articuloUuid);
           toCreate.push({
             proformaId: proforma.id,
-            productoId: producto.id,
+            articuloId: articulo.id,
             cantidad: calc.cantidad,
             precioUnitario: calc.precioUnitario,
             descuento: calc.descuento,
@@ -208,7 +208,7 @@ export const proformaService = {
 
       const detalles = proforma.detalles.map((d) => ({
         facturaId: factura.id,
-        productoId: d.productoId,
+        articuloId: d.articuloId,
         cantidad: d.cantidad,
         precioUnitario: d.precioUnitario,
         descuento: d.descuento,

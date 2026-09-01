@@ -8,7 +8,7 @@ OrdenDetalle.init(
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     uuid: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, allowNull: false, unique: true },
     ordenId: { type: DataTypes.INTEGER, allowNull: false, field: 'orden_id' },
-    productoId: { type: DataTypes.INTEGER, allowNull: false, field: 'producto_id' },
+    articuloId: { type: DataTypes.INTEGER, allowNull: false, field: 'articulo_id' },
     cantidad: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
     costoUnitario: { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 0, field: 'costo_unitario' },
     costoTotal: { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 0, field: 'costo_total' },

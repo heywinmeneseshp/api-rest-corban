@@ -8,7 +8,7 @@ export const createMovimientoSchema = Joi.object({
     tipo: Joi.string().valid(...tipos).required(),
     fecha: Joi.date().iso().required(),
     almacenUuid: Joi.string().uuid().required(),
-    productoUuid: Joi.string().uuid().required(),
+    articuloUuid: Joi.string().uuid().required(),
     cantidad: Joi.number().positive().required(),
     unidadUuid: Joi.string().uuid().allow(null),
     costoUnitario: Joi.number().min(0).default(0),
@@ -27,7 +27,7 @@ export const createTransferenciaSchema = Joi.object({
     fecha: Joi.date().iso().required(),
     almacenOrigenUuid: Joi.string().uuid().required(),
     almacenDestinoUuid: Joi.string().uuid().required(),
-    productoUuid: Joi.string().uuid().required(),
+    articuloUuid: Joi.string().uuid().required(),
     cantidad: Joi.number().positive().required(),
     unidadUuid: Joi.string().uuid().allow(null),
     costoUnitario: Joi.number().min(0).default(0),
@@ -44,7 +44,7 @@ export const listMovimientoSchema = Joi.object({
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(50),
     almacenUuid: Joi.string().uuid(),
-    productoUuid: Joi.string().uuid(),
+    articuloUuid: Joi.string().uuid(),
     tipo: Joi.string().valid(...tipos),
     fechaDesde: Joi.date().iso(),
     fechaHasta: Joi.date().iso(),
@@ -63,7 +63,7 @@ export const existenciasSchema = Joi.object({
   params: Joi.object({}),
   query: Joi.object({
     almacenUuid: Joi.string().uuid(),
-    productoUuid: Joi.string().uuid(),
+    articuloUuid: Joi.string().uuid(),
   }),
 });
 
@@ -71,7 +71,7 @@ export const kardexSchema = Joi.object({
   body: Joi.object({}),
   params: Joi.object({}),
   query: Joi.object({
-    productoUuid: Joi.string().uuid().required(),
+    articuloUuid: Joi.string().uuid().required(),
     almacenUuid: Joi.string().uuid(),
     fechaDesde: Joi.date().iso(),
     fechaHasta: Joi.date().iso(),

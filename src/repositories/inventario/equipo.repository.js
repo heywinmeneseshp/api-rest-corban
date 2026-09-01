@@ -1,5 +1,5 @@
 import { Op } from 'sequelize';
-import { Equipo, EquipoComponente, Producto, Almacen, User } from '../../database/associations.js';
+import { Equipo, EquipoComponente, Articulo, Almacen, User } from '../../database/associations.js';
 
 const LIST_INCLUDE = [
   { model: Almacen, as: 'ubicacion', attributes: ['uuid', 'nombre', 'codigo'] },
@@ -14,7 +14,7 @@ const DETAIL_INCLUDE = [
   { model: User, as: 'creadoPor', attributes: ['uuid', 'usuario'] },
   { model: User, as: 'actualizadoPor', attributes: ['uuid', 'usuario'] },
   {
-    model: Producto,
+    model: Articulo,
     as: 'repuestosCompatibles',
     attributes: ['uuid', 'nombre', 'codigo'],
     through: { attributes: ['uuid', 'notas'] },
@@ -22,7 +22,7 @@ const DETAIL_INCLUDE = [
   {
     model: EquipoComponente,
     as: 'componentes',
-    include: [{ model: Producto, as: 'producto', attributes: ['uuid', 'nombre', 'codigo'] }],
+    include: [{ model: Articulo, as: 'articulo', attributes: ['uuid', 'nombre', 'codigo'] }],
   },
 ];
 
@@ -80,16 +80,16 @@ export const equipoRepository = {
     return equipo;
   },
 
-  async addComponente(equipoId, productoId, notas, { transaction } = {}) {
-    return EquipoComponente.create({ equipoId, productoId, notas: notas || null }, { transaction });
+  async addComponente(equipoId, articuloId, notas, { transaction } = {}) {
+    return EquipoComponente.create({ equipoId, articuloId, notas: notas || null }, { transaction });
   },
 
-  async removeComponente(equipoId, productoId, { transaction } = {}) {
-    return EquipoComponente.destroy({ where: { equipoId, productoId }, transaction });
+  async removeComponente(equipoId, articuloId, { transaction } = {}) {
+    return EquipoComponente.destroy({ where: { equipoId, articuloId }, transaction });
   },
 
   async getComponentes(equipoId) {
-    return EquipoComponente.findAll({ where: { equipoId }, include: [{ model: Producto, as: 'producto' }] });
+    return EquipoComponente.findAll({ where: { equipoId }, include: [{ model: Articulo, as: 'articulo' }] });
   },
 };
 

@@ -1,21 +1,21 @@
 import { sequelize } from '../../database/connection.js';
 import { movimientoRepository } from '../../repositories/inventario/movimiento.repository.js';
-import { Almacen, Producto, UnidadMedida, Motivo, UnidadConversion } from '../../database/associations.js';
+import { Almacen, Articulo, UnidadMedida, Motivo, UnidadConversion } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { assertStockSuficiente, registrarMovimientoEnCache, TIPOS_SALIDA } from './stock.helper.js';
 
-// Convierte cantidad a unidad base del producto (usa factor de conversión si unidad distinta)
-async function toBaseCantidad(producto, unidadUuid, cantidad) {
-  if (!unidadUuid || !producto.unidadMedidaId) return Number(cantidad);
+// Convierte cantidad a unidad base del artículo (usa factor de conversión si unidad distinta)
+async function toBaseCantidad(articulo, unidadUuid, cantidad) {
+  if (!unidadUuid || !articulo.unidadMedidaId) return Number(cantidad);
   const unidad = await UnidadMedida.findOne({ where: { uuid: unidadUuid } });
-  if (!unidad || unidad.id === producto.unidadMedidaId) return Number(cantidad);
+  if (!unidad || unidad.id === articulo.unidadMedidaId) return Number(cantidad);
 
   // Busca conversión directa
   const conv = await UnidadConversion.findOne({
-    where: { unidadOrigenId: unidad.id, unidadDestinoId: producto.unidadMedidaId },
+    where: { unidadOrigenId: unidad.id, unidadDestinoId: articulo.unidadMedidaId },
   });
-  if (!conv) throw ApiError.badRequest(`No hay conversión de ${unidad.codigo} a unidad base del producto`);
+  if (!conv) throw ApiError.badRequest(`No hay conversión de ${unidad.codigo} a unidad base del artículo`);
   return Number(cantidad) * Number(conv.factor);
 }
 
@@ -26,7 +26,7 @@ export const movimientoService = {
       limit,
       offset,
       almacenUuid: query.almacenUuid,
-      productoUuid: query.productoUuid,
+      articuloUuid: query.articuloUuid,
       tipo: query.tipo,
       fechaDesde: query.fechaDesde,
       fechaHasta: query.fechaHasta,
@@ -44,8 +44,8 @@ export const movimientoService = {
   async create(payload, actorId) {
     const almacen = await Almacen.findOne({ where: { uuid: payload.almacenUuid } });
     if (!almacen) throw ApiError.notFound('Almacén no encontrado');
-    const producto = await Producto.findOne({ where: { uuid: payload.productoUuid } });
-    if (!producto) throw ApiError.notFound('Producto no encontrado');
+    const articulo = await Articulo.findOne({ where: { uuid: payload.articuloUuid } });
+    if (!articulo) throw ApiError.notFound('Artículo no encontrado');
 
     let unidadId = null;
     if (payload.unidadUuid) {
@@ -69,16 +69,16 @@ export const movimientoService = {
       throw ApiError.badRequest('Los ajustes requieren motivo');
     }
 
-    const cantidadBase = await toBaseCantidad(producto, payload.unidadUuid, payload.cantidad);
+    const cantidadBase = await toBaseCantidad(articulo, payload.unidadUuid, payload.cantidad);
     const costoTotal = Number(payload.costoUnitario || 0) * Number(payload.cantidad);
 
     return sequelize.transaction(async (t) => {
       // Valida stock para salidas (bloqueo de fila dentro de la misma transacción
       // en la que se inserta el movimiento, para que check e insert sean atómicos)
       if (TIPOS_SALIDA.includes(payload.tipo)) {
-        await assertStockSuficiente(almacen.id, producto.id, cantidadBase, {
+        await assertStockSuficiente(almacen.id, articulo.id, cantidadBase, {
           transaction: t,
-          nombreProducto: producto.nombre,
+          nombreArticulo: articulo.nombre,
           nombreAlmacen: almacen.nombre,
         });
       }
@@ -89,7 +89,7 @@ export const movimientoService = {
           tipo: payload.tipo,
           fecha: payload.fecha,
           almacenId: almacen.id,
-          productoId: producto.id,
+          articuloId: articulo.id,
           cantidad: payload.cantidad,
           cantidadBase,
           unidadId,
@@ -104,7 +104,7 @@ export const movimientoService = {
         { transaction: t },
       );
 
-      await registrarMovimientoEnCache(almacen.id, producto.id, payload.tipo, cantidadBase, t);
+      await registrarMovimientoEnCache(almacen.id, articulo.id, payload.tipo, cantidadBase, t);
 
       return movimiento;
     });
@@ -116,10 +116,10 @@ export const movimientoService = {
     if (!almacenOrigen || !almacenDestino) throw ApiError.notFound('Almacén origen o destino no encontrado');
     if (almacenOrigen.id === almacenDestino.id) throw ApiError.badRequest('Origen y destino no pueden ser el mismo');
 
-    const producto = await Producto.findOne({ where: { uuid: payload.productoUuid } });
-    if (!producto) throw ApiError.notFound('Producto no encontrado');
+    const articulo = await Articulo.findOne({ where: { uuid: payload.articuloUuid } });
+    if (!articulo) throw ApiError.notFound('Artículo no encontrado');
 
-    const cantidadBase = await toBaseCantidad(producto, payload.unidadUuid, payload.cantidad);
+    const cantidadBase = await toBaseCantidad(articulo, payload.unidadUuid, payload.cantidad);
 
     let unidadId = null;
     if (payload.unidadUuid) {
@@ -130,9 +130,9 @@ export const movimientoService = {
     const costoTotal = Number(payload.costoUnitario || 0) * Number(payload.cantidad);
 
     return sequelize.transaction(async (t) => {
-      await assertStockSuficiente(almacenOrigen.id, producto.id, cantidadBase, {
+      await assertStockSuficiente(almacenOrigen.id, articulo.id, cantidadBase, {
         transaction: t,
-        nombreProducto: producto.nombre,
+        nombreArticulo: articulo.nombre,
         nombreAlmacen: almacenOrigen.nombre,
       });
 
@@ -142,7 +142,7 @@ export const movimientoService = {
           tipo: 'TRANSFERENCIA_SALIDA',
           fecha: payload.fecha,
           almacenId: almacenOrigen.id,
-          productoId: producto.id,
+          articuloId: articulo.id,
           cantidad: payload.cantidad,
           cantidadBase,
           unidadId,
@@ -160,7 +160,7 @@ export const movimientoService = {
           tipo: 'TRANSFERENCIA_ENTRADA',
           fecha: payload.fecha,
           almacenId: almacenDestino.id,
-          productoId: producto.id,
+          articuloId: articulo.id,
           cantidad: payload.cantidad,
           cantidadBase,
           unidadId,
@@ -173,8 +173,8 @@ export const movimientoService = {
         { transaction: t },
       );
 
-      await registrarMovimientoEnCache(almacenOrigen.id, producto.id, 'TRANSFERENCIA_SALIDA', cantidadBase, t);
-      await registrarMovimientoEnCache(almacenDestino.id, producto.id, 'TRANSFERENCIA_ENTRADA', cantidadBase, t);
+      await registrarMovimientoEnCache(almacenOrigen.id, articulo.id, 'TRANSFERENCIA_SALIDA', cantidadBase, t);
+      await registrarMovimientoEnCache(almacenDestino.id, articulo.id, 'TRANSFERENCIA_ENTRADA', cantidadBase, t);
 
       return { salida, entrada };
     });
@@ -183,14 +183,14 @@ export const movimientoService = {
   async getExistencias(query) {
     return movimientoRepository.getExistencias({
       almacenUuid: query.almacenUuid,
-      productoUuid: query.productoUuid,
+      articuloUuid: query.articuloUuid,
     });
   },
 
   async getKardex(query) {
-    if (!query.productoUuid) throw ApiError.badRequest('productoUuid es requerido para kardex');
+    if (!query.articuloUuid) throw ApiError.badRequest('articuloUuid es requerido para kardex');
     return movimientoRepository.getKardex({
-      productoUuid: query.productoUuid,
+      articuloUuid: query.articuloUuid,
       almacenUuid: query.almacenUuid,
       fechaDesde: query.fechaDesde,
       fechaHasta: query.fechaHasta,

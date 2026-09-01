@@ -14,7 +14,7 @@ MovimientoInventario.init(
     },
     fecha: { type: DataTypes.DATEONLY, allowNull: false },
     almacenId: { type: DataTypes.INTEGER, allowNull: false, field: 'almacen_id' },
-    productoId: { type: DataTypes.INTEGER, allowNull: false, field: 'producto_id' },
+    articuloId: { type: DataTypes.INTEGER, allowNull: false, field: 'articulo_id' },
     cantidad: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
     cantidadBase: { type: DataTypes.DECIMAL(12, 2), allowNull: false, field: 'cantidad_base' },
     unidadId: { type: DataTypes.INTEGER, allowNull: true, field: 'unidad_id' },

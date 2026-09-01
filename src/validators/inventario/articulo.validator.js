@@ -1,6 +1,6 @@
 import Joi from 'joi';
 
-export const createProductoInventarioSchema = Joi.object({
+export const createArticuloSchema = Joi.object({
   body: Joi.object({
     codigo: Joi.string().trim().max(20).allow(null, ''),
     nombre: Joi.string().trim().max(150).required(),
@@ -18,7 +18,7 @@ export const createProductoInventarioSchema = Joi.object({
   query: Joi.object({}),
 });
 
-export const updateProductoInventarioSchema = Joi.object({
+export const updateArticuloSchema = Joi.object({
   body: Joi.object({
     codigo: Joi.string().trim().max(20).allow(null, ''),
     nombre: Joi.string().trim().max(150),
@@ -36,21 +36,21 @@ export const updateProductoInventarioSchema = Joi.object({
   query: Joi.object({}),
 });
 
-export const getProductoSchema = Joi.object({
+export const getArticuloSchema = Joi.object({
   body: Joi.object({}),
   params: Joi.object({ uuid: Joi.string().uuid().required() }),
   query: Joi.object({}),
 });
 
-export const listProductoSchema = Joi.object({
+export const listArticuloSchema = Joi.object({
   body: Joi.object({}),
   params: Joi.object({}),
   query: Joi.object({
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(50),
     search: Joi.string().allow('', null),
-    // Filtra por el tipo de la CATEGORÍA del producto (producto ya no tiene
-    // su propio `tipo` — ver producto.model.js).
+    // Filtra por el tipo de la CATEGORÍA del artículo (el artículo ya no
+    // tiene su propio `tipo` — ver articulo.model.js).
     tipo: Joi.string().valid('INSUMO', 'REPUESTO', 'ELABORADO', 'GENERAL'),
     categoriaUuid: Joi.string().uuid(),
     unidadMedidaUuid: Joi.string().uuid(),

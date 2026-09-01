@@ -3,7 +3,7 @@ import Joi from 'joi';
 const uuidParam = Joi.string().guid({ version: 'uuidv4' }).required();
 
 const detalleSchema = Joi.object({
-  productoUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
+  articuloUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
   cantidad: Joi.number().positive().required(),
   precioUnitario: Joi.number().min(0).required().label('precioUnitario'),
   precio: Joi.number().min(0).label('precio'),

@@ -1,30 +1,30 @@
 import { Op } from 'sequelize';
-import { ProductoCategoria } from '../../database/associations.js';
+import { ArticuloCategoria } from '../../database/associations.js';
 
-export const productoCategoriaRepository = {
+export const articuloCategoriaRepository = {
   async findAndCountAll({ limit, offset, search, tipo, estado }) {
     const where = {
       ...(search ? { nombre: { [Op.like]: `%${search}%` } } : {}),
       ...(tipo ? { tipo } : {}),
       ...(estado !== undefined ? { estado } : {}),
     };
-    return ProductoCategoria.findAndCountAll({ where, limit, offset, order: [['nombre', 'ASC']] });
+    return ArticuloCategoria.findAndCountAll({ where, limit, offset, order: [['nombre', 'ASC']] });
   },
 
   findByUuid(uuid) {
-    return ProductoCategoria.findOne({ where: { uuid } });
+    return ArticuloCategoria.findOne({ where: { uuid } });
   },
 
   findByNombre(nombre) {
-    return ProductoCategoria.findOne({ where: { nombre } });
+    return ArticuloCategoria.findOne({ where: { nombre } });
   },
 
   findByNombreIncludingDeleted(nombre) {
-    return ProductoCategoria.findOne({ where: { nombre }, paranoid: false });
+    return ArticuloCategoria.findOne({ where: { nombre }, paranoid: false });
   },
 
   create(data, { transaction } = {}) {
-    return ProductoCategoria.create(data, { transaction });
+    return ArticuloCategoria.create(data, { transaction });
   },
 
   async update(categoria, data, { transaction } = {}) {
@@ -44,4 +44,4 @@ export const productoCategoriaRepository = {
   },
 };
 
-export default productoCategoriaRepository;
+export default articuloCategoriaRepository;

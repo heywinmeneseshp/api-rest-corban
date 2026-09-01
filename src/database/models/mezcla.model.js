@@ -10,7 +10,7 @@ Mezcla.init(
     codigo: { type: DataTypes.STRING(50), allowNull: true, unique: true },
     nombre: { type: DataTypes.STRING(150), allowNull: false, unique: true },
     descripcion: { type: DataTypes.TEXT, allowNull: true },
-    productoElaboradoId: { type: DataTypes.INTEGER, allowNull: false, field: 'producto_elaborado_id' },
+    articuloElaboradoId: { type: DataTypes.INTEGER, allowNull: false, field: 'articulo_elaborado_id' },
     unidadRendimientoId: { type: DataTypes.INTEGER, allowNull: true, field: 'unidad_rendimiento_id' },
     rendimiento: { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 1 },
     precioVenta: { type: DataTypes.DECIMAL(12, 2), allowNull: true, defaultValue: 0, field: 'precio_venta' },

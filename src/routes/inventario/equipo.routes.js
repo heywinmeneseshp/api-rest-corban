@@ -23,6 +23,6 @@ router.delete('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_EQUIPOS_ELIMINAR
 
 // Repuestos compatibles M2M
 router.post('/:uuid/componentes', auth, permission(PERMISSIONS.INVENTARIO_EQUIPOS_EDITAR), validate(addComponenteSchema), equipoController.addComponente);
-router.delete('/:uuid/componentes/:productoUuid', auth, permission(PERMISSIONS.INVENTARIO_EQUIPOS_EDITAR), validate(removeComponenteSchema), equipoController.removeComponente);
+router.delete('/:uuid/componentes/:articuloUuid', auth, permission(PERMISSIONS.INVENTARIO_EQUIPOS_EDITAR), validate(removeComponenteSchema), equipoController.removeComponente);
 
 export default router;

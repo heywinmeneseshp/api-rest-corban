@@ -3,7 +3,7 @@ import Joi from 'joi';
 const uuidParam = Joi.string().guid({ version: 'uuidv4' }).required();
 
 const componenteSchema = Joi.object({
-  productoUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
+  articuloUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
   cantidad: Joi.number().positive().required(),
   unidadUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
 });
@@ -13,7 +13,7 @@ export const createMezclaSchema = Joi.object({
     codigo: Joi.string().trim().max(50).allow(null, ''),
     nombre: Joi.string().trim().max(150).required(),
     descripcion: Joi.string().allow(null, '').max(1000),
-    productoElaboradoUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
+    articuloElaboradoUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
     unidadRendimientoUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
     rendimiento: Joi.number().positive().required(),
     precioVenta: Joi.number().min(0).allow(null).default(0),
@@ -29,7 +29,7 @@ export const updateMezclaSchema = Joi.object({
     codigo: Joi.string().trim().max(50).allow(null, ''),
     nombre: Joi.string().trim().max(150),
     descripcion: Joi.string().allow(null, '').max(1000),
-    productoElaboradoUuid: Joi.string().guid({ version: 'uuidv4' }),
+    articuloElaboradoUuid: Joi.string().guid({ version: 'uuidv4' }),
     unidadRendimientoUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
     rendimiento: Joi.number().positive(),
     precioVenta: Joi.number().min(0).allow(null),
@@ -54,6 +54,6 @@ export const listMezclaSchema = Joi.object({
     limit: Joi.number().integer().min(1).max(100).default(50),
     search: Joi.string().allow('', null),
     estado: Joi.boolean(),
-    productoElaboradoUuid: Joi.string().guid({ version: 'uuidv4' }),
+    articuloElaboradoUuid: Joi.string().guid({ version: 'uuidv4' }),
   }),
 });

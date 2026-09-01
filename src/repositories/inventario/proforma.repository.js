@@ -1,8 +1,8 @@
 import { Op } from 'sequelize';
-import { Proforma, ProformaDetalle, Producto, User } from '../../database/associations.js';
+import { Proforma, ProformaDetalle, Articulo, User } from '../../database/associations.js';
 
 const LIST_INCLUDE = [
-  { model: ProformaDetalle, as: 'detalles', include: [{ model: Producto, as: 'producto', attributes: ['uuid', 'nombre', 'codigo'] }] },
+  { model: ProformaDetalle, as: 'detalles', include: [{ model: Articulo, as: 'articulo', attributes: ['uuid', 'nombre', 'codigo'] }] },
   { model: User, as: 'usuario', attributes: ['uuid', 'usuario', 'nombre'] },
 ];
 
@@ -10,7 +10,7 @@ const DETAIL_INCLUDE = [
   {
     model: ProformaDetalle,
     as: 'detalles',
-    include: [{ model: Producto, as: 'producto', attributes: ['uuid', 'nombre', 'codigo', 'precioVenta', 'costoCompra'] }],
+    include: [{ model: Articulo, as: 'articulo', attributes: ['uuid', 'nombre', 'codigo', 'precioVenta', 'costoCompra'] }],
   },
   { model: User, as: 'usuario', attributes: ['uuid', 'usuario', 'nombre'] },
   { model: User, as: 'creadoPor', attributes: ['uuid', 'usuario'] },

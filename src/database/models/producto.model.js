@@ -10,18 +10,11 @@ Producto.init(
     // Código del combo en Logística (consecutivo), cuando aplica.
     codigo: { type: DataTypes.STRING(20), allowNull: true },
     nombre: { type: DataTypes.STRING(150), allowNull: false, unique: true },
-    descripcion: { type: DataTypes.TEXT, allowNull: true },
-    // El "tipo" de un producto (INSUMO/REPUESTO/ELABORADO/GENERAL) es
-    // SIEMPRE el de su categoría — se eliminó la columna propia que
-    // duplicaba el mismo ENUM sin ninguna validación que las mantuviera
-    // sincronizadas (ver migración 20260901000001-remove-tipo-productos).
-    categoriaId: { type: DataTypes.INTEGER, allowNull: true, field: 'categoria_id' },
-    unidadMedidaId: { type: DataTypes.INTEGER, allowNull: true, field: 'unidad_medida_id' },
-    costoCompra: { type: DataTypes.DECIMAL(12, 2), allowNull: true, defaultValue: 0, field: 'costo_compra' },
-    precioVenta: { type: DataTypes.DECIMAL(12, 2), allowNull: true, defaultValue: 0, field: 'precio_venta' },
-    manejaInventario: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true, field: 'maneja_inventario' },
-    stockMinimo: { type: DataTypes.DECIMAL(12, 2), allowNull: true, defaultValue: 0, field: 'stock_minimo' },
-    stockMaximo: { type: DataTypes.DECIMAL(12, 2), allowNull: true, field: 'stock_maximo' },
+    // Exclusivo de Maestros/agrícola (combos sincronizados de Logística) —
+    // las columnas de Inventarios (descripcion, categoria, unidad de
+    // medida, costo/precio, stock, tipo) se movieron a la tabla `articulos`,
+    // una entidad independiente (ver articulo.model.js y migraciones
+    // 20260901000002/3).
     pesoNeto: { type: DataTypes.FLOAT, allowNull: true, field: 'peso_neto' },
     pesoBruto: { type: DataTypes.FLOAT, allowNull: true, field: 'peso_bruto' },
     cajasPorPalet: { type: DataTypes.INTEGER, allowNull: true, field: 'cajas_por_palet' },
