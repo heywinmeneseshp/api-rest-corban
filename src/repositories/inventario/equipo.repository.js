@@ -1,13 +1,15 @@
 import { Op } from 'sequelize';
-import { Equipo, EquipoComponente, Articulo, Almacen, User } from '../../database/associations.js';
+import { Equipo, EquipoComponente, Articulo, Almacen, User, EquipoTipo } from '../../database/associations.js';
 
 const LIST_INCLUDE = [
+  { model: EquipoTipo, as: 'tipo', attributes: ['uuid', 'nombre'] },
   { model: Almacen, as: 'ubicacion', attributes: ['uuid', 'nombre', 'codigo'] },
   { model: Almacen, as: 'centroCosto', attributes: ['uuid', 'nombre', 'codigo'] },
   { model: User, as: 'responsable', attributes: ['uuid', 'usuario', 'nombre'] },
 ];
 
 const DETAIL_INCLUDE = [
+  { model: EquipoTipo, as: 'tipo', attributes: ['uuid', 'nombre'] },
   { model: Almacen, as: 'ubicacion', attributes: ['uuid', 'nombre', 'codigo'] },
   { model: Almacen, as: 'centroCosto', attributes: ['uuid', 'nombre', 'codigo'] },
   { model: User, as: 'responsable', attributes: ['uuid', 'usuario', 'nombre'] },
@@ -27,7 +29,7 @@ const DETAIL_INCLUDE = [
 ];
 
 export const equipoRepository = {
-  async findAndCountAll({ limit, offset, search, tipo, estado, ubicacionUuid, centroCostoUuid }) {
+  async findAndCountAll({ limit, offset, search, tipoUuid, estado, ubicacionUuid, centroCostoUuid }) {
     const where = {};
     if (search) {
       where[Op.or] = [
@@ -36,7 +38,10 @@ export const equipoRepository = {
         { marca: { [Op.like]: `%${search}%` } },
       ];
     }
-    if (tipo) where.tipo = tipo;
+    if (tipoUuid) {
+      const t = await EquipoTipo.findOne({ where: { uuid: tipoUuid } });
+      where.tipoId = t ? t.id : -1;
+    }
     if (estado) where.estado = estado;
     if (ubicacionUuid) {
       const alm = await Almacen.findOne({ where: { uuid: ubicacionUuid } });
@@ -56,8 +61,8 @@ export const equipoRepository = {
     });
   },
 
-  findByUuid(uuid) {
-    return Equipo.findOne({ where: { uuid }, include: DETAIL_INCLUDE });
+  findByUuid(uuid, { transaction } = {}) {
+    return Equipo.findOne({ where: { uuid }, include: DETAIL_INCLUDE, transaction });
   },
 
   findByCodigo(codigo) {

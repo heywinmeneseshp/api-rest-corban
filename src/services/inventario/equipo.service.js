@@ -1,6 +1,6 @@
 import { sequelize } from '../../database/connection.js';
 import { equipoRepository } from '../../repositories/inventario/equipo.repository.js';
-import { Almacen, Articulo, User } from '../../database/associations.js';
+import { Almacen, Articulo, User, EquipoTipo } from '../../database/associations.js';
 import { EquipoComponente } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
@@ -32,6 +32,20 @@ async function resolveUser(uuid) {
   return u;
 }
 
+// El tipo de equipo era un ENUM fijo en código (default 'OTRO') — ahora es
+// un catálogo editable (ver equipoTipo.model.js). Si no se elige uno, se
+// usa "Otro" (find-or-create, para no depender de que el seed inicial de la
+// migración siga existiendo).
+async function resolveTipo(uuid) {
+  if (uuid) {
+    const t = await EquipoTipo.findOne({ where: { uuid } });
+    if (!t) throw ApiError.notFound('Tipo de equipo no encontrado');
+    return t;
+  }
+  const [otro] = await EquipoTipo.findOrCreate({ where: { nombre: 'Otro' }, defaults: { nombre: 'Otro' } });
+  return otro;
+}
+
 export const equipoService = {
   async list(query) {
     const { page, limit, offset } = getPagination(query);
@@ -39,7 +53,7 @@ export const equipoService = {
       limit,
       offset,
       search: query.search,
-      tipo: query.tipo,
+      tipoUuid: query.tipoUuid,
       estado: query.estado,
       ubicacionUuid: query.ubicacionUuid,
       centroCostoUuid: query.centroCostoUuid,
@@ -60,6 +74,7 @@ export const equipoService = {
     const ubicacion = await resolveAlmacen(payload.ubicacionUuid, 'Ubicación (almacén)', 'ALMACEN');
     const centroCosto = await resolveAlmacen(payload.centroCostoUuid, 'Centro de costo', 'CENTRO_COSTO');
     const responsable = await resolveUser(payload.responsableUuid);
+    const tipo = await resolveTipo(payload.tipoUuid);
 
     return sequelize.transaction(async (t) => {
       const equipo = await equipoRepository.create(
@@ -67,7 +82,7 @@ export const equipoService = {
           codigo: payload.codigo,
           nombre: payload.nombre,
           descripcion: payload.descripcion || null,
-          tipo: payload.tipo || 'OTRO',
+          tipoId: tipo.id,
           marca: payload.marca || null,
           modelo: payload.modelo || null,
           serie: payload.serie || null,
@@ -91,7 +106,7 @@ export const equipoService = {
         }
       }
 
-      return equipoRepository.findByUuid(equipo.uuid);
+      return equipoRepository.findByUuid(equipo.uuid, { transaction: t });
     });
   },
 
@@ -130,11 +145,17 @@ export const equipoService = {
       }
     }
 
+    let tipoId = equipo.tipoId;
+    if (payload.tipoUuid !== undefined) {
+      const tipo = await resolveTipo(payload.tipoUuid);
+      tipoId = tipo.id;
+    }
+
     const data = {
       ...(payload.codigo ? { codigo: payload.codigo } : {}),
       ...(payload.nombre ? { nombre: payload.nombre } : {}),
       ...(payload.descripcion !== undefined ? { descripcion: payload.descripcion || null } : {}),
-      ...(payload.tipo ? { tipo: payload.tipo } : {}),
+      tipoId,
       ...(payload.marca !== undefined ? { marca: payload.marca || null } : {}),
       ...(payload.modelo !== undefined ? { modelo: payload.modelo || null } : {}),
       ...(payload.serie !== undefined ? { serie: payload.serie || null } : {}),
@@ -163,7 +184,7 @@ export const equipoService = {
         }
       }
 
-      return equipoRepository.findByUuid(uuid);
+      return equipoRepository.findByUuid(uuid, { transaction: t });
     });
   },
 

@@ -52,6 +52,7 @@ import { Elaboracion } from './models/elaboracion.model.js';
 import { Proforma } from './models/proforma.model.js';
 import { ProformaDetalle } from './models/proformaDetalle.model.js';
 import { Equipo } from './models/equipo.model.js';
+import { EquipoTipo } from './models/equipoTipo.model.js';
 import { EquipoComponente } from './models/equipoComponente.model.js';
 import { PlanMantenimiento } from './models/planMantenimiento.model.js';
 import { ProgramacionMantenimiento } from './models/programacionMantenimiento.model.js';
@@ -449,6 +450,9 @@ export const setupAssociations = () => {
   withAuditAssociationsNoDelete(Factura);
 
   // Inventarios - FASE 5: Equipos + repuestos compatibles
+  Equipo.belongsTo(EquipoTipo, { foreignKey: 'tipoId', as: 'tipo' });
+  EquipoTipo.hasMany(Equipo, { foreignKey: 'tipoId', as: 'equipos' });
+  withAuditAssociations(EquipoTipo);
   Equipo.belongsTo(Almacen, { foreignKey: 'ubicacionId', as: 'ubicacion' });
   Almacen.hasMany(Equipo, { foreignKey: 'ubicacionId', as: 'equiposUbicados' });
   Equipo.belongsTo(Almacen, { foreignKey: 'centroCostoId', as: 'centroCosto' });
@@ -566,6 +570,7 @@ export {
   Proforma,
   ProformaDetalle,
   Equipo,
+  EquipoTipo,
   EquipoComponente,
   PlanMantenimiento,
   ProgramacionMantenimiento,

@@ -10,11 +10,9 @@ Equipo.init(
     codigo: { type: DataTypes.STRING(50), allowNull: false, unique: true },
     nombre: { type: DataTypes.STRING(150), allowNull: false },
     descripcion: { type: DataTypes.TEXT, allowNull: true },
-    tipo: {
-      type: DataTypes.ENUM('TRACTOR', 'VEHICULO', 'MAQUINARIA', 'EQUIPO', 'BOMBA', 'OTRO'),
-      allowNull: false,
-      defaultValue: 'OTRO',
-    },
+    // Antes ENUM fijo en código — ahora catálogo editable (ver
+    // equipoTipo.model.js), el usuario puede crear tipos desde un modal.
+    tipoId: { type: DataTypes.INTEGER, allowNull: true, field: 'tipo_id' },
     marca: { type: DataTypes.STRING(100), allowNull: true },
     modelo: { type: DataTypes.STRING(100), allowNull: true },
     serie: { type: DataTypes.STRING(100), allowNull: true },
