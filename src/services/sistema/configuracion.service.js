@@ -10,7 +10,7 @@ export const CLAVE_MARCA_APP = 'marca_app';
 export const CLAVE_LABOR_REVISOR_CC = 'sanidad_vegetal_revisor_cc';
 
 // "Cajas de 20kg" es el nombre convencional de la unidad, pero el peso neto
-// real de referencia es otro (ej. 18.16) — configurable en vez de fijo por
+// real de referencia es otro (ej. 18.6) — configurable en vez de fijo por
 // si en el futuro cambia el estándar. Usado para convertir las cajas de
 // Programación de Corte (que vienen en cajas del producto real, con su
 // propio peso neto) a esta unidad histórica de Producción Semanal.

@@ -2,6 +2,7 @@ import { parseBulkFile } from '../../utils/bulkFileParser.js';
 import { programacionCorteRepository } from '../../repositories/agricola/programacionCorte.repository.js';
 import { productoRepository } from '../../repositories/agricola/producto.repository.js';
 import { produccionSemanalRepository } from '../../repositories/agricola/produccionSemanal.repository.js';
+import { productoService } from './producto.service.js';
 import { Finca, Semana } from '../../database/associations.js';
 import { sequelize } from '../../database/connection.js';
 import { ApiError } from '../../utils/ApiError.js';
@@ -113,17 +114,49 @@ export async function cargarCatalogos() {
 // mano antes), el producto se autocrea la primera vez que aparece en un
 // cargue o sincronización — es solo una etiqueta, no tiene permisos ni
 // alcance asociado, así que no vale la pena exigir un paso manual previo.
+//
+// Antes se creaba como un stub vacío (solo `nombre`), sin `pesoNeto` — y
+// como recalcularProduccionSemanal calcula cajas×pesoNeto, un producto sin
+// peso neto aporta CERO a Producción Semanal sin importar cuántas cajas
+// tenga programadas (bug real detectado: "BANANAS FAIRTRADE TUCAN 18K" y
+// "FRULO'S 18 KG" quedaron así, con miles de cajas sin contar). Ahora, antes
+// de crear el stub, intenta emparejar por nombre contra el catálogo de
+// combos de Logística (mismos datos que usa productoService.syncFromBanarica)
+// para traer el peso neto real de una — best-effort: si Logística no
+// responde, sigue creando el stub como antes (nunca bloquea el cargue).
 export async function resolverProductosPorNombre(nombres, actorId) {
   const todos = await productoRepository.findAll();
   const porNombre = new Map(todos.map((p) => [p.nombre, p.id]));
+  const sinPesoNeto = new Set(todos.filter((p) => !p.pesoNeto).map((p) => p.nombre));
 
-  for (const nombre of nombres) {
-    if (porNombre.has(nombre)) continue;
-    const creado = await productoRepository.create({ nombre, createdBy: actorId });
-    porNombre.set(nombre, creado.id);
+  const faltantes = nombres.filter((n) => !porNombre.has(n));
+  if (faltantes.length > 0) {
+    let comboPorNombre = new Map();
+    try {
+      const combos = await productoService.fetchActiveBanaricaCombos();
+      comboPorNombre = new Map(combos.map((c) => [String(c.nombre || c.consecutivo || '').trim(), c]));
+    } catch (error) {
+      logger.error('No se pudo consultar Logística al autocrear productos de Programación de Corte', { message: error.message });
+    }
+
+    for (const nombre of faltantes) {
+      const combo = comboPorNombre.get(nombre);
+      const creado = await productoRepository.create({
+        nombre,
+        codigo: combo?.consecutivo !== null && combo?.consecutivo !== undefined ? String(combo.consecutivo) : null,
+        pesoNeto: combo?.peso_neto ?? null,
+        pesoBruto: combo?.peso_bruto ?? null,
+        cajasPorPalet: combo?.cajas_por_palet ?? null,
+        cajasPorMinipalet: combo?.cajas_por_mini_palet ?? null,
+        cantidadPalets: combo?.palets_por_contenedor ?? null,
+        createdBy: actorId,
+      });
+      porNombre.set(nombre, creado.id);
+      if (!creado.pesoNeto) sinPesoNeto.add(nombre);
+    }
   }
 
-  return porNombre;
+  return { porNombre, sinPesoNeto: [...sinPesoNeto].filter((n) => nombres.includes(n)) };
 }
 
 // Valida + descarta duplicados (contra la BD y dentro del mismo lote) +
@@ -145,7 +178,7 @@ async function procesarFilas(filas, actorId, user) {
   }
 
   const nombresProducto = [...new Set(filasValidas.map((f) => f.producto))];
-  const productoPorNombre = await resolverProductosPorNombre(nombresProducto, actorId);
+  const { porNombre: productoPorNombre, sinPesoNeto } = await resolverProductosPorNombre(nombresProducto, actorId);
   for (const f of filasValidas) {
     f.productoId = productoPorNombre.get(f.producto);
     delete f.producto;
@@ -189,6 +222,9 @@ async function procesarFilas(filas, actorId, user) {
     creados: aInsertar.length,
     saltados,
     errores: errores.length > 0 ? errores : undefined,
+    advertencias: sinPesoNeto.length > 0
+      ? sinPesoNeto.map((nombre) => `"${nombre}" no tiene peso neto configurado — sus cajas no se están contando en Producción Semanal. Sincronízalo desde Maestros > Productos o edítalo a mano.`)
+      : undefined,
   };
 }
 
@@ -320,7 +356,7 @@ async function reemplazarFilasSemana(filas, actorId, user, semanaId) {
   }
 
   const nombresProducto = [...new Set(filasValidas.map((f) => f.producto))];
-  const productoPorNombre = await resolverProductosPorNombre(nombresProducto, actorId);
+  const { porNombre: productoPorNombre, sinPesoNeto } = await resolverProductosPorNombre(nombresProducto, actorId);
   for (const f of filasValidas) {
     f.productoId = productoPorNombre.get(f.producto);
     delete f.producto;
@@ -362,6 +398,9 @@ async function reemplazarFilasSemana(filas, actorId, user, semanaId) {
     creados: aInsertar.length,
     borrados,
     errores: errores.length > 0 ? errores : undefined,
+    advertencias: sinPesoNeto.length > 0
+      ? sinPesoNeto.map((nombre) => `"${nombre}" no tiene peso neto configurado — sus cajas no se están contando en Producción Semanal. Sincronízalo desde Maestros > Productos o edítalo a mano.`)
+      : undefined,
   };
 }
 
