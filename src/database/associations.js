@@ -25,6 +25,7 @@ import { MotivoRepique } from './models/motivoRepique.model.js';
 import { MotivoRecuse } from './models/motivoRecuse.model.js';
 import { RacimoMovimiento } from './models/racimoMovimiento.model.js';
 import { ProduccionSemanal } from './models/produccionSemanal.model.js';
+import { EstimacionFinca } from './models/estimacionFinca.model.js';
 import { CategoriaLabor } from './models/categoriaLabor.model.js';
 import { Labor } from './models/labor.model.js';
 import { LaborSerie } from './models/laborSerie.model.js';
@@ -238,6 +239,13 @@ export const setupAssociations = () => {
   Semana.hasMany(ProduccionSemanal, { foreignKey: 'semanaId', as: 'produccionSemanal' });
   ProduccionSemanal.belongsTo(Semana, { foreignKey: 'semanaId', as: 'semana' });
 
+  // Estimaciones de cajas por finca y semana (propias de cada usuario)
+  Finca.hasMany(EstimacionFinca, { foreignKey: 'fincaId', as: 'estimaciones' });
+  EstimacionFinca.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+
+  Semana.hasMany(EstimacionFinca, { foreignKey: 'semanaId', as: 'estimaciones' });
+  EstimacionFinca.belongsTo(Semana, { foreignKey: 'semanaId', as: 'semana' });
+
   // Auditoría — Fase 2 (maestras con deleted_by, transaccionales sin deleted_by)
   withAuditAssociations(Finca);
   withAuditAssociations(GrupoFinca);
@@ -257,6 +265,7 @@ export const setupAssociations = () => {
   withAuditAssociations(MotivoRecuse);
   withAuditAssociations(RacimoMovimiento);
   withAuditAssociations(ProduccionSemanal);
+  withAuditAssociations(EstimacionFinca);
 
   // Calendario de Labores: CategoriaLabor -> Labor -> LaborSerie -> (LaborSerieLote | LaborOcurrencia)
   CategoriaLabor.hasMany(Labor, { foreignKey: 'categoriaLaborId', as: 'labores' });
@@ -543,6 +552,7 @@ export {
   MotivoRecuse,
   RacimoMovimiento,
   ProduccionSemanal,
+  EstimacionFinca,
   CategoriaLabor,
   Labor,
   LaborSerie,

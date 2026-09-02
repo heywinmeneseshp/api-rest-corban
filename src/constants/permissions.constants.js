@@ -109,6 +109,16 @@ export const PERMISSIONS = {
 
   PRONOSTICO_VER: 'pronostico.ver',
 
+  // Estimaciones de cajas por finca para las próximas semanas. Un usuario ve
+  // solo las estimaciones de las fincas que tiene habilitadas y propias.
+  ESTIMACION_VER: 'estimacion.ver',
+  ESTIMACION_CREAR: 'estimacion.crear',
+  ESTIMACION_EDITAR: 'estimacion.editar',
+  ESTIMACION_ELIMINAR: 'estimacion.eliminar',
+  ESTIMACION_ACTUALIZAR_MASIVO: 'estimacion.actualizar_masivo',
+
+  MENU_ESTIMACIONES: 'menu.estimaciones',
+
   // Captura diaria de precipitación desde app-corbana (distinta del registro
   // de clima que hace la app móvil): un rol programado debe digitar la
   // precipitación del día anterior o queda bloqueado con un modal hasta
@@ -413,6 +423,13 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.PRODUCCION_ACTUALIZAR_MASIVO, nombre: 'Actualizar en bloque producción semanal ya cargada' },
 
   { codigo: PERMISSIONS.PRONOSTICO_VER, nombre: 'Ver pronóstico de cajas' },
+
+  { codigo: PERMISSIONS.ESTIMACION_VER, nombre: 'Ver estimaciones de fincas' },
+  { codigo: PERMISSIONS.ESTIMACION_CREAR, nombre: 'Crear estimaciones de fincas' },
+  { codigo: PERMISSIONS.ESTIMACION_EDITAR, nombre: 'Editar estimaciones de fincas' },
+  { codigo: PERMISSIONS.ESTIMACION_ELIMINAR, nombre: 'Eliminar estimaciones de fincas' },
+  { codigo: PERMISSIONS.ESTIMACION_ACTUALIZAR_MASIVO, nombre: 'Actualizar en bloque estimaciones de fincas ya cargadas' },
+  { codigo: PERMISSIONS.MENU_ESTIMACIONES, nombre: 'Ver ítem de menú Estimaciones de Fincas' },
 
   { codigo: PERMISSIONS.PRECIPITACION_DIARIA_VER, nombre: 'Ver precipitación diaria y su configuración' },
   { codigo: PERMISSIONS.PRECIPITACION_DIARIA_CONFIGURAR, nombre: 'Programar captura obligatoria de precipitación diaria' },
