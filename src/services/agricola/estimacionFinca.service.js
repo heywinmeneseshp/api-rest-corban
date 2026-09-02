@@ -1,5 +1,6 @@
 import { Op } from 'sequelize';
 import { estimacionFincaRepository } from '../../repositories/agricola/estimacionFinca.repository.js';
+import { produccionSemanalRepository } from '../../repositories/agricola/produccionSemanal.repository.js';
 import { semanaRepository } from '../../repositories/agricola/semana.repository.js';
 import { Finca, Semana, User } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
@@ -594,6 +595,91 @@ export const estimacionFincaService = {
       creados: filasValidas.length - actualizados,
       errores: errores.length > 0 ? errores : undefined,
     };
+  },
+
+  // Compara lo estimado contra lo realmente producido (Producción Semanal),
+  // finca por finca y semana por semana — solo tiene sentido para semanas
+  // que ya pasaron (una semana futura todavía no tiene producción real).
+  // Cuando una misma finca+semana objetivo tiene varias estimaciones (se
+  // revisó en más de una semana de registro — ver vista escalera), se usa
+  // la ÚLTIMA revisión (mayor semana_registro_id), no la suma: son la misma
+  // estimación corregida con el tiempo, no cantidades distintas a acumular.
+  async getComparativo(query, user) {
+    const { fincaIds, soloPropias } = resolverVisibilidad(user);
+
+    let fincaIdsFiltro = fincaIds;
+    if (query.fincaUuid) {
+      const finca = await Finca.findOne({ where: { uuid: query.fincaUuid } });
+      if (!finca) throw ApiError.badRequest('Finca no encontrada');
+      assertFincaPermitida(user, finca.id);
+      fincaIdsFiltro = await expandirFincaIds([finca.id]);
+    }
+
+    let creadoPorUserId;
+    if (!soloPropias && query.usuarioUuid) {
+      const usuario = await User.findOne({ where: { uuid: query.usuarioUuid } });
+      creadoPorUserId = usuario?.id || -1;
+    } else if (soloPropias) {
+      creadoPorUserId = user.id;
+    }
+
+    const estimaciones = await estimacionFincaRepository.findForEscalera({ fincaIds: fincaIdsFiltro, creadoPorUserId });
+
+    const ultimaPorClave = new Map(); // `${fincaId}-${semanaId}` -> { valor, semanaRegistroId }
+    for (const r of estimaciones) {
+      const clave = `${r.fincaId}-${r.semanaId}`;
+      const registroId = r.semanaRegistroId || 0;
+      const actual = ultimaPorClave.get(clave);
+      if (!actual || registroId > actual.semanaRegistroId) {
+        ultimaPorClave.set(clave, { valor: Number(r.cajas20kg), semanaRegistroId: registroId });
+      }
+    }
+
+    if (ultimaPorClave.size === 0) return { items: [] };
+
+    const semanaIds = [...new Set([...ultimaPorClave.keys()].map((k) => Number(k.split('-')[1])))];
+    const [produccionMap, semanasInfo, fincasInfo] = await Promise.all([
+      produccionSemanalRepository.getCajasPorFincaYSemana({ fincaIds: fincaIdsFiltro, semanaIds }),
+      Semana.findAll({ where: { id: semanaIds }, attributes: ['id', 'uuid', 'codigo', 'anio', 'numeroSemana', 'fechaInicio'] }),
+      Finca.findAll({ where: fincaIdsFiltro ? { id: { [Op.in]: fincaIdsFiltro } } : {}, attributes: ['id', 'uuid', 'codigo', 'nombre'] }),
+    ]);
+    const semanaPorId = new Map(semanasInfo.map((s) => [s.id, s]));
+    const fincaPorId = new Map(fincasInfo.map((f) => [f.id, f]));
+
+    const hoy = new Date().toISOString().slice(0, 10);
+    const items = [];
+    for (const [clave, est] of ultimaPorClave.entries()) {
+      const [fincaIdStr, semanaIdStr] = clave.split('-');
+      const fincaId = Number(fincaIdStr);
+      const semanaId = Number(semanaIdStr);
+      const semana = semanaPorId.get(semanaId);
+      // Semana futura: todavía no hay producción real que comparar.
+      if (!semana || semana.fechaInicio > hoy) continue;
+      const finca = fincaPorId.get(fincaId);
+      if (!finca) continue;
+
+      const real = produccionMap.get(`${fincaId}-${semanaId}`) || 0;
+      const estimado = est.valor;
+      const diferencia = Math.round((real - estimado) * 100) / 100;
+      const porcentaje = estimado > 0 ? Math.round((diferencia / estimado) * 10000) / 100 : null;
+
+      items.push({
+        finca: { uuid: finca.uuid, codigo: finca.codigo, nombre: finca.nombre },
+        semana: { uuid: semana.uuid, codigo: semana.codigo, anio: semana.anio, numeroSemana: semana.numeroSemana },
+        estimado,
+        real,
+        diferencia,
+        porcentaje,
+      });
+    }
+
+    items.sort((a, b) =>
+      a.semana.anio - b.semana.anio ||
+      a.semana.numeroSemana - b.semana.numeroSemana ||
+      a.finca.codigo.localeCompare(b.finca.codigo),
+    );
+
+    return { items };
   },
 };
 

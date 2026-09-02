@@ -11,6 +11,7 @@ import {
   obtenerSemanasSchema,
   eliminarEstimacionSchema,
   obtenerEscaleraSchema,
+  obtenerComparativoSchema,
 } from '../../validators/agricola/estimacionFinca.validator.js';
 
 const router = Router();
@@ -39,6 +40,24 @@ router.get(
   permission(PERMISSIONS.ESTIMACION_VER),
   validate(obtenerEscaleraSchema),
   estimacionFincaController.escalera,
+);
+
+/**
+ * @openapi
+ * /estimaciones/comparativo:
+ *   get:
+ *     tags: [Estimaciones de Fincas]
+ *     summary: Compara lo estimado contra lo realmente producido (Producción Semanal), por finca y semana
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.get(
+  '/comparativo',
+  auth,
+  permission(PERMISSIONS.ESTIMACION_VER),
+  validate(obtenerComparativoSchema),
+  estimacionFincaController.comparativo,
 );
 
 router.post(

@@ -29,6 +29,11 @@ export const estimacionFincaController = {
     ApiResponse.send(res, { message: 'Vista escalera obtenida correctamente', data });
   }),
 
+  comparativo: asyncHandler(async (req, res) => {
+    const data = await estimacionFincaService.getComparativo(req.query, req.user);
+    ApiResponse.send(res, { message: 'Comparativo estimado vs. real obtenido correctamente', data });
+  }),
+
   bulkUpload: asyncHandler(async (req, res) => {
     const resultado = await estimacionFincaService.bulkCreateEstimaciones(req.file, req.user?.id, req.user);
     ApiResponse.send(res, { message: 'Cargue masivo de estimaciones procesado', data: resultado });

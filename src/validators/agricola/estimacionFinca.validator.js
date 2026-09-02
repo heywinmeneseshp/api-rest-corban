@@ -66,10 +66,23 @@ export const obtenerEscaleraSchema = Joi.object({
   query: escaleraQuerySchema,
 });
 
+// Mismos filtros que la escalera (finca puntual, usuario si sos admin).
+const comparativoQuerySchema = Joi.object({
+  fincaUuid: Joi.string().uuid(),
+  usuarioUuid: Joi.string().uuid(),
+});
+
+export const obtenerComparativoSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({}),
+  query: comparativoQuerySchema,
+});
+
 export default {
   listarEstimacionesSchema,
   guardarEstimacionesSchema,
   obtenerSemanasSchema,
   eliminarEstimacionSchema,
   obtenerEscaleraSchema,
+  obtenerComparativoSchema,
 };
