@@ -528,6 +528,14 @@ sección 9 antes de tocar el modelo en producción.
 - **Investigar un mecanismo de amortiguación de tendencia ("damped
   trend")** para Holt-Winters, como posible explicación/solución a por qué
   degrada a horizontes largos (experimento 6) — no probado todavía.
+- **Mostrar en la UI del pronóstico una gráfica con el histórico del ratio
+  de la finca que se está estimando** — no es una mejora de modelo, es una
+  mejora de transparencia: dejar ver visualmente el comportamiento pasado
+  del ratio (tendencia, estacionalidad, qué tan plano o volátil es) ayuda
+  al planificador a juzgar por sí mismo qué tan razonable es el ratio
+  proyectado para esa finca, y hace mucho más visible el problema de
+  "ratio/aprovechamiento planos" ya detectado en esta conversación (ver
+  sección 2.4) sin necesidad de leer el número crudo.
 
 ---
 

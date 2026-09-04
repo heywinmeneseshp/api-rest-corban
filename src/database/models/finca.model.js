@@ -19,6 +19,14 @@ Finca.init(
     // seguimiento de labores, racimos, precipitación, etc. Se excluyen de
     // esos selectores vía fincaRepository/finca.service `soloOperativas`.
     esExterna: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: 'es_externa' },
+    // Overrides de % aplicado por edad (8-12) en el estimado de corte de
+    // racimos, guardados desde el panel de Estimaciones. Formato:
+    // { "8": 0.06, "9": 12.05, "10": 45.91, "11": 30.87, "12": 11.1 }.
+    patronCortePct: { type: DataTypes.JSON, allowNull: true, field: 'patron_corte_pct' },
+    // Ratio (cajas por racimo cosechado) editado a mano por numeroSemana,
+    // para "Sugerido próximas semanas" en el panel de Estimaciones. Formato:
+    // { "37": 0.0285, "38": 0.03, ... }.
+    ratioCajasPorSemana: { type: DataTypes.JSON, allowNull: true, field: 'ratio_cajas_por_semana' },
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
     updatedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'updated_by' },
     deletedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'deleted_by' },

@@ -34,11 +34,11 @@ const router = Router();
  *     responses:
  *       201: { description: Creado }
  */
-router.get('/', auth, permission(PERMISSIONS.USUARIOS_VER), validate(listUsersSchema), userController.list);
+router.get('/', auth, permission(PERMISSIONS.MENU_MAESTROS_USUARIOS), validate(listUsersSchema), userController.list);
 router.post(
   '/',
   auth,
-  permission(PERMISSIONS.USUARIOS_CREAR),
+  permission(PERMISSIONS.MENU_MAESTROS_USUARIOS),
   validate(createUserSchema),
   userController.create,
 );
@@ -56,7 +56,7 @@ router.post(
 router.post(
   '/bulk-reset-password',
   auth,
-  permission(PERMISSIONS.USUARIOS_EDITAR),
+  permission(PERMISSIONS.MENU_MAESTROS_USUARIOS),
   validate(bulkResetPasswordSchema),
   userController.bulkResetPassword,
 );
@@ -91,21 +91,21 @@ router.post(
 router.get(
   '/:uuid',
   auth,
-  permission(PERMISSIONS.USUARIOS_VER),
+  permission(PERMISSIONS.MENU_MAESTROS_USUARIOS),
   validate(getUserSchema),
   userController.getByUuid,
 );
 router.put(
   '/:uuid',
   auth,
-  permission(PERMISSIONS.USUARIOS_EDITAR),
+  permission(PERMISSIONS.MENU_MAESTROS_USUARIOS),
   validate(updateUserSchema),
   userController.update,
 );
 router.delete(
   '/:uuid',
   auth,
-  permission(PERMISSIONS.USUARIOS_ELIMINAR),
+  permission(PERMISSIONS.MENU_MAESTROS_USUARIOS),
   validate(getUserSchema),
   userController.remove,
 );
@@ -129,14 +129,14 @@ router.delete(
 router.get(
   '/:uuid/roles',
   auth,
-  permission(PERMISSIONS.USUARIOS_VER),
+  permission(PERMISSIONS.MENU_MAESTROS_USUARIOS),
   validate(getUserSchema),
   userController.listRoles,
 );
 router.post(
   '/:uuid/roles',
   auth,
-  permission(PERMISSIONS.USUARIOS_ASIGNAR_ROL),
+  permission(PERMISSIONS.MENU_MAESTROS_USUARIOS),
   validate(assignRoleSchema),
   userController.assignRole,
 );
@@ -154,7 +154,7 @@ router.post(
 router.delete(
   '/:uuid/roles/:roleUuid',
   auth,
-  permission(PERMISSIONS.USUARIOS_ASIGNAR_ROL),
+  permission(PERMISSIONS.MENU_MAESTROS_USUARIOS),
   validate(removeRoleSchema),
   userController.removeRole,
 );
@@ -178,14 +178,14 @@ router.delete(
 router.get(
   '/:uuid/fincas',
   auth,
-  permission(PERMISSIONS.USUARIOS_VER),
+  permission(PERMISSIONS.MENU_MAESTROS_USUARIOS),
   validate(getUserSchema),
   userController.listFincas,
 );
 router.post(
   '/:uuid/fincas',
   auth,
-  permission(PERMISSIONS.USUARIOS_ASIGNAR_FINCA),
+  permission(PERMISSIONS.MENU_MAESTROS_USUARIOS),
   validate(assignFincaSchema),
   userController.assignFinca,
 );
@@ -203,7 +203,7 @@ router.post(
 router.delete(
   '/:uuid/fincas/:fincaUuid',
   auth,
-  permission(PERMISSIONS.USUARIOS_ASIGNAR_FINCA),
+  permission(PERMISSIONS.MENU_MAESTROS_USUARIOS),
   validate(removeFincaSchema),
   userController.removeFinca,
 );

@@ -54,6 +54,7 @@ import { Proforma } from './models/proforma.model.js';
 import { ProformaDetalle } from './models/proformaDetalle.model.js';
 import { Equipo } from './models/equipo.model.js';
 import { EquipoTipo } from './models/equipoTipo.model.js';
+import { FincaSemanaLiquidacion } from './models/fincaSemanaLiquidacion.model.js';
 import { EquipoComponente } from './models/equipoComponente.model.js';
 import { PlanMantenimiento } from './models/planMantenimiento.model.js';
 import { ProgramacionMantenimiento } from './models/programacionMantenimiento.model.js';
@@ -231,6 +232,13 @@ export const setupAssociations = () => {
 
   MotivoRecuse.hasMany(RacimoMovimiento, { foreignKey: 'motivoRecuseId', as: 'movimientos' });
   RacimoMovimiento.belongsTo(MotivoRecuse, { foreignKey: 'motivoRecuseId', as: 'motivoRecuse' });
+
+  // Liquidación de semana por finca — informativa (no bloquea registro).
+  Finca.hasMany(FincaSemanaLiquidacion, { foreignKey: 'fincaId', as: 'liquidaciones' });
+  FincaSemanaLiquidacion.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+
+  Semana.hasMany(FincaSemanaLiquidacion, { foreignKey: 'semanaId', as: 'liquidacionesFinca' });
+  FincaSemanaLiquidacion.belongsTo(Semana, { foreignKey: 'semanaId', as: 'semana' });
 
   // Producción semanal: cajas de 20kg por finca y semana
   Finca.hasMany(ProduccionSemanal, { foreignKey: 'fincaId', as: 'produccionSemanal' });
@@ -581,6 +589,7 @@ export {
   ProformaDetalle,
   Equipo,
   EquipoTipo,
+  FincaSemanaLiquidacion,
   EquipoComponente,
   PlanMantenimiento,
   ProgramacionMantenimiento,

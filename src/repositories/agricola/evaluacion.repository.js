@@ -23,7 +23,7 @@ const buildIncludes = ({ fincaId, fincaIds, loteId } = {}) => {
     {
       model: Planta,
       as: 'planta',
-      attributes: ['id', 'uuid', 'codigo'],
+      attributes: ['id', 'uuid', 'codigo', 'latitud', 'longitud'],
       required: filtrandoUbicacion,
       include: [
         {

@@ -1,10 +1,10 @@
 export const PERMISSIONS = {
-  USUARIOS_VER: 'usuarios.ver',
-  USUARIOS_CREAR: 'usuarios.crear',
-  USUARIOS_EDITAR: 'usuarios.editar',
-  USUARIOS_ELIMINAR: 'usuarios.eliminar',
-  USUARIOS_ASIGNAR_ROL: 'usuarios.asignar_rol',
-  USUARIOS_ASIGNAR_FINCA: 'usuarios.asignar_finca',
+  // Módulo Usuarios: una sola restricción — MENU_MAESTROS_USUARIOS (poder
+  // ver el módulo) — quien la tenga puede hacer TODO adentro (crear,
+  // editar, eliminar, asignar rol, asignar finca), sin permisos granulares
+  // aparte. Antes existían usuarios.ver/crear/editar/eliminar/
+  // asignar_rol/asignar_finca — retirados (ver migración
+  // 20260910000000-retira-permisos-granulares-usuarios.cjs).
 
   ROLES_VER: 'roles.ver',
   ROLES_CREAR: 'roles.crear',
@@ -113,9 +113,12 @@ export const PERMISSIONS = {
   // solo las estimaciones de las fincas que tiene habilitadas y propias.
   ESTIMACION_VER: 'estimacion.ver',
   ESTIMACION_CREAR: 'estimacion.crear',
-  ESTIMACION_EDITAR: 'estimacion.editar',
-  ESTIMACION_ELIMINAR: 'estimacion.eliminar',
-  ESTIMACION_ACTUALIZAR_MASIVO: 'estimacion.actualizar_masivo',
+  // Nivel más alto del módulo: incluye todo lo de ESTIMACION_CREAR además de
+  // poder editar el % de "Distribución por cinta del estimado" (patrón de
+  // corte) y las acciones que antes eran ESTIMACION_ELIMINAR/
+  // ESTIMACION_ACTUALIZAR_MASIVO (retirados como permisos aparte — ver
+  // migración 20260909000000-restructura-permisos-estimaciones.cjs).
+  ESTIMACION_EDITAR_DISTRIBUCION: 'estimacion.editar_distribucion',
 
   MENU_ESTIMACIONES: 'menu.estimaciones',
 
@@ -223,6 +226,7 @@ export const PERMISSIONS = {
   MENU_RACIMOS_REGISTRAR: 'menu.racimos.registrar',
   MENU_RACIMOS_SALDOS_LOTES_CINTAS: 'menu.racimos.saldos_lotes_cintas',
   MENU_RACIMOS_REPORTE_EMBOLSES: 'menu.racimos.reporte_embolses',
+  MENU_RACIMOS_LIQUIDACION: 'menu.racimos.liquidacion',
 
   MENU_LABORES: 'menu.labores',
   MENU_LABORES_CALENDARIO: 'menu.labores.calendario',
@@ -342,13 +346,6 @@ export const PERMISSIONS = {
 };
 
 export const PERMISSIONS_SEED = [
-  { codigo: PERMISSIONS.USUARIOS_VER, nombre: 'Ver usuarios' },
-  { codigo: PERMISSIONS.USUARIOS_CREAR, nombre: 'Crear usuarios' },
-  { codigo: PERMISSIONS.USUARIOS_EDITAR, nombre: 'Editar usuarios' },
-  { codigo: PERMISSIONS.USUARIOS_ELIMINAR, nombre: 'Eliminar usuarios' },
-  { codigo: PERMISSIONS.USUARIOS_ASIGNAR_ROL, nombre: 'Asignar roles a usuarios' },
-  { codigo: PERMISSIONS.USUARIOS_ASIGNAR_FINCA, nombre: 'Asignar fincas a usuarios' },
-
   { codigo: PERMISSIONS.ROLES_VER, nombre: 'Ver roles' },
   { codigo: PERMISSIONS.ROLES_CREAR, nombre: 'Crear roles' },
   { codigo: PERMISSIONS.ROLES_EDITAR, nombre: 'Editar roles' },
@@ -426,9 +423,7 @@ export const PERMISSIONS_SEED = [
 
   { codigo: PERMISSIONS.ESTIMACION_VER, nombre: 'Ver estimaciones de fincas' },
   { codigo: PERMISSIONS.ESTIMACION_CREAR, nombre: 'Crear estimaciones de fincas' },
-  { codigo: PERMISSIONS.ESTIMACION_EDITAR, nombre: 'Editar estimaciones de fincas' },
-  { codigo: PERMISSIONS.ESTIMACION_ELIMINAR, nombre: 'Eliminar estimaciones de fincas' },
-  { codigo: PERMISSIONS.ESTIMACION_ACTUALIZAR_MASIVO, nombre: 'Actualizar en bloque estimaciones de fincas ya cargadas' },
+  { codigo: PERMISSIONS.ESTIMACION_EDITAR_DISTRIBUCION, nombre: 'Editar % de distribución del estimado (patrón de corte)' },
   { codigo: PERMISSIONS.MENU_ESTIMACIONES, nombre: 'Ver ítem de menú Estimaciones de Fincas' },
 
   { codigo: PERMISSIONS.PRECIPITACION_DIARIA_VER, nombre: 'Ver precipitación diaria y su configuración' },
@@ -490,6 +485,7 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.MENU_RACIMOS_REGISTRAR, nombre: 'Ver submenús Registrar Embolse/Repique/Corte' },
   { codigo: PERMISSIONS.MENU_RACIMOS_SALDOS_LOTES_CINTAS, nombre: 'Ver submenú Saldos × Lotes y Cintas' },
   { codigo: PERMISSIONS.MENU_RACIMOS_REPORTE_EMBOLSES, nombre: 'Ver submenú Reporte de Embolses' },
+  { codigo: PERMISSIONS.MENU_RACIMOS_LIQUIDACION, nombre: 'Ver submenú Liquidación de semanas' },
 
   { codigo: PERMISSIONS.MENU_LABORES, nombre: 'Ver sección Labores en el menú' },
   { codigo: PERMISSIONS.MENU_LABORES_CALENDARIO, nombre: 'Ver submenú Calendario de Labores' },

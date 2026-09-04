@@ -17,16 +17,28 @@ export const racimoMovimientoController = {
   }),
 
   create: asyncHandler(async (req, res) => {
-    const movimiento = await racimoMovimientoService.createMovimiento(req.body, req.user?.id, req.user);
+    const resultado = await racimoMovimientoService.createMovimiento(req.body, req.user?.id, req.user);
+    if (resultado.requiereLiquidarSemana) {
+      return ApiResponse.send(res, {
+        message: `Hay que liquidar la semana ${resultado.requiereLiquidarSemana.codigo} antes de registrar en una semana nueva`,
+        data: resultado,
+      });
+    }
     ApiResponse.send(res, {
       statusCode: HTTP_STATUS.CREATED,
       message: 'Movimiento de racimos registrado correctamente',
-      data: movimiento,
+      data: resultado.movimiento,
     });
   }),
 
   crearEnLote: asyncHandler(async (req, res) => {
     const resultado = await racimoMovimientoService.crearMovimientosEnLote(req.body, req.user?.id, req.user);
+    if (resultado.requiereLiquidarSemana) {
+      return ApiResponse.send(res, {
+        message: `Hay que liquidar la semana ${resultado.requiereLiquidarSemana.codigo} antes de registrar en una semana nueva`,
+        data: resultado,
+      });
+    }
     if (resultado.requiereConfirmacion) {
       return ApiResponse.send(res, {
         message: 'Hay líneas que dejarían el saldo de una cohorte en negativo; confirma para continuar',

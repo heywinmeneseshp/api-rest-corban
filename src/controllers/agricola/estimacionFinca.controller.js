@@ -34,6 +34,38 @@ export const estimacionFincaController = {
     ApiResponse.send(res, { message: 'Comparativo estimado vs. real obtenido correctamente', data });
   }),
 
+  exportarComparativo: asyncHandler(async (req, res) => {
+    const buffer = await estimacionFincaService.exportComparativoToExcel(req.query, req.user);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="comparativo-estimado-vs-real-${Date.now()}.xlsx"`);
+    res.send(buffer);
+  }),
+
+  resumenFinca: asyncHandler(async (req, res) => {
+    const data = await estimacionFincaService.getResumenFinca(req.query, req.user);
+    ApiResponse.send(res, { message: 'Resumen de racimos de la finca obtenido correctamente', data });
+  }),
+
+  liquidarSemana: asyncHandler(async (req, res) => {
+    const data = await estimacionFincaService.liquidarSemana(req.body, req.user?.id, req.user);
+    ApiResponse.send(res, { message: 'Semana liquidada correctamente', data });
+  }),
+
+  quitarLiquidacionSemana: asyncHandler(async (req, res) => {
+    await estimacionFincaService.quitarLiquidacionSemana(req.body, req.user?.id, req.user);
+    ApiResponse.send(res, { message: 'Liquidación de semana eliminada correctamente' });
+  }),
+
+  guardarPatronCortePct: asyncHandler(async (req, res) => {
+    const data = await estimacionFincaService.guardarPatronCortePct(req.body, req.user?.id, req.user);
+    ApiResponse.send(res, { message: 'Porcentajes guardados correctamente', data });
+  }),
+
+  guardarRatioCajasPorSemana: asyncHandler(async (req, res) => {
+    const data = await estimacionFincaService.guardarRatioCajasPorSemana(req.body, req.user?.id, req.user);
+    ApiResponse.send(res, { message: 'Ratios guardados correctamente', data });
+  }),
+
   bulkUpload: asyncHandler(async (req, res) => {
     const resultado = await estimacionFincaService.bulkCreateEstimaciones(req.file, req.user?.id, req.user);
     ApiResponse.send(res, { message: 'Cargue masivo de estimaciones procesado', data: resultado });

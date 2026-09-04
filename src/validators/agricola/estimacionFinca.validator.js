@@ -58,6 +58,7 @@ export const eliminarEstimacionSchema = Joi.object({
 const escaleraQuerySchema = Joi.object({
   fincaUuid: Joi.string().uuid(),
   usuarioUuid: Joi.string().uuid(),
+  anio: Joi.number().integer().min(2000).max(2100),
 });
 
 export const obtenerEscaleraSchema = Joi.object({
@@ -66,16 +67,72 @@ export const obtenerEscaleraSchema = Joi.object({
   query: escaleraQuerySchema,
 });
 
-// Mismos filtros que la escalera (finca puntual, usuario si sos admin).
+// Mismos filtros que la escalera (finca puntual, usuario si sos admin, año).
 const comparativoQuerySchema = Joi.object({
   fincaUuid: Joi.string().uuid(),
   usuarioUuid: Joi.string().uuid(),
+  anio: Joi.number().integer().min(2000).max(2100),
 });
 
 export const obtenerComparativoSchema = Joi.object({
   body: Joi.object({}),
   params: Joi.object({}),
   query: comparativoQuerySchema,
+});
+
+export const exportarComparativoSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({}),
+  query: comparativoQuerySchema,
+});
+
+const resumenFincaQuerySchema = Joi.object({
+  fincaUuid: Joi.string().uuid().required(),
+});
+
+export const obtenerResumenFincaSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({}),
+  query: resumenFincaQuerySchema,
+});
+
+const liquidacionBodySchema = Joi.object({
+  fincaUuid: Joi.string().uuid().required(),
+  semanaUuid: Joi.string().uuid().required(),
+});
+
+export const liquidarSemanaSchema = Joi.object({
+  body: liquidacionBodySchema,
+  params: Joi.object({}),
+  query: Joi.object({}),
+});
+
+export const quitarLiquidacionSemanaSchema = Joi.object({
+  body: liquidacionBodySchema,
+  params: Joi.object({}),
+  query: Joi.object({}),
+});
+
+const guardarPatronCortePctBodySchema = Joi.object({
+  fincaUuid: Joi.string().uuid().required(),
+  porcentajes: Joi.object().pattern(Joi.string(), Joi.number().min(0).max(100).allow(null)).allow(null).required(),
+});
+
+export const guardarPatronCortePctSchema = Joi.object({
+  body: guardarPatronCortePctBodySchema,
+  params: Joi.object({}),
+  query: Joi.object({}),
+});
+
+const guardarRatioCajasPorSemanaBodySchema = Joi.object({
+  fincaUuid: Joi.string().uuid().required(),
+  ratios: Joi.object().pattern(Joi.string(), Joi.number().min(0).allow(null)).allow(null).required(),
+});
+
+export const guardarRatioCajasPorSemanaSchema = Joi.object({
+  body: guardarRatioCajasPorSemanaBodySchema,
+  params: Joi.object({}),
+  query: Joi.object({}),
 });
 
 export default {
@@ -85,4 +142,10 @@ export default {
   eliminarEstimacionSchema,
   obtenerEscaleraSchema,
   obtenerComparativoSchema,
+  exportarComparativoSchema,
+  obtenerResumenFincaSchema,
+  liquidarSemanaSchema,
+  quitarLiquidacionSemanaSchema,
+  guardarPatronCortePctSchema,
+  guardarRatioCajasPorSemanaSchema,
 };
