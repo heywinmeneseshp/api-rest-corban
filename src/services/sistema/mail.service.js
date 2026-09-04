@@ -185,6 +185,76 @@ export const mailService = {
       attachments: pdfBuffer ? [{ filename: pdfNombre || 'visita.pdf', content: pdfBuffer, contentType: 'application/pdf' }] : [],
     });
   },
+
+  // Resumen semanal de fincas en alerta (YLI bajo / Índice de Infección
+  // alto) — se manda automáticamente al iniciar cada semana (cron) y
+  // también puede dispararse a mano desde el botón "Enviar ahora" del panel.
+  // `destinatarios` ya viene resuelto a emails reales (roles/usuarios ya
+  // expandidos — ver evaluacion.service.js#resolverDestinatariosAlertas).
+  async sendAlertasSemana({ destinatarios, semana, alertas }) {
+    if (!destinatarios?.length) return;
+
+    const filas = alertas
+      .map(
+        (a) => `
+          <tr>
+            <td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #374151; font-size: 13px; font-weight: 600;">${a.fincaNombre}</td>
+            <td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #374151; font-size: 13px;">${a.promedioYli ?? '—'}</td>
+            <td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #374151; font-size: 13px;">${a.promedioIndice !== null ? `${a.promedioIndice}%` : '—'}</td>
+            <td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #b91c1c; font-size: 13px;">${a.motivos.map((m) => m.mensaje).join('<br/>')}</td>
+          </tr>`,
+      )
+      .join('');
+
+    const html = `
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 620px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.08);">
+        <div style="background: linear-gradient(135deg, #b45309 0%, #dc2626 100%); padding: 28px 32px; text-align: center;">
+          <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">CORBANA</h1>
+          <p style="color: rgba(255,255,255,.9); margin: 4px 0 0; font-size: 13px;">Alertas de Sanidad Vegetal — Semana ${semana.codigo}</p>
+        </div>
+        <div style="padding: 32px;">
+          <p style="margin: 0 0 20px; color: #374151; font-size: 14px; line-height: 1.5;">
+            ${alertas.length} finca(s) superaron los umbrales de alerta (YLI por debajo de 8, Índice de
+            Infección por encima de 33%, o Suma Bruta por Hoja por encima del umbral configurado) en la semana
+            <strong>${semana.codigo}</strong> (${semana.fechaInicio} — ${semana.fechaFin}).
+          </p>
+          <table role="presentation" style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+            <thead>
+              <tr style="background: #f9fafb;">
+                <th style="padding: 8px 12px; text-align: left; color: #6b7280; font-size: 11px; text-transform: uppercase;">Finca</th>
+                <th style="padding: 8px 12px; text-align: left; color: #6b7280; font-size: 11px; text-transform: uppercase;">YLI</th>
+                <th style="padding: 8px 12px; text-align: left; color: #6b7280; font-size: 11px; text-transform: uppercase;">Índice</th>
+                <th style="padding: 8px 12px; text-align: left; color: #6b7280; font-size: 11px; text-transform: uppercase;">Motivo</th>
+              </tr>
+            </thead>
+            <tbody>${filas}</tbody>
+          </table>
+          <table role="presentation" style="width: 100%;"><tr><td align="center">
+            <a href="${APP_URL}/sanidad-vegetal/alertas" style="background: linear-gradient(135deg, #b45309 0%, #dc2626 100%); color: #fff; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-size: 15px; font-weight: 600; display: inline-block;">Ver alertas en el sistema</a>
+          </td></tr></table>
+        </div>
+        <div style="background: #f9fafb; padding: 16px 32px; text-align: center; border-top: 1px solid #e5e7eb;">
+          <p style="margin: 0; color: #9ca3af; font-size: 11px;">Este mensaje se generó automáticamente, por favor no respondas a este correo.</p>
+        </div>
+      </div>
+    `;
+
+    if (!isConfigured || !transporter) {
+      console.log('═══════════════════════════════════════════════');
+      console.log('📧  MAIL SERVICE (no configurado) — alertas de sanidad vegetal');
+      console.log(`To:  ${destinatarios.join(', ')}`);
+      console.log(`Semana: ${semana.codigo} — ${alertas.length} finca(s) en alerta`);
+      console.log('═══════════════════════════════════════════════');
+      return;
+    }
+
+    await transporter.sendMail({
+      from: SMTP_FROM,
+      to: destinatarios,
+      subject: `CORBANA — Alertas de Sanidad Vegetal: ${alertas.length} finca(s) — semana ${semana.codigo} (enviado ${new Date().toISOString().slice(0, 10)})`,
+      html,
+    });
+  },
 };
 
 export default mailService;

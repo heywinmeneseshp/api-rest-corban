@@ -4,6 +4,10 @@
     {
       "path": "/api/v1/cron/recalcular-produccion-semanal",
       "schedule": "5 0 * * *"
+    },
+    {
+      "path": "/api/v1/cron/enviar-alertas-sanidad-vegetal",
+      "schedule": "15 0 * * 1"
     }
   ]
 }

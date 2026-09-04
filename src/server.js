@@ -3,6 +3,7 @@ import { env } from './config/env.config.js';
 import { testConnection } from './database/connection.js';
 import { setupAssociations } from './database/associations.js';
 import { runPendingMigrationsAndSeeders } from './database/migrationRunner.js';
+import { iniciarJobAlertasSanidadVegetal } from './jobs/alertasSanidadVegetal.job.js';
 import { logger } from './utils/logger.js';
 
 const start = async () => {
@@ -26,6 +27,11 @@ const start = async () => {
       logger.info(`Servidor escuchando en el puerto ${env.port} (${env.nodeEnv})`);
       logger.info(`Documentación disponible en http://localhost:${env.port}/api-docs`);
     });
+
+    // Solo tiene sentido en un proceso de larga duración (Docker/VPS) — en
+    // Vercel (serverless, sin estado entre invocaciones) el envío semanal lo
+    // dispara Vercel Cron por HTTP en su lugar (ver vercel.json).
+    iniciarJobAlertasSanidadVegetal();
 
     const shutdown = (signal) => {
       logger.info(`Señal ${signal} recibida, cerrando servidor...`);

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { evaluacionController } from '../../controllers/agricola/evaluacion.controller.js';
 import { auth } from '../../middlewares/auth.middleware.js';
 import { permission } from '../../middlewares/permission.middleware.js';
+import { requireAdmin } from '../../middlewares/requireAdmin.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import {
@@ -11,6 +12,12 @@ import {
   updateEvaluacionSchema,
   promedioPorSemanaSchema,
   indicadoresSchema,
+  listObjetivosSchema,
+  getObjetivoSchema,
+  createObjetivoSchema,
+  updateObjetivoSchema,
+  progresoObjetivosSchema,
+  setSbHojaUmbralesSchema,
 } from '../../validators/agricola/evaluacion.validator.js';
 
 const router = Router();
@@ -151,6 +158,174 @@ router.get(
   auth,
   permission(PERMISSIONS.EVALUACION_VER),
   evaluacionController.alertasSemana,
+);
+
+/**
+ * @openapi
+ * /evaluaciones/alertas-semana/enviar:
+ *   post:
+ *     tags: [Evaluaciones]
+ *     summary: Envía por correo el resumen de alertas de la última semana cerrada (o la indicada) a los destinatarios configurados — Administrador
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.post(
+  '/alertas-semana/enviar',
+  auth,
+  requireAdmin,
+  evaluacionController.enviarAlertasManual,
+);
+
+/**
+ * @openapi
+ * /evaluaciones/alertas-destinatarios:
+ *   get:
+ *     tags: [Evaluaciones]
+ *     summary: Obtiene la config de destinatarios del correo de alertas de Sanidad Vegetal — Administrador
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ *   put:
+ *     tags: [Evaluaciones]
+ *     summary: Guarda la config de destinatarios del correo de alertas de Sanidad Vegetal — Administrador
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.get(
+  '/alertas-destinatarios',
+  auth,
+  requireAdmin,
+  evaluacionController.getAlertasDestinatarios,
+);
+router.put(
+  '/alertas-destinatarios',
+  auth,
+  requireAdmin,
+  evaluacionController.setAlertasDestinatarios,
+);
+
+/**
+ * @openapi
+ * /evaluaciones/sb-hoja-umbrales:
+ *   get:
+ *     tags: [Evaluaciones]
+ *     summary: Obtiene los umbrales (líneas de referencia) del gráfico de Suma Bruta por Hoja
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ *   put:
+ *     tags: [Evaluaciones]
+ *     summary: Guarda los umbrales del gráfico de Suma Bruta por Hoja — Administrador
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.get(
+  '/sb-hoja-umbrales',
+  auth,
+  permission(PERMISSIONS.EVALUACION_VER),
+  evaluacionController.getSbHojaUmbrales,
+);
+router.put(
+  '/sb-hoja-umbrales',
+  auth,
+  requireAdmin,
+  validate(setSbHojaUmbralesSchema),
+  evaluacionController.setSbHojaUmbrales,
+);
+
+/**
+ * @openapi
+ * /evaluaciones/objetivos/progreso:
+ *   get:
+ *     tags: [Evaluaciones]
+ *     summary: Progreso de los objetivos aplicables a una finca y/o lote en la semana actual (o la indicada)
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.get(
+  '/objetivos/progreso',
+  auth,
+  validate(progresoObjetivosSchema),
+  evaluacionController.progresoObjetivos,
+);
+
+/**
+ * @openapi
+ * /evaluaciones/objetivos:
+ *   get:
+ *     tags: [Evaluaciones]
+ *     summary: Listar objetivos de evaluación (meta semanal por finca o lote)
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ *   post:
+ *     tags: [Evaluaciones]
+ *     summary: Crear objetivo de evaluación
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       201: { description: Creado }
+ */
+router.get(
+  '/objetivos',
+  auth,
+  permission(PERMISSIONS.OBJETIVO_EVALUACION_VER),
+  validate(listObjetivosSchema),
+  evaluacionController.listObjetivos,
+);
+router.post(
+  '/objetivos',
+  auth,
+  permission(PERMISSIONS.OBJETIVO_EVALUACION_CREAR),
+  validate(createObjetivoSchema),
+  evaluacionController.createObjetivo,
+);
+
+/**
+ * @openapi
+ * /evaluaciones/objetivos/{uuid}:
+ *   get:
+ *     tags: [Evaluaciones]
+ *     summary: Obtener objetivo de evaluación por UUID
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ *   put:
+ *     tags: [Evaluaciones]
+ *     summary: Actualizar objetivo de evaluación
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ *   delete:
+ *     tags: [Evaluaciones]
+ *     summary: Eliminar objetivo de evaluación (soft delete)
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.get(
+  '/objetivos/:uuid',
+  auth,
+  permission(PERMISSIONS.OBJETIVO_EVALUACION_VER),
+  validate(getObjetivoSchema),
+  evaluacionController.getObjetivoByUuid,
+);
+router.put(
+  '/objetivos/:uuid',
+  auth,
+  permission(PERMISSIONS.OBJETIVO_EVALUACION_EDITAR),
+  validate(updateObjetivoSchema),
+  evaluacionController.updateObjetivo,
+);
+router.delete(
+  '/objetivos/:uuid',
+  auth,
+  permission(PERMISSIONS.OBJETIVO_EVALUACION_ELIMINAR),
+  validate(getObjetivoSchema),
+  evaluacionController.removeObjetivo,
 );
 
 /**

@@ -15,4 +15,15 @@ const router = Router();
  */
 router.get('/recalcular-produccion-semanal', requireCronSecret, cronController.recalcularProduccionSemanal);
 
+/**
+ * @openapi
+ * /cron/enviar-alertas-sanidad-vegetal:
+ *   get:
+ *     tags: [Cron]
+ *     summary: Envía el correo semanal de Alertas de Sanidad Vegetal al iniciar la semana (Vercel Cron) — requiere Authorization Bearer CRON_SECRET.
+ *     responses:
+ *       200: { description: OK }
+ */
+router.get('/enviar-alertas-sanidad-vegetal', requireCronSecret, cronController.enviarAlertasSanidadVegetal);
+
 export default router;

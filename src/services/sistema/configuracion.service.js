@@ -8,6 +8,8 @@ export const CLAVE_TASA_CONVERSION = 'tasa_conversion';
 export const CLAVE_PRIMERA_SEMANA_PROGRAMACION = 'primera_semana_programacion_id';
 export const CLAVE_MARCA_APP = 'marca_app';
 export const CLAVE_LABOR_REVISOR_CC = 'sanidad_vegetal_revisor_cc';
+export const CLAVE_ALERTAS_SANIDAD_DESTINATARIOS = 'sanidad_vegetal_alertas_destinatarios';
+export const CLAVE_SB_HOJA_UMBRALES = 'sanidad_vegetal_sb_hoja_umbrales';
 
 // "Cajas de 20kg" es el nombre convencional de la unidad, pero el peso neto
 // real de referencia es otro (ej. 18.6) — configurable en vez de fijo por
@@ -34,6 +36,14 @@ const MARCA_APP_DEFAULT = {
 
 // Sin valor guardado todavía = nada en copia.
 const LABOR_REVISOR_CC_DEFAULT = { correos: [], rolesUuids: [], usuariosUuids: [] };
+// Sin valor guardado todavía = nadie recibe el correo de alertas de Sanidad
+// Vegetal (ni el automático semanal ni el botón de envío manual mandan nada).
+const ALERTAS_SANIDAD_DESTINATARIOS_DEFAULT = { correos: [], rolesUuids: [], usuariosUuids: [] };
+// Líneas de referencia del gráfico "Promedio de Suma Bruta por Hoja" —
+// mismos valores que estaban hardcodeados en PromedioSumaBrutaPorHojaChart
+// antes de hacerlos configurables. `alerta` (rojo) además dispara el aviso
+// en Alertas de Sanidad Vegetal cuando el promedio de la semana lo supera.
+const SB_HOJA_UMBRALES_DEFAULT = { advertencia: 450, alerta: 650 };
 
 export const configuracionService = {
   async getBanaricaApiUrl() {
@@ -156,6 +166,55 @@ export const configuracionService = {
       usuariosUuids: Array.isArray(cc?.usuariosUuids) ? cc.usuariosUuids : [],
     });
     const config = await configuracionRepository.upsert(CLAVE_LABOR_REVISOR_CC, valor, actorId);
+    return JSON.parse(config.valor);
+  },
+
+  // Config de quién recibe el correo semanal de Alertas de Sanidad Vegetal
+  // (fincas con YLI bajo / Índice de Infección alto) — mismo formato que
+  // getLaborRevisorCc: correos sueltos, roles completos y usuarios puntuales.
+  // Resolución a emails reales en evaluacion.service.js#resolverDestinatariosAlertas.
+  async getAlertasSanidadDestinatarios() {
+    const config = await configuracionRepository.findByClave(CLAVE_ALERTAS_SANIDAD_DESTINATARIOS);
+    if (!config?.valor) return ALERTAS_SANIDAD_DESTINATARIOS_DEFAULT;
+    try {
+      return { ...ALERTAS_SANIDAD_DESTINATARIOS_DEFAULT, ...JSON.parse(config.valor) };
+    } catch {
+      return ALERTAS_SANIDAD_DESTINATARIOS_DEFAULT;
+    }
+  },
+
+  async setAlertasSanidadDestinatarios(destinatarios, actorId) {
+    const valor = JSON.stringify({
+      correos: Array.isArray(destinatarios?.correos) ? destinatarios.correos : [],
+      rolesUuids: Array.isArray(destinatarios?.rolesUuids) ? destinatarios.rolesUuids : [],
+      usuariosUuids: Array.isArray(destinatarios?.usuariosUuids) ? destinatarios.usuariosUuids : [],
+    });
+    const config = await configuracionRepository.upsert(CLAVE_ALERTAS_SANIDAD_DESTINATARIOS, valor, actorId);
+    return JSON.parse(config.valor);
+  },
+
+  // Umbrales (líneas de referencia) del gráfico de Suma Bruta por Hoja —
+  // ver evaluacion.service.js#alertasSemanaCerrada para el uso de `alerta`
+  // como disparador de alerta por finca.
+  async getSbHojaUmbrales() {
+    const config = await configuracionRepository.findByClave(CLAVE_SB_HOJA_UMBRALES);
+    if (!config?.valor) return SB_HOJA_UMBRALES_DEFAULT;
+    try {
+      const guardado = JSON.parse(config.valor);
+      return { ...SB_HOJA_UMBRALES_DEFAULT, ...guardado };
+    } catch {
+      return SB_HOJA_UMBRALES_DEFAULT;
+    }
+  },
+
+  async setSbHojaUmbrales(umbrales, actorId) {
+    const advertencia = Number(umbrales?.advertencia);
+    const alerta = Number(umbrales?.alerta);
+    const valor = JSON.stringify({
+      advertencia: Number.isFinite(advertencia) ? advertencia : SB_HOJA_UMBRALES_DEFAULT.advertencia,
+      alerta: Number.isFinite(alerta) ? alerta : SB_HOJA_UMBRALES_DEFAULT.alerta,
+    });
+    const config = await configuracionRepository.upsert(CLAVE_SB_HOJA_UMBRALES, valor, actorId);
     return JSON.parse(config.valor);
   },
 };

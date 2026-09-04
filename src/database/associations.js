@@ -3,16 +3,18 @@ import { Role } from './models/role.model.js';
 import { Permiso } from './models/permiso.model.js';
 import { MenuItem } from './models/menuItem.model.js';
 import { RefreshToken } from './models/refreshToken.model.js';
-import { UsuarioRol, RolPermiso, UsuarioFinca } from './models/pivotModels.js';
+import { UsuarioRol, RolPermiso, UsuarioFinca, ZonaFinca } from './models/pivotModels.js';
 
 import { Finca } from './models/finca.model.js';
 import { GrupoFinca } from './models/grupoFinca.model.js';
+import { Zona } from './models/zona.model.js';
 import { Lote } from './models/lote.model.js';
 import { Planta } from './models/planta.model.js';
 import { CategoriaPlanta } from './models/categoriaPlanta.model.js';
 import { TipoEvaluacion } from './models/tipoEvaluacion.model.js';
 import { Semana } from './models/semana.model.js';
 import { Evaluacion } from './models/evaluacion.model.js';
+import { ObjetivoEvaluacion } from './models/objetivoEvaluacion.model.js';
 import { Infeccion } from './models/infeccion.model.js';
 import { HojaInfectada } from './models/hojaInfectada.model.js';
 import { ConteoHojas } from './models/conteoHojas.model.js';
@@ -120,6 +122,24 @@ export const setupAssociations = () => {
   UsuarioFinca.belongsTo(User, { foreignKey: 'userId', as: 'usuario' });
   UsuarioFinca.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
 
+  // Zonas <-> Fincas (N:M real) — una finca puede pertenecer a varias
+  // zonas, a diferencia de GrupoFinca (1:N, "misma finca operativa
+  // dividida en varios registros").
+  Zona.belongsToMany(Finca, {
+    through: ZonaFinca,
+    foreignKey: 'zonaId',
+    otherKey: 'fincaId',
+    as: 'fincas',
+  });
+  Finca.belongsToMany(Zona, {
+    through: ZonaFinca,
+    foreignKey: 'fincaId',
+    otherKey: 'zonaId',
+    as: 'zonas',
+  });
+  ZonaFinca.belongsTo(Zona, { foreignKey: 'zonaId', as: 'zona' });
+  ZonaFinca.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+
   // Roles <-> Permisos (N:M)
   Role.belongsToMany(Permiso, {
     through: RolPermiso,
@@ -163,6 +183,12 @@ export const setupAssociations = () => {
 
   Lote.hasMany(Planta, { foreignKey: 'loteId', as: 'plantas' });
   Planta.belongsTo(Lote, { foreignKey: 'loteId', as: 'lote' });
+
+  // Objetivos de evaluación: meta semanal de cantidad, por finca o por
+  // lote (exactamente uno de los dos, validado en el servicio).
+  ObjetivoEvaluacion.belongsTo(TipoEvaluacion, { foreignKey: 'tipoEvaluacionId', as: 'tipoEvaluacion' });
+  ObjetivoEvaluacion.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+  ObjetivoEvaluacion.belongsTo(Lote, { foreignKey: 'loteId', as: 'lote' });
 
   // Historial de área en producción (append-only, sin updated_by)
   Lote.hasMany(LoteAreaProduccion, { foreignKey: 'loteId', as: 'areaProduccionHistorial' });
@@ -257,6 +283,8 @@ export const setupAssociations = () => {
   // Auditoría — Fase 2 (maestras con deleted_by, transaccionales sin deleted_by)
   withAuditAssociations(Finca);
   withAuditAssociations(GrupoFinca);
+  withAuditAssociations(Zona);
+  withAuditAssociations(ObjetivoEvaluacion);
   withAuditAssociations(Lote);
   withAuditAssociations(LoteAreaConfig);
   withAuditAssociations(Planta);
@@ -542,6 +570,9 @@ export {
   UsuarioFinca,
   Finca,
   GrupoFinca,
+  Zona,
+  ObjetivoEvaluacion,
+  ZonaFinca,
   Lote,
   Planta,
   CategoriaPlanta,

@@ -2,7 +2,7 @@
 
 const crypto = require('node:crypto');
 
-const PREFIXES = ['estimacion.', 'menu.estimaciones'];
+const ZONA_PREFIXES = ['zona.', 'menu.maestros.zonas'];
 
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
@@ -10,16 +10,7 @@ module.exports = {
     const { PERMISSIONS_SEED } = await import('../../constants/permissions.constants.js');
     const now = new Date();
 
-    const [existentes] = await queryInterface.sequelize.query(
-      "SELECT codigo FROM permisos WHERE codigo LIKE 'estimacion.%' OR codigo LIKE 'menu.estimaciones%'",
-    );
-    const codigosExistentes = new Set(existentes.map((r) => r.codigo));
-
-    const permisos = PERMISSIONS_SEED.filter(
-      (p) => PREFIXES.some((prefix) => p.codigo.startsWith(prefix)) && !codigosExistentes.has(p.codigo),
-    );
-
-    if (permisos.length === 0) return;
+    const permisos = PERMISSIONS_SEED.filter((p) => ZONA_PREFIXES.some((prefix) => p.codigo.startsWith(prefix)));
 
     await queryInterface.bulkInsert(
       'permisos',
@@ -36,7 +27,7 @@ module.exports = {
   async down(queryInterface) {
     const { Op } = require('sequelize');
     await queryInterface.bulkDelete('permisos', {
-      [Op.or]: PREFIXES.map((prefix) => ({ codigo: { [Op.like]: `${prefix}%` } })),
+      [Op.or]: ZONA_PREFIXES.map((prefix) => ({ codigo: { [Op.like]: `${prefix}%` } })),
     });
   },
 };

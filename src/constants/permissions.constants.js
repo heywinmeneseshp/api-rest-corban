@@ -40,6 +40,13 @@ export const PERMISSIONS = {
   GRUPO_FINCA_EDITAR: 'grupo_finca.editar',
   GRUPO_FINCA_ELIMINAR: 'grupo_finca.eliminar',
 
+  // Zonas: agrupación N:M de fincas (una finca puede estar en varias zonas),
+  // a diferencia de GrupoFinca que es 1:N.
+  ZONA_VER: 'zona.ver',
+  ZONA_CREAR: 'zona.crear',
+  ZONA_EDITAR: 'zona.editar',
+  ZONA_ELIMINAR: 'zona.eliminar',
+
   LOTE_VER: 'lote.ver',
   LOTE_CREAR: 'lote.crear',
   LOTE_EDITAR: 'lote.editar',
@@ -67,6 +74,14 @@ export const PERMISSIONS = {
   EVALUACION_CREAR: 'evaluacion.crear',
   EVALUACION_EDITAR: 'evaluacion.editar',
   EVALUACION_ELIMINAR: 'evaluacion.eliminar',
+
+  // Meta semanal de cantidad de evaluaciones a cumplir, por finca o por
+  // lote (y por rango de edad en Conteo de Hojas) — ver
+  // objetivoEvaluacion.service.js.
+  OBJETIVO_EVALUACION_VER: 'objetivo_evaluacion.ver',
+  OBJETIVO_EVALUACION_CREAR: 'objetivo_evaluacion.crear',
+  OBJETIVO_EVALUACION_EDITAR: 'objetivo_evaluacion.editar',
+  OBJETIVO_EVALUACION_ELIMINAR: 'objetivo_evaluacion.eliminar',
 
   MOTIVO_REPIQUE_VER: 'motivo_repique.ver',
   MOTIVO_REPIQUE_CREAR: 'motivo_repique.crear',
@@ -206,6 +221,7 @@ export const PERMISSIONS = {
   MENU_MAESTROS_FINCAS: 'menu.maestros.fincas',
   MENU_MAESTROS_PRODUCTOS: 'menu.maestros.productos',
   MENU_MAESTROS_GRUPOS_FINCA: 'menu.maestros.grupos_finca',
+  MENU_MAESTROS_ZONAS: 'menu.maestros.zonas',
   MENU_MAESTROS_AREA_LOTES: 'menu.maestros.area_lotes',
   MENU_MAESTROS_USUARIOS: 'menu.maestros.usuarios',
   MENU_MAESTROS_ROLES: 'menu.maestros.roles',
@@ -237,6 +253,7 @@ export const PERMISSIONS = {
   MENU_SANIDAD_VEGETAL_GRAFICOS: 'menu.sanidad_vegetal.graficos',
   MENU_SANIDAD_VEGETAL_LABORES: 'menu.sanidad_vegetal.labores',
   MENU_SANIDAD_VEGETAL_ALERTAS: 'menu.sanidad_vegetal.alertas',
+  MENU_SANIDAD_VEGETAL_OBJETIVOS: 'menu.sanidad_vegetal.objetivos',
 
   // Ítems planos del menú (hoy sin submenú propio, un solo código cada uno).
   MENU_PRECIPITACION_DIARIA: 'menu.precipitacion_diaria',
@@ -377,6 +394,11 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.GRUPO_FINCA_EDITAR, nombre: 'Editar grupos de finca' },
   { codigo: PERMISSIONS.GRUPO_FINCA_ELIMINAR, nombre: 'Eliminar grupos de finca' },
 
+  { codigo: PERMISSIONS.ZONA_VER, nombre: 'Ver zonas' },
+  { codigo: PERMISSIONS.ZONA_CREAR, nombre: 'Crear zonas' },
+  { codigo: PERMISSIONS.ZONA_EDITAR, nombre: 'Editar zonas' },
+  { codigo: PERMISSIONS.ZONA_ELIMINAR, nombre: 'Eliminar zonas' },
+
   { codigo: PERMISSIONS.LOTE_VER, nombre: 'Ver lotes' },
   { codigo: PERMISSIONS.LOTE_CREAR, nombre: 'Crear lotes' },
   { codigo: PERMISSIONS.LOTE_EDITAR, nombre: 'Editar lotes' },
@@ -395,6 +417,11 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.EVALUACION_CREAR, nombre: 'Crear evaluaciones' },
   { codigo: PERMISSIONS.EVALUACION_EDITAR, nombre: 'Editar evaluaciones' },
   { codigo: PERMISSIONS.EVALUACION_ELIMINAR, nombre: 'Eliminar evaluaciones' },
+
+  { codigo: PERMISSIONS.OBJETIVO_EVALUACION_VER, nombre: 'Ver objetivos de evaluación' },
+  { codigo: PERMISSIONS.OBJETIVO_EVALUACION_CREAR, nombre: 'Crear objetivos de evaluación' },
+  { codigo: PERMISSIONS.OBJETIVO_EVALUACION_EDITAR, nombre: 'Editar objetivos de evaluación' },
+  { codigo: PERMISSIONS.OBJETIVO_EVALUACION_ELIMINAR, nombre: 'Eliminar objetivos de evaluación' },
 
   { codigo: PERMISSIONS.MOTIVO_REPIQUE_VER, nombre: 'Ver motivos de repique' },
   { codigo: PERMISSIONS.MOTIVO_REPIQUE_CREAR, nombre: 'Crear motivos de repique' },
@@ -467,6 +494,7 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.MENU_MAESTROS_FINCAS, nombre: 'Ver submenú Fincas' },
   { codigo: PERMISSIONS.MENU_MAESTROS_PRODUCTOS, nombre: 'Ver submenú Productos' },
   { codigo: PERMISSIONS.MENU_MAESTROS_GRUPOS_FINCA, nombre: 'Ver submenú Grupos de Finca' },
+  { codigo: PERMISSIONS.MENU_MAESTROS_ZONAS, nombre: 'Ver submenú Zonas' },
   { codigo: PERMISSIONS.MENU_MAESTROS_AREA_LOTES, nombre: 'Ver submenú Área de Lotes' },
   { codigo: PERMISSIONS.MENU_MAESTROS_USUARIOS, nombre: 'Ver submenú Usuarios' },
   { codigo: PERMISSIONS.MENU_MAESTROS_ROLES, nombre: 'Ver submenú Roles' },
@@ -496,6 +524,7 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.MENU_SANIDAD_VEGETAL_GRAFICOS, nombre: 'Ver submenú Gráficos' },
   { codigo: PERMISSIONS.MENU_SANIDAD_VEGETAL_LABORES, nombre: 'Ver submenú Evaluación de Labores' },
   { codigo: PERMISSIONS.MENU_SANIDAD_VEGETAL_ALERTAS, nombre: 'Ver submenú Alertas' },
+  { codigo: PERMISSIONS.MENU_SANIDAD_VEGETAL_OBJETIVOS, nombre: 'Ver submenú Objetivos' },
 
   { codigo: PERMISSIONS.MENU_PRECIPITACION_DIARIA, nombre: 'Ver ítem de menú Precipitación Diaria' },
   { codigo: PERMISSIONS.MENU_PRODUCCION_SEMANAL, nombre: 'Ver ítem de menú Producción Semanal' },

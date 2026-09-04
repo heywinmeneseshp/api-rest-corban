@@ -473,8 +473,16 @@ export const climaService = {
       }
     }
 
-    // Acumula día a día (todo el rango real de cada finca) por semana.
-    const acumPorSemana = new Map();
+    // Acumula día a día (todo el rango real de cada finca) por semana — la
+    // precipitación se acumula POR FINCA (cada finca tiene su propio total
+    // semanal, "acumulado"), y el valor final de la semana es el PROMEDIO de
+    // esos acumulados entre las fincas del alcance — no la suma de todas
+    // (sumarlas inflaba el total según cuántas fincas hubiera, en vez de
+    // mostrar cuánto llovió en promedio por finca esa semana).
+    const acumPorFincaSemana = new Map(); // `${fincaUuid}-${semanaUuid}` -> { sumaMm, countMm }
+    const semanaMeta = new Map(); // semanaUuid -> { semanaCodigo, numeroSemana, anio, fecha }
+    const acumTempHumPorSemana = new Map(); // semanaUuid -> { sumaTemp, countTemp, sumaHum, countHum } (across todas las fincas, sin cambios)
+
     for (const r of rangosPorFinca) {
       const desde = new Date(r.desde).getTime();
       const hasta = new Date(r.hasta).getTime();
@@ -482,51 +490,69 @@ export const climaService = {
         const fechaIso = new Date(t).toISOString().slice(0, 10);
         const semana = semanaPorFecha.get(fechaIso);
         if (!semana) continue; // fecha fuera de cualquier semana cargada (no debería pasar)
-
-        const real = realPorFincaFecha.get(`${r.fincaUuid}-${fechaIso}`);
-        const mm = real && real.mm !== null ? Number(real.mm) : 0; // sin captura ese día -> 0mm
-
-        if (!acumPorSemana.has(semana.uuid)) {
-          acumPorSemana.set(semana.uuid, {
+        if (!semanaMeta.has(semana.uuid)) {
+          semanaMeta.set(semana.uuid, {
             semanaCodigo: semana.codigo,
             numeroSemana: semana.numeroSemana,
             anio: semana.anio,
             fecha: semana.fechaInicio,
-            sumaMm: 0,
-            countMm: 0,
-            sumaTemp: 0,
-            countTemp: 0,
-            sumaHum: 0,
-            countHum: 0,
           });
         }
-        const acc = acumPorSemana.get(semana.uuid);
-        acc.sumaMm += mm;
-        acc.countMm += 1;
+
+        const real = realPorFincaFecha.get(`${r.fincaUuid}-${fechaIso}`);
+        const mm = real && real.mm !== null ? Number(real.mm) : 0; // sin captura ese día -> 0mm
+
+        const claveFincaSemana = `${r.fincaUuid}-${semana.uuid}`;
+        if (!acumPorFincaSemana.has(claveFincaSemana)) {
+          acumPorFincaSemana.set(claveFincaSemana, { sumaMm: 0, countMm: 0 });
+        }
+        const accFinca = acumPorFincaSemana.get(claveFincaSemana);
+        accFinca.sumaMm += mm;
+        accFinca.countMm += 1;
+
+        if (!acumTempHumPorSemana.has(semana.uuid)) {
+          acumTempHumPorSemana.set(semana.uuid, { sumaTemp: 0, countTemp: 0, sumaHum: 0, countHum: 0 });
+        }
+        const accSemana = acumTempHumPorSemana.get(semana.uuid);
         if (real && real.temperatura !== null) {
-          acc.sumaTemp += Number(real.temperatura);
-          acc.countTemp += 1;
+          accSemana.sumaTemp += Number(real.temperatura);
+          accSemana.countTemp += 1;
         }
         if (real && real.humedadRelativa !== null) {
-          acc.sumaHum += Number(real.humedadRelativa);
-          acc.countHum += 1;
+          accSemana.sumaHum += Number(real.humedadRelativa);
+          accSemana.countHum += 1;
         }
       }
     }
 
-    let items = [...acumPorSemana.entries()].map(([semanaUuid, a]) => ({
-      semanaUuid,
-      semanaCodigo: a.semanaCodigo,
-      numeroSemana: a.numeroSemana,
-      anio: a.anio,
-      fecha: a.fecha instanceof Date ? a.fecha.toISOString().slice(0, 10) : String(a.fecha).slice(0, 10),
-      // Precipitación: TOTAL de la semana (suma de los 7 días, contando 0 los
-      // que no tienen captura) — a diferencia de temperatura/humedad, que sí
-      // siguen siendo un promedio (sumar temperaturas no significa nada).
-      totalMm: a.countMm > 0 ? Math.round(a.sumaMm * 100) / 100 : null,
-      promedioTemperatura: a.countTemp > 0 ? Math.round((a.sumaTemp / a.countTemp) * 100) / 100 : null,
-      promedioHumedad: a.countHum > 0 ? Math.round((a.sumaHum / a.countHum) * 100) / 100 : null,
-    }));
+    // Agrupa los acumulados por finca en acumulados-por-semana (una lista de
+    // totales, uno por finca) para poder promediarlos.
+    const totalesPorSemana = new Map(); // semanaUuid -> [totalMmFinca1, totalMmFinca2, ...]
+    for (const [clave, acc] of acumPorFincaSemana.entries()) {
+      const semanaUuid = clave.slice(clave.indexOf('-') + 1);
+      if (acc.countMm === 0) continue;
+      if (!totalesPorSemana.has(semanaUuid)) totalesPorSemana.set(semanaUuid, []);
+      totalesPorSemana.get(semanaUuid).push(acc.sumaMm);
+    }
+
+    let items = [...semanaMeta.entries()].map(([semanaUuid, a]) => {
+      const totales = totalesPorSemana.get(semanaUuid) || [];
+      const th = acumTempHumPorSemana.get(semanaUuid) || { sumaTemp: 0, countTemp: 0, sumaHum: 0, countHum: 0 };
+      return {
+        semanaUuid,
+        semanaCodigo: a.semanaCodigo,
+        numeroSemana: a.numeroSemana,
+        anio: a.anio,
+        fecha: a.fecha instanceof Date ? a.fecha.toISOString().slice(0, 10) : String(a.fecha).slice(0, 10),
+        // Precipitación: promedio entre fincas de su ACUMULADO semanal (suma
+        // de los 7 días de cada finca, contando 0 los días sin captura) — no
+        // la suma de todas las fincas juntas. Con una sola finca en el
+        // alcance, el promedio de un solo acumulado es ese mismo acumulado.
+        totalMm: totales.length > 0 ? Math.round((totales.reduce((s, v) => s + v, 0) / totales.length) * 100) / 100 : null,
+        promedioTemperatura: th.countTemp > 0 ? Math.round((th.sumaTemp / th.countTemp) * 100) / 100 : null,
+        promedioHumedad: th.countHum > 0 ? Math.round((th.sumaHum / th.countHum) * 100) / 100 : null,
+      };
+    });
 
     if (query.anio) {
       items = items.filter((it) => it.anio === Number(query.anio));

@@ -1,26 +1,17 @@
 import { Op } from 'sequelize';
 import { sequelize } from '../../database/connection.js';
-import { Planta, User, TipoEvaluacion, Semana, Finca, Lote } from '../../database/associations.js';
+import { Planta, User, TipoEvaluacion, Semana, Finca, Lote, Role } from '../../database/associations.js';
 import { evaluacionRepository } from '../../repositories/agricola/evaluacion.repository.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { getFincaIdsPermitidas, assertFincaPermitida, expandirFincaIds } from '../../utils/fincaScope.js';
 import { adjuntarTotales, adjuntarValoresPorHoja, calcularIndicadorHoja } from './sumaBrutaTotal.js';
+import { configuracionService } from '../sistema/configuracion.service.js';
+import { mailService } from '../sistema/mail.service.js';
+import { semanasEntre } from '../../utils/edadPlanta.js';
 
 const HOJAS_INDICADOR = [3, 5];
 import { calcularIndiceInfeccion } from './indiceInfeccion.js';
-
-// Edad de la planta en semanas, contadas desde su semana de embolse: la
-// semana en que se embolsa YA es edad 1 (no 0), la siguiente es edad 2, y
-// así sucesivamente — por eso se suma 1 a la diferencia de semanas entre
-// las dos fechas de inicio (mismo sistema ISO). Devuelve null si alguna
-// fecha es inválida.
-function semanasEntre(fechaInicioA, fechaInicioB) {
-  const a = Date.parse(fechaInicioA);
-  const b = Date.parse(fechaInicioB);
-  if (Number.isNaN(a) || Number.isNaN(b)) return null;
-  return Math.round((b - a) / (7 * 24 * 60 * 60 * 1000)) + 1;
-}
 
 // Trae la planta con su loteId para poder validar la finca del usuario sin
 // otra consulta.
@@ -153,6 +144,7 @@ export const evaluacionService = {
           tipoEvaluacionId: tipoEvaluacion.id,
           semanaId: semana.id,
           fecha: payload.fecha,
+          capturadoEn: payload.capturadoEn || null,
           observacion: payload.observacion,
           estado: payload.estado ?? true,
           createdBy: actorId,
@@ -415,7 +407,7 @@ export const evaluacionService = {
     const porFinca = new Map();
     evaluaciones.forEach((ev) => {
       const finca = ev.planta?.lote?.finca;
-      if (!finca || !ev.infeccion) return;
+      if (!finca) return;
       const entry = porFinca.get(finca.id) || {
         fincaUuid: finca.uuid,
         fincaNombre: finca.nombre,
@@ -423,21 +415,26 @@ export const evaluacionService = {
         sumaIndice: 0,
         nIndice: 0,
         n: 0,
+        sumasBruta: [],
       };
-      entry.sumaYli += Number(ev.infeccion.yli) || 0;
-      const indice = calcularIndiceInfeccion(ev.infeccion.hojas);
-      if (indice !== null) {
-        entry.sumaIndice += indice;
-        entry.nIndice += 1;
+      if (ev.infeccion) {
+        entry.sumaYli += Number(ev.infeccion.yli) || 0;
+        const indice = calcularIndiceInfeccion(ev.infeccion.hojas);
+        if (indice !== null) {
+          entry.sumaIndice += indice;
+          entry.nIndice += 1;
+        }
+        entry.n += 1;
       }
-      entry.n += 1;
+      if (ev.sumaBruta) entry.sumasBruta.push(ev.sumaBruta);
       porFinca.set(finca.id, entry);
     });
 
     const UMBRAL_YLI = 8;
     const UMBRAL_INDICE = 33;
+    const umbralesSb = await configuracionService.getSbHojaUmbrales();
     const alertas = [];
-    porFinca.forEach((e) => {
+    for (const e of porFinca.values()) {
       const promedioYli = e.n > 0 ? Number((e.sumaYli / e.n).toFixed(2)) : null;
       const promedioIndice = e.nIndice > 0 ? Number((e.sumaIndice / e.nIndice).toFixed(2)) : null;
       const motivos = [];
@@ -447,21 +444,88 @@ export const evaluacionService = {
       if (promedioIndice !== null && promedioIndice > UMBRAL_INDICE) {
         motivos.push({ tipo: 'indice_alto', mensaje: `Índice de Infección promedio (${promedioIndice}%) por encima de ${UMBRAL_INDICE}%` });
       }
+
+      let promedioSbH3 = null;
+      let promedioSbH5 = null;
+      if (e.sumasBruta.length > 0) {
+        const hidratadas = await adjuntarValoresPorHoja(e.sumasBruta);
+        promedioSbH3 = calcularIndicadorHoja(hidratadas, 3);
+        promedioSbH5 = calcularIndicadorHoja(hidratadas, 5);
+        if (promedioSbH3 !== null && promedioSbH3 > umbralesSb.alerta) {
+          motivos.push({
+            tipo: 'sb_h3_alto',
+            mensaje: `Suma Bruta Hoja 3 promedio (${promedioSbH3}) por encima de ${umbralesSb.alerta}`,
+          });
+        }
+        if (promedioSbH5 !== null && promedioSbH5 > umbralesSb.alerta) {
+          motivos.push({
+            tipo: 'sb_h5_alto',
+            mensaje: `Suma Bruta Hoja 5 promedio (${promedioSbH5}) por encima de ${umbralesSb.alerta}`,
+          });
+        }
+      }
+
       if (motivos.length > 0) {
         alertas.push({
           fincaUuid: e.fincaUuid,
           fincaNombre: e.fincaNombre,
           promedioYli,
           promedioIndice,
+          promedioSbH3,
+          promedioSbH5,
           motivos,
         });
       }
-    });
+    }
 
     return {
       semana: { uuid: semana.uuid, codigo: semana.codigo, numeroSemana: semana.numeroSemana, anio: semana.anio, fechaInicio: semana.fechaInicio, fechaFin: semana.fechaFin },
       alertas: alertas.sort((a, b) => a.fincaNombre.localeCompare(b.fincaNombre)),
     };
+  },
+
+  // Resuelve la config de destinatarios (correos sueltos + roles + usuarios
+  // puntuales) a una lista real de emails — mismo patrón que
+  // laborCultural.service.js#resolverCcCompleto.
+  async resolverDestinatariosAlertas() {
+    const destinatarios = await configuracionService.getAlertasSanidadDestinatarios();
+    const correos = new Set((destinatarios.correos || []).filter(Boolean));
+
+    if (destinatarios.rolesUuids?.length) {
+      const usuariosPorRol = await User.findAll({
+        where: { estado: true },
+        include: [{ model: Role, as: 'roles', where: { uuid: destinatarios.rolesUuids }, through: { attributes: [] } }],
+      });
+      usuariosPorRol.forEach((u) => u.email && correos.add(u.email));
+    }
+
+    if (destinatarios.usuariosUuids?.length) {
+      const usuariosPuntuales = await User.findAll({ where: { uuid: destinatarios.usuariosUuids, estado: true } });
+      usuariosPuntuales.forEach((u) => u.email && correos.add(u.email));
+    }
+
+    return [...correos];
+  },
+
+  // Calcula las alertas de la última semana cerrada (sin restricción de
+  // finca — `user` null equivale a "administrador", ver
+  // fincaScope.js#getFincaIdsPermitidas) y le manda el resumen por correo a
+  // los destinatarios configurados. Usado tanto por el cron semanal como
+  // por el botón "Enviar ahora" del panel. No manda nada si no hay
+  // destinatarios configurados o si la semana no tuvo ninguna alerta.
+  async enviarAlertasSemanaCerrada(query = {}) {
+    const resultado = await this.alertasSemanaCerrada(query, null);
+    if (!resultado.semana || resultado.alertas.length === 0) {
+      return { ...resultado, destinatarios: [], enviado: false };
+    }
+
+    const destinatarios = await this.resolverDestinatariosAlertas();
+    if (destinatarios.length === 0) {
+      return { ...resultado, destinatarios: [], enviado: false };
+    }
+
+    await mailService.sendAlertasSemana({ destinatarios, semana: resultado.semana, alertas: resultado.alertas });
+    return { ...resultado, destinatarios, enviado: true };
   },
 
   // Indicadores de una semana puntual (o año, si no llega semanaUuid):

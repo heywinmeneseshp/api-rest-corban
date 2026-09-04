@@ -57,6 +57,9 @@ export const createEvaluacionSchema = Joi.object({
     semanaUuid: uuidRef.required(),
     usuarioUuid: uuidRef,
     fecha: Joi.date().iso().raw().required(),
+    // Hora local real de captura (app móvil) — opcional, para no romper
+    // clientes viejos ni la creación manual desde el panel web.
+    capturadoEn: Joi.date().iso(),
     observacion: Joi.string().max(2000).allow('', null),
     estado: Joi.boolean(),
   }),
@@ -76,4 +79,69 @@ export const updateEvaluacionSchema = Joi.object({
   }).min(1),
   params: Joi.object({ uuid: uuidParam }),
   query: Joi.object({}),
+});
+
+export const listObjetivosSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({}),
+  query: Joi.object({
+    page: Joi.number().integer().min(1),
+    limit: Joi.number().integer().min(1).max(100),
+    fincaUuid: uuidRef,
+    loteUuid: uuidRef,
+    tipoEvaluacionUuid: uuidRef,
+  }),
+});
+
+export const getObjetivoSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({ uuid: uuidParam }),
+  query: Joi.object({}),
+});
+
+export const createObjetivoSchema = Joi.object({
+  body: Joi.object({
+    tipoEvaluacionUuid: uuidRef.required(),
+    fincaUuid: uuidRef,
+    loteUuid: uuidRef,
+    cantidad: Joi.number().integer().min(1).required(),
+    edadMinima: Joi.number().integer().min(1).allow(null),
+    edadMaxima: Joi.number().integer().min(1).allow(null),
+    estado: Joi.boolean(),
+  }),
+  params: Joi.object({}),
+  query: Joi.object({}),
+});
+
+export const updateObjetivoSchema = Joi.object({
+  body: Joi.object({
+    tipoEvaluacionUuid: uuidRef,
+    fincaUuid: uuidRef.allow(null),
+    loteUuid: uuidRef.allow(null),
+    cantidad: Joi.number().integer().min(1),
+    edadMinima: Joi.number().integer().min(1).allow(null),
+    edadMaxima: Joi.number().integer().min(1).allow(null),
+    estado: Joi.boolean(),
+  }).min(1),
+  params: Joi.object({ uuid: uuidParam }),
+  query: Joi.object({}),
+});
+
+export const setSbHojaUmbralesSchema = Joi.object({
+  body: Joi.object({
+    advertencia: Joi.number().min(0).required(),
+    alerta: Joi.number().min(0).required(),
+  }),
+  params: Joi.object({}),
+  query: Joi.object({}),
+});
+
+export const progresoObjetivosSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({}),
+  query: Joi.object({
+    fincaUuid: uuidRef,
+    loteUuid: uuidRef,
+    semanaUuid: uuidRef,
+  }),
 });

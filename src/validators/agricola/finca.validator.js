@@ -58,6 +58,12 @@ export const updateFincaSchema = Joi.object({
     estado: Joi.boolean(),
     esExterna: Joi.boolean(),
     grupoFincaUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null),
+    // Perímetro para el mapa — array de pares [lat, lng] (mínimo 3 puntos
+    // para que sea un polígono real); null limpia el perímetro guardado.
+    perimetro: Joi.array()
+      .items(Joi.array().length(2).items(Joi.number()))
+      .min(3)
+      .allow(null),
   }).min(1),
   params: Joi.object({ uuid: uuidParam }),
   query: Joi.object({}),

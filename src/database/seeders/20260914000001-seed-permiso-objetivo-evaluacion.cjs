@@ -2,7 +2,7 @@
 
 const crypto = require('node:crypto');
 
-const PREFIXES = ['estimacion.', 'menu.estimaciones'];
+const PREFIXES = ['objetivo_evaluacion.', 'menu.sanidad_vegetal.objetivos'];
 
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
@@ -11,7 +11,7 @@ module.exports = {
     const now = new Date();
 
     const [existentes] = await queryInterface.sequelize.query(
-      "SELECT codigo FROM permisos WHERE codigo LIKE 'estimacion.%' OR codigo LIKE 'menu.estimaciones%'",
+      "SELECT codigo FROM permisos WHERE codigo LIKE 'objetivo_evaluacion.%' OR codigo LIKE 'menu.sanidad_vegetal.objetivos%'",
     );
     const codigosExistentes = new Set(existentes.map((r) => r.codigo));
 
