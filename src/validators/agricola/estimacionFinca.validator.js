@@ -115,7 +115,6 @@ export const quitarLiquidacionSemanaSchema = Joi.object({
 
 export const liquidarSemanasMasivoSchema = Joi.object({
   body: Joi.object({
-    semanaDesdeUuid: Joi.string().uuid().required(),
     semanaHastaUuid: Joi.string().uuid().required(),
   }),
   params: Joi.object({}),

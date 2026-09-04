@@ -1052,9 +1052,20 @@ export const estimacionFincaService = {
     const estimadoCorteProximaSemana = estimadoPorCinta.reduce((acc, e) => acc + e.estimado, 0);
 
     // Últimas 12 semanas de calendario, marcando cuáles ya están liquidadas
-    // — para el selector de "Liquidar semana" en el frontend.
-    const semanaIdsLiquidadas = new Set(liquidaciones.map((l) => l.semanaId));
+    // — para el selector de "Liquidar semana" en el frontend. OJO: no
+    // reusar `liquidaciones` de arriba — esa viene limitada a las últimas
+    // PATRON_CORTE_FILAS (5) para el patrón de corte, así que una finca con
+    // más de 5 semanas liquidadas recientes mostraba las más viejas de esa
+    // ventana de 12 como "Abierta" aunque sí estuvieran liquidadas (bug
+    // real reportado: liquidación masiva de varias semanas seguidas dejaba
+    // solo las últimas 5 marcadas en pantalla).
     const semanasRecientesIdxMin = Math.max(currentIdx - 11, 0);
+    const semanasRecientesIds = semanasAll.slice(semanasRecientesIdxMin, currentIdx + 1).map((s) => s.id);
+    const liquidacionesRecientes = await FincaSemanaLiquidacion.findAll({
+      where: { fincaId: finca.id, semanaId: { [Op.in]: semanasRecientesIds } },
+      attributes: ['semanaId'],
+    });
+    const semanaIdsLiquidadas = new Set(liquidacionesRecientes.map((l) => l.semanaId));
     const semanasRecientes = semanasAll.slice(semanasRecientesIdxMin, currentIdx + 1).map((s) => ({
       uuid: s.uuid,
       codigo: s.codigo,
@@ -1142,20 +1153,18 @@ export const estimacionFincaService = {
     if (!(user?.roles || []).includes(ROLES.ADMINISTRADOR)) {
       throw ApiError.forbidden('Solo un Administrador puede liquidar semanas de forma masiva');
     }
-    if (!body.semanaDesdeUuid || !body.semanaHastaUuid) {
-      throw ApiError.badRequest('semanaDesdeUuid y semanaHastaUuid son requeridos');
+    if (!body.semanaHastaUuid) {
+      throw ApiError.badRequest('semanaHastaUuid es requerido');
     }
 
-    const semanaDesde = await Semana.findOne({ where: { uuid: body.semanaDesdeUuid } });
-    if (!semanaDesde) throw ApiError.badRequest('Semana inicial no encontrada');
     const semanaHasta = await Semana.findOne({ where: { uuid: body.semanaHastaUuid } });
     if (!semanaHasta) throw ApiError.badRequest('Semana final no encontrada');
 
-    const fechaMin = semanaDesde.fechaInicio <= semanaHasta.fechaInicio ? semanaDesde.fechaInicio : semanaHasta.fechaInicio;
-    const fechaMax = semanaDesde.fechaInicio <= semanaHasta.fechaInicio ? semanaHasta.fechaInicio : semanaDesde.fechaInicio;
-
+    // Sin "desde": toma todas las semanas desde el inicio del calendario
+    // hasta la seleccionada — cada finca puede tener su propio historial
+    // pendiente de liquidar, no todas arrancan en la misma semana.
     const semanas = await Semana.findAll({
-      where: { fechaInicio: { [Op.gte]: fechaMin, [Op.lte]: fechaMax } },
+      where: { fechaInicio: { [Op.lte]: semanaHasta.fechaInicio } },
       order: [['fechaInicio', 'ASC']],
     });
     if (semanas.length === 0) throw ApiError.badRequest('No hay semanas en ese rango');
