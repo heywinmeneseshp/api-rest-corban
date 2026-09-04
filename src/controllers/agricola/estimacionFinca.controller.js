@@ -56,6 +56,14 @@ export const estimacionFincaController = {
     ApiResponse.send(res, { message: 'Liquidación de semana eliminada correctamente' });
   }),
 
+  liquidarSemanasMasivo: asyncHandler(async (req, res) => {
+    const data = await estimacionFincaService.liquidarSemanasMasivo(req.body, req.user?.id, req.user);
+    ApiResponse.send(res, {
+      message: `Liquidación masiva completada: ${data.creadas + data.reabiertas} nueva(s), ${data.yaLiquidadas} ya estaban liquidadas`,
+      data,
+    });
+  }),
+
   guardarPatronCortePct: asyncHandler(async (req, res) => {
     const data = await estimacionFincaService.guardarPatronCortePct(req.body, req.user?.id, req.user);
     ApiResponse.send(res, { message: 'Porcentajes guardados correctamente', data });

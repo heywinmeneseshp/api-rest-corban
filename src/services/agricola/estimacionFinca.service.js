@@ -4,6 +4,7 @@ import { produccionSemanalRepository } from '../../repositories/agricola/producc
 import { racimoMovimientoRepository } from '../../repositories/agricola/racimoMovimiento.repository.js';
 import { semanaRepository } from '../../repositories/agricola/semana.repository.js';
 import { Finca, Semana, User, RacimoMovimiento, FincaSemanaLiquidacion } from '../../database/associations.js';
+import { sequelize } from '../../database/connection.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getFincaIdsPermitidas, assertFincaPermitida, expandirFincaIds } from '../../utils/fincaScope.js';
 import { configuracionService } from '../sistema/configuracion.service.js';
@@ -1129,6 +1130,89 @@ export const estimacionFincaService = {
     if (!existente) throw ApiError.notFound('Esa semana no está liquidada para esta finca');
     await existente.update({ deletedBy: actorId });
     await existente.destroy();
+  },
+
+  // Liquida de una sola vez TODAS las semanas de un rango, para TODAS las
+  // fincas operativas (no externas) — pensado para ponerse al día cuando
+  // hay muchas semanas atrasadas sin liquidar, en vez de ir finca por finca
+  // y semana por semana desde el panel. Solo Administrador: es una acción
+  // masiva que bloquea de verdad el registro de movimientos de racimos de
+  // esas semanas para todo el mundo (salvo Administrador/editar_historico).
+  async liquidarSemanasMasivo(body, actorId, user) {
+    if (!(user?.roles || []).includes(ROLES.ADMINISTRADOR)) {
+      throw ApiError.forbidden('Solo un Administrador puede liquidar semanas de forma masiva');
+    }
+    if (!body.semanaDesdeUuid || !body.semanaHastaUuid) {
+      throw ApiError.badRequest('semanaDesdeUuid y semanaHastaUuid son requeridos');
+    }
+
+    const semanaDesde = await Semana.findOne({ where: { uuid: body.semanaDesdeUuid } });
+    if (!semanaDesde) throw ApiError.badRequest('Semana inicial no encontrada');
+    const semanaHasta = await Semana.findOne({ where: { uuid: body.semanaHastaUuid } });
+    if (!semanaHasta) throw ApiError.badRequest('Semana final no encontrada');
+
+    const fechaMin = semanaDesde.fechaInicio <= semanaHasta.fechaInicio ? semanaDesde.fechaInicio : semanaHasta.fechaInicio;
+    const fechaMax = semanaDesde.fechaInicio <= semanaHasta.fechaInicio ? semanaHasta.fechaInicio : semanaDesde.fechaInicio;
+
+    const semanas = await Semana.findAll({
+      where: { fechaInicio: { [Op.gte]: fechaMin, [Op.lte]: fechaMax } },
+      order: [['fechaInicio', 'ASC']],
+    });
+    if (semanas.length === 0) throw ApiError.badRequest('No hay semanas en ese rango');
+
+    const fincas = await Finca.findAll({ where: { estado: true, esExterna: false } });
+    if (fincas.length === 0) throw ApiError.badRequest('No hay fincas operativas para liquidar');
+
+    const semanaIds = semanas.map((s) => s.id);
+    const fincaIds = fincas.map((f) => f.id);
+
+    return sequelize.transaction(async (transaction) => {
+      // Incluye las ya borradas (soft-delete) para poder restaurarlas en
+      // vez de chocar con el índice único (finca_id, semana_id) al crear
+      // una fila nueva — mismo criterio que liquidarSemana().
+      const existentes = await FincaSemanaLiquidacion.findAll({
+        where: { fincaId: { [Op.in]: fincaIds }, semanaId: { [Op.in]: semanaIds } },
+        paranoid: false,
+        transaction,
+      });
+      const existentesPorClave = new Map(existentes.map((e) => [`${e.fincaId}-${e.semanaId}`, e]));
+
+      let creadas = 0;
+      let reabiertas = 0;
+      let yaLiquidadas = 0;
+      const ahora = new Date();
+
+      for (const fincaId of fincaIds) {
+        for (const semanaId of semanaIds) {
+          const clave = `${fincaId}-${semanaId}`;
+          const existente = existentesPorClave.get(clave);
+          if (existente) {
+            if (!existente.deletedAt) {
+              yaLiquidadas += 1;
+              continue;
+            }
+            await existente.restore({ transaction });
+            await existente.update({ liquidadaEn: ahora, updatedBy: actorId, deletedBy: null }, { transaction });
+            reabiertas += 1;
+          } else {
+            await FincaSemanaLiquidacion.create(
+              { fincaId, semanaId, liquidadaEn: ahora, createdBy: actorId, updatedBy: actorId },
+              { transaction },
+            );
+            creadas += 1;
+          }
+        }
+      }
+
+      return {
+        fincas: fincas.length,
+        semanas: semanas.length,
+        combinacionesTotales: fincaIds.length * semanaIds.length,
+        creadas,
+        reabiertas,
+        yaLiquidadas,
+      };
+    });
   },
 
   // Guarda (o limpia) los % editados a mano en la tabla "Distribución por

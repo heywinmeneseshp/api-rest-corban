@@ -16,6 +16,7 @@ import {
   obtenerResumenFincaSchema,
   liquidarSemanaSchema,
   quitarLiquidacionSemanaSchema,
+  liquidarSemanasMasivoSchema,
   guardarPatronCortePctSchema,
   guardarRatioCajasPorSemanaSchema,
 } from '../../validators/agricola/estimacionFinca.validator.js';
@@ -136,6 +137,24 @@ router.delete(
   permission(PERMISSIONS.RACIMO_MOVIMIENTO_CREAR),
   validate(quitarLiquidacionSemanaSchema),
   estimacionFincaController.quitarLiquidacionSemana,
+);
+
+/**
+ * @openapi
+ * /estimaciones/liquidar-semana-masivo:
+ *   post:
+ *     tags: [Estimaciones de Fincas]
+ *     summary: Liquida todas las semanas de un rango para todas las fincas operativas — Administrador
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.post(
+  '/liquidar-semana-masivo',
+  auth,
+  permission(PERMISSIONS.RACIMO_MOVIMIENTO_CREAR),
+  validate(liquidarSemanasMasivoSchema),
+  estimacionFincaController.liquidarSemanasMasivo,
 );
 
 /**

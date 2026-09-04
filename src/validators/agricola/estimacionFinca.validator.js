@@ -113,6 +113,15 @@ export const quitarLiquidacionSemanaSchema = Joi.object({
   query: Joi.object({}),
 });
 
+export const liquidarSemanasMasivoSchema = Joi.object({
+  body: Joi.object({
+    semanaDesdeUuid: Joi.string().uuid().required(),
+    semanaHastaUuid: Joi.string().uuid().required(),
+  }),
+  params: Joi.object({}),
+  query: Joi.object({}),
+});
+
 const guardarPatronCortePctBodySchema = Joi.object({
   fincaUuid: Joi.string().uuid().required(),
   porcentajes: Joi.object().pattern(Joi.string(), Joi.number().min(0).max(100).allow(null)).allow(null).required(),
@@ -146,6 +155,7 @@ export default {
   obtenerResumenFincaSchema,
   liquidarSemanaSchema,
   quitarLiquidacionSemanaSchema,
+  liquidarSemanasMasivoSchema,
   guardarPatronCortePctSchema,
   guardarRatioCajasPorSemanaSchema,
 };

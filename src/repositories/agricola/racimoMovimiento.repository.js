@@ -286,7 +286,7 @@ export const racimoMovimientoRepository = {
     const rows = await RacimoMovimiento.findAll({
       where: { fincaId: { [Op.in]: fincaIds } },
       attributes: ['fincaId', 'semanaRegistroId'],
-      include: [{ model: Semana, as: 'semanaRegistro', attributes: ['id', 'codigo', 'fechaInicio'] }],
+      include: [{ model: Semana, as: 'semanaRegistro', attributes: ['id', 'uuid', 'codigo', 'fechaInicio'] }],
       raw: true,
       nest: true,
     });
@@ -296,7 +296,8 @@ export const racimoMovimientoRepository = {
       const actual = map.get(r.fincaId);
       if (!actual || r.semanaRegistro.fechaInicio > actual.fechaInicio) {
         map.set(r.fincaId, {
-          semanaRegistroId: r.semanaRegistroId,
+          id: r.semanaRegistroId,
+          uuid: r.semanaRegistro.uuid,
           codigo: r.semanaRegistro.codigo,
           fechaInicio: r.semanaRegistro.fechaInicio,
         });
