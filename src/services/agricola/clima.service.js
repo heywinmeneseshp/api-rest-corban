@@ -479,7 +479,13 @@ export const climaService = {
     // esos acumulados entre las fincas del alcance — no la suma de todas
     // (sumarlas inflaba el total según cuántas fincas hubiera, en vez de
     // mostrar cuánto llovió en promedio por finca esa semana).
-    const acumPorFincaSemana = new Map(); // `${fincaUuid}-${semanaUuid}` -> { sumaMm, countMm }
+    // Clave string por practicidad, pero NUNCA se debe parsear de vuelta con
+    // indexOf('-'): fincaUuid es un UUID y ya trae guiones adentro, así que
+    // cortar en el primer '-' partía la clave en el lugar equivocado y
+    // `semanaUuid` quedaba corrupto (bug real: totalMm salía siempre null,
+    // aunque sí había datos). El semanaUuid real queda guardado aparte en el
+    // propio valor del mapa, no se vuelve a derivar de la clave.
+    const acumPorFincaSemana = new Map(); // `${fincaUuid}-${semanaUuid}` -> { semanaUuid, sumaMm, countMm }
     const semanaMeta = new Map(); // semanaUuid -> { semanaCodigo, numeroSemana, anio, fecha }
     const acumTempHumPorSemana = new Map(); // semanaUuid -> { sumaTemp, countTemp, sumaHum, countHum } (across todas las fincas, sin cambios)
 
@@ -504,7 +510,7 @@ export const climaService = {
 
         const claveFincaSemana = `${r.fincaUuid}-${semana.uuid}`;
         if (!acumPorFincaSemana.has(claveFincaSemana)) {
-          acumPorFincaSemana.set(claveFincaSemana, { sumaMm: 0, countMm: 0 });
+          acumPorFincaSemana.set(claveFincaSemana, { semanaUuid: semana.uuid, sumaMm: 0, countMm: 0 });
         }
         const accFinca = acumPorFincaSemana.get(claveFincaSemana);
         accFinca.sumaMm += mm;
@@ -528,11 +534,10 @@ export const climaService = {
     // Agrupa los acumulados por finca en acumulados-por-semana (una lista de
     // totales, uno por finca) para poder promediarlos.
     const totalesPorSemana = new Map(); // semanaUuid -> [totalMmFinca1, totalMmFinca2, ...]
-    for (const [clave, acc] of acumPorFincaSemana.entries()) {
-      const semanaUuid = clave.slice(clave.indexOf('-') + 1);
+    for (const acc of acumPorFincaSemana.values()) {
       if (acc.countMm === 0) continue;
-      if (!totalesPorSemana.has(semanaUuid)) totalesPorSemana.set(semanaUuid, []);
-      totalesPorSemana.get(semanaUuid).push(acc.sumaMm);
+      if (!totalesPorSemana.has(acc.semanaUuid)) totalesPorSemana.set(acc.semanaUuid, []);
+      totalesPorSemana.get(acc.semanaUuid).push(acc.sumaMm);
     }
 
     let items = [...semanaMeta.entries()].map(([semanaUuid, a]) => {
