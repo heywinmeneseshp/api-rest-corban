@@ -77,6 +77,11 @@ export const racimoMovimientoController = {
     ApiResponse.send(res, { message: 'Reporte de saldos obtenido correctamente', data });
   }),
 
+  reporteMovimientosSemana: asyncHandler(async (req, res) => {
+    const data = await racimoMovimientoService.getReporteMovimientosSemana(req.query, req.user);
+    ApiResponse.send(res, { message: 'Reporte de movimientos de la semana obtenido correctamente', data });
+  }),
+
   reporteEmbolses: asyncHandler(async (req, res) => {
     const data = await racimoMovimientoService.getReporteEmbolses(req.query, req.user);
     ApiResponse.send(res, { message: 'Reporte de embolses obtenido correctamente', data });

@@ -307,6 +307,25 @@ export const dashboardService = {
     }) : [];
     const salidasAnualMap = new Map(salidasRows.map((r) => [r.semanaEmbolseId, Number(r.total)]));
 
+    // Mismos dos totales (embolsado/salidas) pero desglosados por finca, en
+    // vez de solo por semana — para el ranking de fincas de Aprovechamiento
+    // que va debajo del gráfico anual.
+    const embolseAnualPorFincaRows = todasSemanaIds.length > 0 ? await RacimoMovimiento.findAll({
+      where: { tipo: 'EMBOLSE', semanaEmbolseId: { [Op.in]: todasSemanaIds }, ...fw },
+      attributes: ['fincaId', [fn('SUM', col('cantidad')), 'total']],
+      group: ['fincaId'],
+      raw: true,
+    }) : [];
+    const embolseAnualPorFincaMap = new Map(embolseAnualPorFincaRows.map((r) => [r.fincaId, Number(r.total)]));
+
+    const salidasAnualPorFincaRows = todasSemanaIds.length > 0 ? await RacimoMovimiento.findAll({
+      where: { tipo: { [Op.in]: ['RECUSE', 'PROCESADO'] }, semanaEmbolseId: { [Op.in]: todasSemanaIds }, ...fw },
+      attributes: ['fincaId', [fn('SUM', col('cantidad')), 'total']],
+      group: ['fincaId'],
+      raw: true,
+    }) : [];
+    const salidasAnualPorFincaMap = new Map(salidasAnualPorFincaRows.map((r) => [r.fincaId, Number(r.total)]));
+
     // Lista de fincas seleccionables en el dashboard: se basa en el scope
     // completo del usuario (no en la elección puntual de `fw`), para que
     // pueda elegir entre cualquiera de SUS fincas asignadas.
@@ -342,6 +361,92 @@ export const dashboardService = {
     // desaparecía por completo del selector. Ya se calculó arriba como
     // `fincasEnAlcance`, no hace falta repetir la consulta.
     const fincas = fincasEnAlcance;
+
+    // Ranking semana vs. semana anterior (variación %) — usa la MISMA semana
+    // de referencia que las tarjetas de arriba (`ultimaSemana`: la elegida
+    // por `semanaUuid`, o la más reciente por defecto), comparada contra la
+    // semana inmediatamente anterior. A diferencia del ranking anual, va por
+    // finca+semana puntual, no acumulado del año.
+    const semanaAnteriorArr = await semanaRepository.findUltimasN(ultimaSemana.id, 2);
+    const semanaAnterior = semanaAnteriorArr.length === 2 ? semanaAnteriorArr[0] : null;
+
+    async function metricasPorFincaEnSemana(semanaId) {
+      if (!semanaId) return { cajas: new Map(), cortes: new Map(), embolsado: new Map(), salidas: new Map() };
+      const [cajasRows, cortesRows, embRows, salRows] = await Promise.all([
+        ProduccionSemanal.findAll({
+          where: { semanaId, ...fwScope },
+          attributes: ['fincaId', [fn('SUM', col('cajas_20kg')), 'total']],
+          group: ['fincaId'],
+          raw: true,
+        }),
+        RacimoMovimiento.findAll({
+          where: { tipo: { [Op.in]: ['RECUSE', 'PROCESADO'] }, semanaRegistroId: semanaId, ...fwScope },
+          attributes: ['fincaId', [fn('SUM', col('cantidad')), 'total']],
+          group: ['fincaId'],
+          raw: true,
+        }),
+        RacimoMovimiento.findAll({
+          where: { tipo: 'EMBOLSE', semanaEmbolseId: semanaId, ...fwScope },
+          attributes: ['fincaId', [fn('SUM', col('cantidad')), 'total']],
+          group: ['fincaId'],
+          raw: true,
+        }),
+        RacimoMovimiento.findAll({
+          where: { tipo: { [Op.in]: ['RECUSE', 'PROCESADO'] }, semanaEmbolseId: semanaId, ...fwScope },
+          attributes: ['fincaId', [fn('SUM', col('cantidad')), 'total']],
+          group: ['fincaId'],
+          raw: true,
+        }),
+      ]);
+      return {
+        cajas: new Map(cajasRows.map((r) => [r.fincaId, Number(r.total)])),
+        cortes: new Map(cortesRows.map((r) => [r.fincaId, Number(r.total)])),
+        embolsado: new Map(embRows.map((r) => [r.fincaId, Number(r.total)])),
+        salidas: new Map(salRows.map((r) => [r.fincaId, Number(r.total)])),
+      };
+    }
+
+    // null = sin base de comparación (semana anterior en 0 o sin semana
+    // anterior) — a propósito distinto de "0%", que sí sería un dato real.
+    function variacionPct(actual, anterior) {
+      if (anterior === null || anterior === undefined || anterior === 0) return null;
+      return Math.round(((actual - anterior) / anterior) * 10000) / 100;
+    }
+
+    const [metricasActual, metricasAnterior] = await Promise.all([
+      metricasPorFincaEnSemana(ultimaSemana.id),
+      metricasPorFincaEnSemana(semanaAnterior?.id),
+    ]);
+
+    const idsInternasFiltradasSet = new Set(fincaIdsInternasFiltradas);
+    const rankingSemanal = {
+      semana: { uuid: ultimaSemana.uuid, codigo: ultimaSemana.codigo },
+      semanaAnterior: semanaAnterior ? { uuid: semanaAnterior.uuid, codigo: semanaAnterior.codigo } : null,
+      fincas: fincasEnAlcance
+        .filter((f) => idsInternasFiltradasSet.has(f.id))
+        .map((f) => {
+          const cajasAct = metricasActual.cajas.get(f.id) || 0;
+          const cajasAnt = metricasAnterior.cajas.get(f.id) || 0;
+          const cortesAct = metricasActual.cortes.get(f.id) || 0;
+          const cortesAnt = metricasAnterior.cortes.get(f.id) || 0;
+          const embAct = metricasActual.embolsado.get(f.id) || 0;
+          const embAnt = metricasAnterior.embolsado.get(f.id) || 0;
+          const salAct = metricasActual.salidas.get(f.id) || 0;
+          const salAnt = metricasAnterior.salidas.get(f.id) || 0;
+          const ratioAct = cortesAct > 0 ? Math.round((cajasAct / cortesAct) * 100) / 100 : null;
+          const ratioAnt = cortesAnt > 0 ? Math.round((cajasAnt / cortesAnt) * 100) / 100 : null;
+          const aproAct = embAct > 0 ? Math.round((salAct / embAct) * 10000) / 100 : null;
+          const aproAnt = embAnt > 0 ? Math.round((salAnt / embAnt) * 10000) / 100 : null;
+          return {
+            fincaId: f.id,
+            codigo: f.codigo,
+            nombre: f.nombre,
+            cajas: { actual: cajasAct, anterior: cajasAnt, variacionPct: variacionPct(cajasAct, cajasAnt) },
+            ratio: { actual: ratioAct, anterior: ratioAnt, variacionPct: variacionPct(ratioAct, ratioAnt) },
+            aprovechamiento: { actual: aproAct, anterior: aproAnt, variacionPct: variacionPct(aproAct, aproAnt) },
+          };
+        }),
+    };
 
     const fincasActivas = fincas.map((f) => {
       const cajasFinca = fincaCajasMap.get(f.id) || 0;
@@ -396,6 +501,56 @@ export const dashboardService = {
       };
     });
 
+    // Ranking de fincas del AÑO seleccionado (no de una semana puntual, a
+    // diferencia de `fincasActivas`) — uno para Cajas/Ratio (cruzando cajas
+    // y racimos por finca+semana, mismo criterio que el ratio del gráfico) y
+    // otro para Aprovechamiento (embolsado vs. salidas por finca). Las
+    // fincas externas quedan afuera de los tres, igual que en los gráficos.
+    const fincaCajasAnualTotal = new Map();
+    const fincaCortesAnualTotal = new Map();
+    for (const semanaId of todasSemanaIds) {
+      const cajasFincas = cajasPorSemanaYFinca.get(semanaId) || new Map();
+      const cortesFincas = cortesPorSemanaYFinca.get(semanaId) || new Map();
+      for (const [fincaId, cantidad] of cajasFincas) {
+        if (!cortesFincas.has(fincaId)) continue;
+        fincaCajasAnualTotal.set(fincaId, (fincaCajasAnualTotal.get(fincaId) || 0) + cantidad);
+      }
+      for (const [fincaId, cantidad] of cortesFincas) {
+        if (!cajasFincas.has(fincaId)) continue;
+        fincaCortesAnualTotal.set(fincaId, (fincaCortesAnualTotal.get(fincaId) || 0) + cantidad);
+      }
+    }
+
+    // Respeta la selección de varias fincas (`query.fincas`) igual que el
+    // gráfico — antes listaba siempre TODAS las fincas del alcance del
+    // usuario acá, sin importar el filtro de finca(s) elegido.
+    const rankingCajasRatio = fincasEnAlcance
+      .filter((f) => idsInternasFiltradasSet.has(f.id))
+      .map((f) => {
+        const cajasFinca = fincaCajasAnualTotal.get(f.id) || 0;
+        const cortesFinca = fincaCortesAnualTotal.get(f.id) || 0;
+        return {
+          fincaId: f.id,
+          codigo: f.codigo,
+          nombre: f.nombre,
+          cajas: cajasFinca,
+          ratio: cortesFinca > 0 ? Math.round((cajasFinca / cortesFinca) * 100) / 100 : null,
+        };
+      });
+
+    const rankingAprovechamiento = fincasEnAlcance
+      .filter((f) => idsInternasFiltradasSet.has(f.id))
+      .map((f) => {
+        const embFinca = embolseAnualPorFincaMap.get(f.id) || 0;
+        const salFinca = salidasAnualPorFincaMap.get(f.id) || 0;
+        return {
+          fincaId: f.id,
+          codigo: f.codigo,
+          nombre: f.nombre,
+          aprovechamiento: embFinca > 0 ? Math.round((salFinca / embFinca) * 10000) / 100 : null,
+        };
+      });
+
     const aprovechamientoAnual = semanasAnio.map((semana) => {
       const embSem = embolseAnualMap.get(semana.id) || 0;
       const salSem = salidasAnualMap.get(semana.id) || 0;
@@ -429,6 +584,9 @@ export const dashboardService = {
       ratioAnual,
       embolseAnual,
       aprovechamientoAnual,
+      rankingCajasRatio,
+      rankingAprovechamiento,
+      rankingSemanal,
       anioSeleccionado: anioActual,
       aniosDisponibles,
     };

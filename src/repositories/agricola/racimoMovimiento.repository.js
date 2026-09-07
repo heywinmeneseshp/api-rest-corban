@@ -113,25 +113,33 @@ export const racimoMovimientoRepository = {
     return map;
   },
 
-  // Total embolsado por semana (de embolse), para el gráfico de embolses
-  // del año. `semanaIds` son las semanas del año consultado; `fincaId` es
-  // opcional (si no se da, suma todas las fincas).
-  async getEmbolsePorSemana({ semanaIds, fincaId, fincaIds }) {
+  // Total por semana de un tipo de movimiento (EMBOLSE por defecto), para
+  // el gráfico de embolses/repiques del año. `semanaIds` son las semanas
+  // del año consultado; `fincaId` es opcional (si no se da, suma todas las
+  // fincas). `tipo` deja reutilizar el mismo cálculo para Repique (u otro
+  // tipo) sin duplicar el método — ver getReporteEmbolses. `campo` elige
+  // contra qué columna de semana agrupar: `semanaEmbolseId` (la cinta —
+  // tiene sentido para Embolse, que define su propia cohorte) o
+  // `semanaRegistroId` (cuándo se registró el movimiento — lo que pidió el
+  // usuario para Repique: "por semana de registro", no por cinta de
+  // origen).
+  async getEmbolsePorSemana({ semanaIds, fincaId, fincaIds, tipo = 'EMBOLSE', campo = 'semanaEmbolseId', motivoRepiqueId }) {
     if (semanaIds.length === 0) return new Map();
 
     const results = await RacimoMovimiento.findAll({
       where: {
-        tipo: 'EMBOLSE',
-        semanaEmbolseId: { [Op.in]: semanaIds },
+        tipo,
+        [campo]: { [Op.in]: semanaIds },
         ...(fincaId ? { fincaId } : fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
+        ...(motivoRepiqueId ? { motivoRepiqueId: Array.isArray(motivoRepiqueId) ? { [Op.in]: motivoRepiqueId } : motivoRepiqueId } : {}),
       },
-      attributes: ['semanaEmbolseId', [fn('SUM', col('cantidad')), 'total']],
-      group: ['semanaEmbolseId'],
+      attributes: [campo, [fn('SUM', col('cantidad')), 'total']],
+      group: [campo],
       raw: true,
     });
 
     const map = new Map();
-    for (const r of results) map.set(r.semanaEmbolseId, Number(r.total));
+    for (const r of results) map.set(r[campo], Number(r.total));
     return map;
   },
 
@@ -191,24 +199,78 @@ export const racimoMovimientoRepository = {
 
   // Igual que getEmbolsePorSemana, pero agrupado también por finca — el
   // pronóstico necesita el pipeline de embolses por edad de cada finca por
-  // separado, no solo el total agregado.
-  async getEmbolsePorFincaYSemana({ fincaIds, semanaEmbolseIds }) {
+  // separado, no solo el total agregado. `tipo`/`campo` por defecto EMBOLSE/
+  // semanaEmbolseId (así pronóstico.service.js, que la llama sin pasarlos,
+  // sigue igual). `semanaEmbolseIds` sigue con ese nombre por compatibilidad
+  // con ese llamador, aunque con `campo: 'semanaRegistroId'` en realidad son
+  // ids de semanas de registro — misma tabla `semanas`, mismo tipo de id.
+  async getEmbolsePorFincaYSemana({ fincaIds, semanaEmbolseIds, tipo = 'EMBOLSE', campo = 'semanaEmbolseId', motivoRepiqueId }) {
     if (semanaEmbolseIds.length === 0) return new Map();
 
     const results = await RacimoMovimiento.findAll({
       where: {
-        tipo: 'EMBOLSE',
-        semanaEmbolseId: { [Op.in]: semanaEmbolseIds },
+        tipo,
+        [campo]: { [Op.in]: semanaEmbolseIds },
         ...(fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
+        ...(motivoRepiqueId ? { motivoRepiqueId: Array.isArray(motivoRepiqueId) ? { [Op.in]: motivoRepiqueId } : motivoRepiqueId } : {}),
       },
-      attributes: ['fincaId', 'semanaEmbolseId', [fn('SUM', col('cantidad')), 'total']],
-      group: ['fincaId', 'semanaEmbolseId'],
+      attributes: ['fincaId', campo, [fn('SUM', col('cantidad')), 'total']],
+      group: ['fincaId', campo],
       raw: true,
     });
 
     const map = new Map();
-    for (const r of results) map.set(`${r.fincaId}-${r.semanaEmbolseId}`, Number(r.total));
+    for (const r of results) map.set(`${r.fincaId}-${r[campo]}`, Number(r.total));
     return map;
+  },
+
+  // Total por finca (sumado, no por semana) de un tipo de movimiento en las
+  // semanas dadas — para el ranking de fincas del Gráfico de
+  // Embolses/Repiques.
+  async getEmbolseTotalPorFinca({ fincaIds, semanaEmbolseIds, tipo = 'EMBOLSE', campo = 'semanaEmbolseId', motivoRepiqueId }) {
+    if (semanaEmbolseIds.length === 0) return new Map();
+
+    const results = await RacimoMovimiento.findAll({
+      where: {
+        tipo,
+        [campo]: { [Op.in]: semanaEmbolseIds },
+        ...(fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
+        ...(motivoRepiqueId ? { motivoRepiqueId: Array.isArray(motivoRepiqueId) ? { [Op.in]: motivoRepiqueId } : motivoRepiqueId } : {}),
+      },
+      attributes: ['fincaId', [fn('SUM', col('cantidad')), 'total']],
+      group: ['fincaId'],
+      raw: true,
+    });
+
+    const map = new Map();
+    for (const r of results) map.set(r.fincaId, Number(r.total));
+    return map;
+  },
+
+  // Total por MOTIVO de repique (sumado, no por semana ni por finca) — para
+  // el gráfico de barras de "Gráfico de Repiques". Siempre trae todos los
+  // motivos del alcance filtrado, sin aplicar el motivo seleccionado (si lo
+  // hay) — igual que un gráfico de barras en Power BI, que se queda mostrando
+  // todas las categorías aunque una esté marcada como filtro activo.
+  async getTotalPorMotivoRepique({ fincaIds, semanaIds, campo = 'semanaRegistroId' }) {
+    if (semanaIds.length === 0) return [];
+
+    const results = await RacimoMovimiento.findAll({
+      where: {
+        tipo: 'REPIQUE',
+        [campo]: { [Op.in]: semanaIds },
+        ...(fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
+      },
+      attributes: ['motivoRepiqueId', [fn('SUM', col('cantidad')), 'total']],
+      group: ['motivoRepiqueId'],
+      include: [{ model: MotivoRepique, as: 'motivoRepique', attributes: ['uuid', 'nombre'] }],
+      raw: true,
+      nest: true,
+    });
+
+    return results
+      .filter((r) => r.motivoRepique)
+      .map((r) => ({ uuid: r.motivoRepique.uuid, nombre: r.motivoRepique.nombre, total: Number(r.total) }));
   },
 
   async update(movimiento, data, { transaction } = {}) {
@@ -327,10 +389,73 @@ export const racimoMovimientoRepository = {
 
   // Todos los movimientos de las cohortes dadas, con finca y lote, para
   // construir el reporte de saldos por lotes y cintas en una sola consulta.
-  findConFincaYLote({ semanaEmbolseIds, fincaId, fincaIds }) {
+  // Suma por cohorte (semanaEmbolseId) y tipo, de TODOS los movimientos con
+  // semana de registro ANTERIOR a `fechaLimite` (fecha_inicio de la semana
+  // de registro elegida) — para calcular el "saldo inicial" de esa semana
+  // en getReporteMovimientosSemana. Agrega en SQL (no trae fila por fila)
+  // porque el historial completo puede ser de años.
+  async sumarPorCohorteAntesDe({ semanaEmbolseIds, fincaId, fincaIds, fechaLimite }) {
+    if (semanaEmbolseIds.length === 0) return [];
+    const filas = await RacimoMovimiento.findAll({
+      attributes: ['semanaEmbolseId', 'tipo', [fn('SUM', col('cantidad')), 'total']],
+      where: {
+        semanaEmbolseId: { [Op.in]: semanaEmbolseIds },
+        ...(fincaId ? { fincaId } : fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
+      },
+      include: [{ model: Semana, as: 'semanaRegistro', attributes: [], where: { fechaInicio: { [Op.lt]: fechaLimite } }, required: true }],
+      group: ['semanaEmbolseId', 'tipo'],
+      raw: true,
+    });
+    return filas.map((f) => ({ semanaEmbolseId: f.semanaEmbolseId, tipo: f.tipo, total: Number(f.total) }));
+  },
+
+  // Última semana de REGISTRO que efectivamente tiene movimientos de
+  // racimos (dentro del alcance de fincas dado, y opcionalmente acotada a un
+  // año) — para que "Detalle Semanal" abra por defecto en la última semana
+  // con datos reales, en vez de la semana calendario de hoy (que puede no
+  // tener nada cargado todavía).
+  async getUltimaSemanaConMovimientos({ fincaIds, anio }) {
+    const fila = await RacimoMovimiento.findOne({
+      where: {
+        ...(fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
+      },
+      include: [
+        {
+          model: Semana,
+          as: 'semanaRegistro',
+          attributes: ['id', 'uuid', 'codigo', 'anio', 'numeroSemana', 'color', 'fechaInicio'],
+          where: anio ? { anio } : undefined,
+          required: true,
+        },
+      ],
+      order: [[{ model: Semana, as: 'semanaRegistro' }, 'fechaInicio', 'DESC']],
+    });
+    return fila ? fila.semanaRegistro : null;
+  },
+
+  // Igual que sumarPorCohorteAntesDe, pero desglosado también por lote — para
+  // poder expandir las filas "Saldo Inicial"/"Saldo Final" de
+  // getReporteMovimientosSemana y mostrar de qué lote viene cada saldo.
+  async sumarPorLoteYCohorteAntesDe({ semanaEmbolseIds, fincaId, fincaIds, fechaLimite }) {
+    if (semanaEmbolseIds.length === 0) return [];
+    const filas = await RacimoMovimiento.findAll({
+      attributes: ['loteId', 'semanaEmbolseId', 'tipo', [fn('SUM', col('cantidad')), 'total']],
+      where: {
+        semanaEmbolseId: { [Op.in]: semanaEmbolseIds },
+        ...(fincaId ? { fincaId } : fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
+      },
+      include: [{ model: Semana, as: 'semanaRegistro', attributes: [], where: { fechaInicio: { [Op.lt]: fechaLimite } }, required: true }],
+      group: ['loteId', 'semanaEmbolseId', 'tipo'],
+      raw: true,
+    });
+    return filas.map((f) => ({ loteId: f.loteId, semanaEmbolseId: f.semanaEmbolseId, tipo: f.tipo, total: Number(f.total) }));
+  },
+
+  findConFincaYLote({ semanaEmbolseIds, fincaId, fincaIds, semanaRegistroId }) {
     const where = {
       semanaEmbolseId: { [Op.in]: semanaEmbolseIds },
       ...(fincaId ? { fincaId } : fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
+      ...(semanaRegistroId ? { semanaRegistroId } : {}),
     };
     return RacimoMovimiento.findAll({
       where,

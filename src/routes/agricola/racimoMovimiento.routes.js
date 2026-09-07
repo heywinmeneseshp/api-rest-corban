@@ -14,6 +14,7 @@ import {
   inventarioRacimosSchema,
   resumenCohorteSchema,
   reporteSaldosSchema,
+  reporteMovimientosSemanaSchema,
   reporteEmbolsesSchema,
   exportarMovimientosSchema,
   exportarReporteSemanalSchema,
@@ -134,6 +135,24 @@ router.get(
   permission(PERMISSIONS.RACIMO_MOVIMIENTO_VER),
   validate(reporteSaldosSchema),
   racimoMovimientoController.reporteSaldos,
+);
+
+/**
+ * @openapi
+ * /racimo-movimientos/reporte-movimientos-semana:
+ *   get:
+ *     tags: [Movimientos de Racimos]
+ *     summary: Reporte de movimientos por lotes y cintas de UNA semana de registro puntual (no acumulado)
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.get(
+  '/reporte-movimientos-semana',
+  auth,
+  permission(PERMISSIONS.RACIMO_MOVIMIENTO_VER),
+  validate(reporteMovimientosSemanaSchema),
+  racimoMovimientoController.reporteMovimientosSemana,
 );
 
 /**

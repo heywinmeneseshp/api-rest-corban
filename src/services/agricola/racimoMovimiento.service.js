@@ -1051,12 +1051,240 @@ export const racimoMovimientoService = {
     };
   },
 
-  // Total embolsado por semana de un año completo, para el gráfico de
-  // líneas de embolses (general o por finca).
-  async getReporteEmbolses(query, user) {
+  // Igual que getReporteSaldos (mismas columnas de cohortes/cintas), pero en
+  // vez de acumular TODA la historia de cada cohorte, solo cuenta los
+  // movimientos registrados en UNA semana puntual (semanaRegistroUuid, por
+  // defecto la semana actual) — para ver "qué se movió esta semana" por
+  // cinta, no el saldo acumulado. Por eso no devuelve saldo/saldosFinales:
+  // un movimiento semanal no tiene un "saldo" acumulado que mostrar.
+  async getReporteMovimientosSemana(query, user) {
     const finca = query.fincaUuid ? await findFincaByUuidOrFail(query.fincaUuid) : null;
     if (finca) assertFincaPermitida(user, finca.id);
     const fincaIdsFiltro = finca ? await expandirFincaIds([finca.id]) : getFincaIdsPermitidas(user);
+
+    const cantidadSemanas = Number(query.cantidadSemanas) || 13;
+    const anioReal = new Date().getFullYear();
+    const anio = query.anio ? Number(query.anio) : anioReal;
+
+    // A diferencia de getReporteSaldos (donde el rango de cohortes se ancla
+    // en HOY, porque "edad" mide contra el saldo acumulado hasta el
+    // presente), acá el rango se ancla en la SEMANA DE REGISTRO elegida:
+    // "edad 1" es la cinta que se embolsó esa misma semana, "edad N" la que
+    // se embolsó N semanas antes — anclar en la fecha de hoy dejaba fuera
+    // del rango a cualquier semana de registro pasada que no cayera dentro
+    // de las últimas `cantidadSemanas` contadas desde el día de hoy.
+    //
+    // Por defecto (sin semanaRegistroUuid explícito) se abre en la ÚLTIMA
+    // semana que efectivamente tiene movimientos de racimos registrados —no
+    // la semana calendario de hoy, que puede no tener nada cargado todavía
+    // y mostraría la pantalla vacía sin motivo aparente. Si se filtró por
+    // año, se busca la última con datos DENTRO de ese año; si ninguna semana
+    // de ese año tiene movimientos, cae al viejo criterio (última semana del
+    // año / semana de hoy) para no dejar la pantalla sin nada que mostrar.
+    let semanaRegistro;
+    if (query.semanaRegistroUuid) {
+      semanaRegistro = await findSemanaByUuidOrFail(query.semanaRegistroUuid);
+    } else {
+      semanaRegistro = await racimoMovimientoRepository.getUltimaSemanaConMovimientos({
+        fincaIds: fincaIdsFiltro,
+        anio: query.anio ? anio : undefined,
+      });
+      if (!semanaRegistro) {
+        semanaRegistro =
+          anio === anioReal
+            ? await semanaRepository.findByFecha(new Date().toISOString().slice(0, 10))
+            : await semanaRepository.findUltimaDelAnio(anio);
+      }
+    }
+    if (!semanaRegistro) throw ApiError.notFound(`No hay semanas registradas para el año ${anio}`);
+
+    const semanasEmbolse = await semanaRepository.findUltimasN(semanaRegistro.id, cantidadSemanas);
+    const semanaEmbolseIds = semanasEmbolse.map((s) => s.id);
+
+    const [movimientos, acumuladoAntes, acumuladoAntesPorLote] = await Promise.all([
+      racimoMovimientoRepository.findConFincaYLote({
+        semanaEmbolseIds,
+        fincaIds: fincaIdsFiltro,
+        semanaRegistroId: semanaRegistro.id,
+      }),
+      // Todo lo registrado ANTES de la semana elegida, agregado en SQL —
+      // es el saldo con el que arrancó la semana (saldo inicial).
+      racimoMovimientoRepository.sumarPorCohorteAntesDe({
+        semanaEmbolseIds,
+        fincaIds: fincaIdsFiltro,
+        fechaLimite: semanaRegistro.fechaInicio,
+      }),
+      // Mismo saldo inicial, pero desglosado por lote — para poder expandir
+      // las filas "Saldo Inicial"/"Saldo Final" y ver de qué lote viene.
+      racimoMovimientoRepository.sumarPorLoteYCohorteAntesDe({
+        semanaEmbolseIds,
+        fincaIds: fincaIdsFiltro,
+        fechaLimite: semanaRegistro.fechaInicio,
+      }),
+    ]);
+
+    semanasEmbolse.reverse();
+
+    const saldoInicialPorCohorte = Object.fromEntries(semanaEmbolseIds.map((id) => [id, 0]));
+    for (const fila of acumuladoAntes) {
+      const signo = fila.tipo === 'EMBOLSE' ? 1 : -1;
+      saldoInicialPorCohorte[fila.semanaEmbolseId] = (saldoInicialPorCohorte[fila.semanaEmbolseId] || 0) + signo * fila.total;
+    }
+
+    // key: "loteId-semanaEmbolseId" -> saldo inicial de ese lote en esa cohorte
+    const saldoInicialPorLoteYCohorte = {};
+    for (const fila of acumuladoAntesPorLote) {
+      const signo = fila.tipo === 'EMBOLSE' ? 1 : -1;
+      const key = `${fila.loteId}-${fila.semanaEmbolseId}`;
+      saldoInicialPorLoteYCohorte[key] = (saldoInicialPorLoteYCohorte[key] || 0) + signo * fila.total;
+    }
+
+    const porCohorte = Object.fromEntries(semanasEmbolse.map((s) => [s.id, { totalEmbolsado: 0, totalRepicado: 0, totalRecusado: 0, totalProcesado: 0 }]));
+    const porLoteYCohorte = {};
+    // Desglose por lote Y por tipo de movimiento (no solo el neto de
+    // arriba) — para poder expandir cada fila de concepto (Embolsado,
+    // Repicado, Recusado, Procesado) y ver en qué lotes se dio y cuánto.
+    const TIPO_A_CAMPO = { EMBOLSE: 'totalEmbolsado', REPIQUE: 'totalRepicado', RECUSE: 'totalRecusado', PROCESADO: 'totalProcesado' };
+    const porLoteTipoYCohorte = {}; // key: `${loteId}-${campo}-${semanaEmbolseId}` -> cantidad
+
+    for (const m of movimientos) {
+      const c = porCohorte[m.semanaEmbolseId];
+      if (!c) continue;
+
+      const campo = TIPO_A_CAMPO[m.tipo];
+      if (campo) c[campo] += m.cantidad;
+
+      const loteKey = `${m.loteId}-${m.semanaEmbolseId}`;
+      if (!porLoteYCohorte[loteKey]) porLoteYCohorte[loteKey] = 0;
+      porLoteYCohorte[loteKey] += m.tipo === 'EMBOLSE' ? m.cantidad : -m.cantidad;
+
+      if (campo) {
+        const loteTipoKey = `${m.loteId}-${campo}-${m.semanaEmbolseId}`;
+        porLoteTipoYCohorte[loteTipoKey] = (porLoteTipoYCohorte[loteTipoKey] || 0) + m.cantidad;
+      }
+    }
+
+    const todosLosLotes = finca
+      ? await Lote.findAll({
+          where: { fincaId: { [Op.in]: fincaIdsFiltro } },
+          attributes: ['id', 'uuid', 'codigo', 'nombre'],
+          order: [['codigo', 'ASC']],
+        })
+      : [];
+
+    const cohortes = semanasEmbolse.map((semana) => {
+      const c = porCohorte[semana.id];
+      const diffMs = new Date(semanaRegistro.fechaInicio) - new Date(semana.fechaInicio);
+      const edadSemanas = Math.round(diffMs / (7 * 86400000)) + 1;
+      const saldoInicial = saldoInicialPorCohorte[semana.id] || 0;
+      const netoSemana = c.totalEmbolsado - c.totalRepicado - c.totalRecusado - c.totalProcesado;
+      return {
+        semanaUuid: semana.uuid,
+        semanaCodigo: semana.codigo,
+        anio: semana.anio,
+        numeroSemana: semana.numeroSemana,
+        color: semana.color,
+        edadSemanas,
+        totalEmbolsado: c.totalEmbolsado,
+        totalRepicado: c.totalRepicado,
+        totalRecusado: c.totalRecusado,
+        totalProcesado: c.totalProcesado,
+        saldoInicial,
+        saldoFinal: saldoInicial + netoSemana,
+      };
+    });
+
+    const CAMPOS_CONCEPTO = ['totalEmbolsado', 'totalRepicado', 'totalRecusado', 'totalProcesado'];
+    const lotes = todosLosLotes.map((lote) => {
+      const movimientosLote = {};
+      const porConcepto = Object.fromEntries(CAMPOS_CONCEPTO.map((campo) => [campo, {}]));
+      const saldoInicialLote = {};
+      const saldoFinalLote = {};
+      for (const s of semanasEmbolse) {
+        const key = `${lote.id}-${s.id}`;
+        const neto = porLoteYCohorte[key] || 0;
+        movimientosLote[s.uuid] = neto;
+        for (const campo of CAMPOS_CONCEPTO) {
+          porConcepto[campo][s.uuid] = porLoteTipoYCohorte[`${lote.id}-${campo}-${s.id}`] || 0;
+        }
+        const saldoInicial = saldoInicialPorLoteYCohorte[key] || 0;
+        saldoInicialLote[s.uuid] = saldoInicial;
+        saldoFinalLote[s.uuid] = saldoInicial + neto;
+      }
+      return {
+        uuid: lote.uuid,
+        codigo: lote.codigo,
+        nombre: lote.nombre,
+        movimientos: movimientosLote,
+        porConcepto,
+        saldoInicial: saldoInicialLote,
+        saldoFinal: saldoFinalLote,
+      };
+    });
+
+    return {
+      finca: finca ? { uuid: finca.uuid, codigo: finca.codigo, nombre: finca.nombre } : null,
+      semanaRegistro: { uuid: semanaRegistro.uuid, codigo: semanaRegistro.codigo, anio: semanaRegistro.anio, numeroSemana: semanaRegistro.numeroSemana },
+      cohortes,
+      lotes,
+    };
+  },
+
+  // Total embolsado por semana de un año completo, para el gráfico de
+  // líneas de embolses (general o por finca).
+  // Reporte de embolses (por defecto) o, con `query.tipo`, del mismo cálculo
+  // para otro tipo de movimiento (ej. REPIQUE) — usado tanto por "Gráfico de
+  // Embolses" como por "Gráfico de Repiques", mismo endpoint, mismo cálculo,
+  // solo cambia el tipo que se suma. El nombre de los campos de la
+  // respuesta (`totalEmbolsado`) se mantiene igual sea cual sea el tipo,
+  // para no duplicar la lógica del frontend que ya los consume.
+  async getReporteEmbolses(query, user) {
+    const tipo = TIPOS_VALIDOS.includes(query.tipo) ? query.tipo : 'EMBOLSE';
+    // Embolse se agrupa por su propia cinta (semanaEmbolseId) — es la
+    // cohorte que define. Para el resto (ej. Repique) se agrupa por semana
+    // de REGISTRO, no por la cinta de origen — así lo pidió el usuario para
+    // el Gráfico de Repiques: "cuánto se repicó cada semana", no "de qué
+    // cinta era lo repicado".
+    const campo = tipo === 'EMBOLSE' ? 'semanaEmbolseId' : 'semanaRegistroId';
+
+    // Filtro por motivo(s) de repique (clic — o ctrl/cmd+clic para marcar
+    // varios — en una barra del gráfico de motivos, ver más abajo) — solo
+    // tiene efecto real cuando tipo=REPIQUE; en cualquier otro tipo se
+    // ignora en silencio (no hay motivo que filtrar). `motivoUuids` (varios,
+    // separados por coma) es el filtro nuevo; se mantiene `motivoUuid` (uno
+    // solo) por compatibilidad con quien todavía llame a la API con el
+    // parámetro viejo.
+    const motivoUuidsSeleccionados = query.motivoUuids
+      ? query.motivoUuids.split(',').map((u) => u.trim()).filter(Boolean)
+      : query.motivoUuid
+        ? [query.motivoUuid]
+        : [];
+    const motivosSeleccionadosDb = motivoUuidsSeleccionados.length > 0
+      ? await MotivoRepique.findAll({ where: { uuid: { [Op.in]: motivoUuidsSeleccionados } }, attributes: ['id', 'uuid'], raw: true })
+      : [];
+    const motivoRepiqueId = motivosSeleccionadosDb.length === 1
+      ? motivosSeleccionadosDb[0].id
+      : motivosSeleccionadosDb.length > 1
+        ? motivosSeleccionadosDb.map((m) => m.id)
+        : undefined;
+
+    // `fincaUuids` (varias, separadas por coma) es el filtro nuevo; se
+    // mantiene `fincaUuid` (una sola) por compatibilidad con quien todavía
+    // llame a la API con el parámetro viejo.
+    const uuidsSeleccionados = query.fincaUuids
+      ? query.fincaUuids.split(',').map((u) => u.trim()).filter(Boolean)
+      : query.fincaUuid
+        ? [query.fincaUuid]
+        : [];
+
+    const fincasSeleccionadas = uuidsSeleccionados.length > 0
+      ? await Finca.findAll({ where: { uuid: { [Op.in]: uuidsSeleccionados } }, attributes: ['id', 'uuid', 'codigo', 'nombre'], raw: true })
+      : [];
+    for (const f of fincasSeleccionadas) assertFincaPermitida(user, f.id);
+
+    const fincaIdsFiltro = fincasSeleccionadas.length > 0
+      ? await expandirFincaIds(fincasSeleccionadas.map((f) => f.id))
+      : getFincaIdsPermitidas(user);
     const hoy = new Date();
 
     const anios = query.anios
@@ -1071,6 +1299,9 @@ export const racimoMovimientoService = {
         const totalesPorSemana = await racimoMovimientoRepository.getEmbolsePorSemana({
           semanaIds: semanas.map((s) => s.id),
           fincaIds: fincaIdsFiltro,
+          tipo,
+          campo,
+          motivoRepiqueId,
         });
 
         const puntos = semanas.map((s) => {
@@ -1081,6 +1312,10 @@ export const racimoMovimientoService = {
             codigo: s.codigo,
             color: s.color,
             fechaInicio: s.fechaInicio,
+            // uuid de la semana (según `campo`: de embolse o de registro) —
+            // para poder hacerle clic a un punto del gráfico y filtrar el
+            // resto de la página por esa semana puntual.
+            uuid: s.uuid,
           };
         });
 
@@ -1088,6 +1323,7 @@ export const racimoMovimientoService = {
           anio,
           totalAnual: puntos.reduce((acc, p) => acc + (p.totalEmbolsado || 0), 0),
           puntos,
+          semanaIds: semanas.map((s) => s.id),
         };
       }),
     );
@@ -1097,9 +1333,94 @@ export const racimoMovimientoService = {
       throw ApiError.notFound(`No hay semanas registradas para los años solicitados`);
     }
 
+    // Ranking de fincas (embolsado total de los años seleccionados,
+    // sumados) — se calcula siempre sobre el alcance filtrado (todas las
+    // permitidas, o solo las elegidas); el frontend decide si vale la pena
+    // mostrarlo según cuántas filas tenga (con una sola finca no aporta).
+    const semanaIdsTodas = aniosValidos.flatMap((a) => a.semanaIds);
+    const totalPorFinca = await racimoMovimientoRepository.getEmbolseTotalPorFinca({
+      fincaIds: fincaIdsFiltro,
+      semanaEmbolseIds: semanaIdsTodas,
+      tipo,
+      campo,
+      motivoRepiqueId,
+    });
+    const fincasConDato = await Finca.findAll({
+      where: { id: { [Op.in]: [...totalPorFinca.keys()] } },
+      attributes: ['id', 'codigo', 'nombre'],
+      raw: true,
+    });
+    const rankingFincas = fincasConDato.map((f) => ({
+      fincaId: f.id,
+      codigo: f.codigo,
+      nombre: f.nombre,
+      totalEmbolsado: totalPorFinca.get(f.id) || 0,
+    }));
+
+    // Ranking semana vs. semana anterior: la semana de embolse elegida
+    // (`semanaUuid`), o por defecto la última que tiene movimientos reales
+    // (mismo criterio que "Saldo y Movimientos" — ver
+    // getReporteMovimientosSemana), comparada contra la inmediatamente
+    // anterior.
+    let rankingSemanal = null;
+    const semanaRef = query.semanaUuid
+      ? await findSemanaByUuidOrFail(query.semanaUuid)
+      : await racimoMovimientoRepository.getUltimaSemanaConMovimientos({ fincaIds: fincaIdsFiltro });
+    if (semanaRef) {
+      const parArr = await semanaRepository.findUltimasN(semanaRef.id, 2);
+      const semanaAnterior = parArr.length === 2 ? parArr[0] : null;
+      const semanaIdsPar = semanaAnterior ? [semanaRef.id, semanaAnterior.id] : [semanaRef.id];
+      const porFincaYSemana = await racimoMovimientoRepository.getEmbolsePorFincaYSemana({
+        fincaIds: fincaIdsFiltro,
+        semanaEmbolseIds: semanaIdsPar,
+        tipo,
+        campo,
+        motivoRepiqueId,
+      });
+      const fincasParaComparar = fincasSeleccionadas.length > 0 ? fincasSeleccionadas : fincasConDato;
+      rankingSemanal = {
+        semana: { uuid: semanaRef.uuid, codigo: semanaRef.codigo },
+        semanaAnterior: semanaAnterior ? { uuid: semanaAnterior.uuid, codigo: semanaAnterior.codigo } : null,
+        fincas: fincasParaComparar.map((f) => {
+          const actual = porFincaYSemana.get(`${f.id}-${semanaRef.id}`) || 0;
+          const anterior = semanaAnterior ? porFincaYSemana.get(`${f.id}-${semanaAnterior.id}`) || 0 : 0;
+          return {
+            fincaId: f.id,
+            codigo: f.codigo,
+            nombre: f.nombre,
+            actual,
+            anterior,
+            // null = sin base de comparación (semana anterior en 0, o sin
+            // semana anterior) — distinto de "0%", que sí es un dato real.
+            variacionPct: !semanaAnterior || anterior === 0 ? null : Math.round(((actual - anterior) / anterior) * 10000) / 100,
+          };
+        }),
+      };
+    }
+
+    // Desglose por motivo de repique (para el gráfico de barras clicable de
+    // "Gráfico de Repiques") — solo aplica a REPIQUE. Si el usuario eligió
+    // una semana puntual (`semanaUuid`), el desglose se acota a esa semana
+    // (para que las barras respondan al filtro, no se queden con el total
+    // del año entero); sin semana elegida, trae todo el alcance filtrado.
+    // No se descuenta el motivo ya seleccionado (si el usuario le hizo clic
+    // a una barra) — igual que un gráfico de barras en Power BI, que se
+    // queda mostrando todas las categorías aunque una esté marcada como
+    // filtro activo.
+    const semanaIdsParaMotivos = query.semanaUuid && semanaRef ? [semanaRef.id] : semanaIdsTodas;
+    const motivosRepique = tipo === 'REPIQUE'
+      ? (await racimoMovimientoRepository.getTotalPorMotivoRepique({ fincaIds: fincaIdsFiltro, semanaIds: semanaIdsParaMotivos, campo }))
+        .sort((a, b) => b.total - a.total)
+      : null;
+
     return {
-      finca: finca ? { uuid: finca.uuid, codigo: finca.codigo, nombre: finca.nombre } : null,
-      anios: aniosValidos,
+      finca: fincasSeleccionadas.length === 1 ? { uuid: fincasSeleccionadas[0].uuid, codigo: fincasSeleccionadas[0].codigo, nombre: fincasSeleccionadas[0].nombre } : null,
+      fincasSeleccionadas: fincasSeleccionadas.map((f) => ({ uuid: f.uuid, codigo: f.codigo, nombre: f.nombre })),
+      anios: aniosValidos.map(({ semanaIds: _semanaIds, ...resto }) => resto),
+      rankingFincas,
+      rankingSemanal,
+      motivosRepique,
+      motivosSeleccionados: motivosSeleccionadosDb.map((m) => m.uuid),
     };
   },
 

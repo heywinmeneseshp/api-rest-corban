@@ -103,13 +103,29 @@ export const reporteSaldosSchema = Joi.object({
   }),
 });
 
-export const reporteEmbolsesSchema = Joi.object({
+export const reporteMovimientosSemanaSchema = Joi.object({
   body: Joi.object({}),
   params: Joi.object({}),
   query: Joi.object({
     fincaUuid: uuidRef,
     anio: Joi.number().integer().min(2000).max(2100),
+    cantidadSemanas: Joi.number().integer().min(1).max(53).default(13),
+    semanaRegistroUuid: uuidRef,
+  }),
+});
+
+export const reporteEmbolsesSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({}),
+  query: Joi.object({
+    fincaUuid: uuidRef,
+    fincaUuids: Joi.string(),
+    anio: Joi.number().integer().min(2000).max(2100),
     anios: Joi.string(),
+    semanaUuid: uuidRef,
+    tipo: Joi.string().valid('EMBOLSE', 'REPIQUE', 'RECUSE', 'PROCESADO'),
+    motivoUuid: uuidRef,
+    motivoUuids: Joi.string(),
   }),
 });
 

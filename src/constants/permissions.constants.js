@@ -241,7 +241,9 @@ export const PERMISSIONS = {
   // permiso granular (racimo_movimiento.crear) — se mantiene esa agrupación.
   MENU_RACIMOS_REGISTRAR: 'menu.racimos.registrar',
   MENU_RACIMOS_SALDOS_LOTES_CINTAS: 'menu.racimos.saldos_lotes_cintas',
+  MENU_RACIMOS_MOVIMIENTOS_SEMANA: 'menu.racimos.movimientos_semana',
   MENU_RACIMOS_REPORTE_EMBOLSES: 'menu.racimos.reporte_embolses',
+  MENU_RACIMOS_REPORTE_REPIQUES: 'menu.racimos.reporte_repiques',
   MENU_RACIMOS_LIQUIDACION: 'menu.racimos.liquidacion',
 
   MENU_LABORES: 'menu.labores',
@@ -512,7 +514,9 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.MENU_RACIMOS_MOVIMIENTOS, nombre: 'Ver submenú Movimientos' },
   { codigo: PERMISSIONS.MENU_RACIMOS_REGISTRAR, nombre: 'Ver submenús Registrar Embolse/Repique/Corte' },
   { codigo: PERMISSIONS.MENU_RACIMOS_SALDOS_LOTES_CINTAS, nombre: 'Ver submenú Saldos × Lotes y Cintas' },
+  { codigo: PERMISSIONS.MENU_RACIMOS_MOVIMIENTOS_SEMANA, nombre: 'Ver submenú Movimientos por Semana' },
   { codigo: PERMISSIONS.MENU_RACIMOS_REPORTE_EMBOLSES, nombre: 'Ver submenú Reporte de Embolses' },
+  { codigo: PERMISSIONS.MENU_RACIMOS_REPORTE_REPIQUES, nombre: 'Ver submenú Reporte de Repiques' },
   { codigo: PERMISSIONS.MENU_RACIMOS_LIQUIDACION, nombre: 'Ver submenú Liquidación de semanas' },
 
   { codigo: PERMISSIONS.MENU_LABORES, nombre: 'Ver sección Labores en el menú' },
