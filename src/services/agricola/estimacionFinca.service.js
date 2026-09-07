@@ -832,6 +832,7 @@ export const estimacionFincaService = {
         semanaEstimado: null,
         proximasSemanas: [],
         estimadoPorCinta: [],
+        nuevasCintasPorSemana: [],
         estimadoCorteProximaSemana: null,
         patronCorte: [],
         promedio: { porEdad: PATRON_CORTE_EDADES.map((edad) => ({ edad, porcentaje: null })), aprovechamiento: null },
@@ -1051,6 +1052,21 @@ export const estimacionFincaService = {
     });
     const estimadoCorteProximaSemana = estimadoPorCinta.reduce((acc, e) => acc + e.estimado, 0);
 
+    // Cinta NUEVA que entra a edad 8 en cada semana futura (i=1 en adelante;
+    // i=0 ya la trae `estimadoPorCinta`) — sin esto, "Sugerido próximas
+    // semanas" solo envejece las 5 cintas iniciales y nunca incorpora las
+    // que van cumpliendo 8 semanas más adelante (ej. el embolse de S32
+    // recién entra a edad 8 en S39, no en S38) — la proyección se iba
+    // vaciando semana a semana en vez de mantener 5 cintas activas. El
+    // embolse de esa cinta ya es real (pasado) para cualquier semana futura
+    // dentro de la ventana de 8 semanas, así que su saldo actual (no un
+    // estimado) es un dato conocido, igual que las 5 cintas iniciales.
+    const nuevasCintasPorSemana = await Promise.all(
+      proximasSemanasBase.map((_s, i) => (i === 0
+        ? Promise.resolve(null)
+        : getCintasPorEdad(finca.id, proximaIdx + i, semanasAll, [8]).then((r) => r[0]))),
+    );
+
     // Últimas 12 semanas de calendario, marcando cuáles ya están liquidadas
     // — para el selector de "Liquidar semana" en el frontend. OJO: no
     // reusar `liquidaciones` de arriba — esa viene limitada a las últimas
@@ -1080,6 +1096,7 @@ export const estimacionFincaService = {
       semanaEstimado: semanaEstimado ? { uuid: semanaEstimado.uuid, codigo: semanaEstimado.codigo } : null,
       proximasSemanas,
       estimadoPorCinta,
+      nuevasCintasPorSemana,
       estimadoCorteProximaSemana,
       patronCorte,
       promedio: { porEdad: promedioPorEdad, aprovechamiento: promedioAprovechamiento },
