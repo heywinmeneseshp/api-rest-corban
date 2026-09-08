@@ -71,6 +71,12 @@ export const userController = {
     await userService.removeFinca(req.params.uuid, req.params.fincaUuid);
     ApiResponse.send(res, { message: 'Finca removida correctamente', data: null });
   }),
+
+  bulkUpload: asyncHandler(async (req, res) => {
+    const dryRun = req.body?.dryRun === 'true';
+    const resultado = await userService.bulkCreateUsuarios(req.file, req.user?.id, { dryRun });
+    ApiResponse.send(res, { message: 'Cargue masivo de usuarios procesado', data: resultado });
+  }),
 };
 
 export default userController;

@@ -127,7 +127,7 @@ export const mezclaService = {
         );
       }
 
-      const resultado = await mezclaRepository.findByUuid(mezcla.uuid);
+      const resultado = await mezclaRepository.findByUuid(mezcla.uuid, { transaction: t });
       return { ...resultado.toJSON(), advertencias: evaluarMargen(payload.precioVenta, costoUnitario) };
     });
   },
@@ -179,7 +179,7 @@ export const mezclaService = {
         // No se recalculan componentes/costo — se compara contra el costo
         // de la versión activa actual (no cambió).
         const activaActual = await mezclaRepository.findActiveVersion(mezcla.id, { transaction: t });
-        const resultado = await mezclaRepository.findByUuid(uuid);
+        const resultado = await mezclaRepository.findByUuid(uuid, { transaction: t });
         return { ...resultado.toJSON(), advertencias: evaluarMargen(precioVentaFinal, activaActual?.costoUnitario) };
       }
 
@@ -247,7 +247,7 @@ export const mezclaService = {
         );
       }
 
-      const resultado = await mezclaRepository.findByUuid(uuid);
+      const resultado = await mezclaRepository.findByUuid(uuid, { transaction: t });
       return { ...resultado.toJSON(), advertencias: evaluarMargen(precioVentaFinal, costoUnitario) };
     });
   },

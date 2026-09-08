@@ -57,6 +57,23 @@ export const userRepository = {
     return User.findOne({ where: { [Op.or]: [{ usuario }, { email }] } });
   },
 
+  // Trae de un tirón todos los usuarios cuyo login (`usuario`) esté en la
+  // lista — usado por el cargue masivo para saber, ANTES de procesar fila
+  // por fila, cuáles ya existen (se actualizan) y cuáles son nuevos (se
+  // crean), sin una consulta por fila.
+  findByUsuarios(usuarios) {
+    if (!usuarios || usuarios.length === 0) return [];
+    return User.findAll({ where: { usuario: { [Op.in]: usuarios } } });
+  },
+
+  // Mismo propósito que findByUsuarios, pero por email — para detectar en
+  // el cargue masivo un email que ya usa OTRO usuario (login distinto),
+  // caso que findByUsuarios solo no alcanza a ver.
+  findByEmails(emails) {
+    if (!emails || emails.length === 0) return [];
+    return User.findAll({ where: { email: { [Op.in]: emails } } });
+  },
+
   create(data, { transaction } = {}) {
     return User.create(data, { transaction });
   },
@@ -94,6 +111,26 @@ export const userRepository = {
 
   removeFinca(userId, fincaId, { transaction } = {}) {
     return UsuarioFinca.destroy({ where: { userId, fincaId }, transaction });
+  },
+
+  // Reemplaza el conjunto COMPLETO de roles de un usuario por `roleIds`
+  // (quita los que ya no estén en la lista, agrega los que falten) — usado
+  // por el cargue masivo, para que volver a subir el mismo archivo con la
+  // columna "roles" cambiada deje al usuario exactamente con esos roles,
+  // no con la unión de los viejos más los nuevos.
+  async setRoles(userId, roleIds, createdBy, { transaction } = {}) {
+    await UsuarioRol.destroy({ where: { userId, roleId: { [Op.notIn]: roleIds.length ? roleIds : [0] } }, transaction });
+    for (const roleId of roleIds) {
+      await UsuarioRol.findOrCreate({ where: { userId, roleId }, defaults: { userId, roleId, createdBy }, transaction });
+    }
+  },
+
+  // Igual que setRoles, para el conjunto de fincas asignadas.
+  async setFincas(userId, fincaIds, createdBy, { transaction } = {}) {
+    await UsuarioFinca.destroy({ where: { userId, fincaId: { [Op.notIn]: fincaIds.length ? fincaIds : [0] } }, transaction });
+    for (const fincaId of fincaIds) {
+      await UsuarioFinca.findOrCreate({ where: { userId, fincaId }, defaults: { userId, fincaId, createdBy }, transaction });
+    }
   },
 };
 

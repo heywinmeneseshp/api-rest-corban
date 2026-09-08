@@ -4,6 +4,16 @@ import { Mezcla, MezclaVersion, MezclaComponente, Articulo, UnidadMedida, User }
 const LIST_INCLUDE = [
   { model: Articulo, as: 'articuloElaborado', attributes: ['uuid', 'nombre', 'codigo'] },
   { model: UnidadMedida, as: 'unidadRendimiento', attributes: ['uuid', 'nombre', 'simbolo'] },
+  // Solo la versión activa (costo actual) — para mostrar costo total/unitario
+  // en el listado sin traer todo el historial de versiones/componentes.
+  {
+    model: MezclaVersion,
+    as: 'versiones',
+    where: { activa: true },
+    required: false,
+    separate: true,
+    attributes: ['uuid', 'version', 'costoTotal', 'costoUnitario'],
+  },
 ];
 
 const DETAIL_INCLUDE = [
@@ -58,8 +68,12 @@ export const mezclaRepository = {
     });
   },
 
-  findByUuid(uuid) {
-    return Mezcla.findOne({ where: { uuid }, include: DETAIL_INCLUDE });
+  // `transaction` es necesario cuando se llama justo después de crear/
+  // actualizar dentro de la misma transacción (create/update en el
+  // service) — sin pasarla, esta consulta corre en otra conexión y, según
+  // el nivel de aislamiento, puede no ver todavía la fila recién escrita.
+  findByUuid(uuid, { transaction } = {}) {
+    return Mezcla.findOne({ where: { uuid }, include: DETAIL_INCLUDE, transaction });
   },
 
   findByNombre(nombre) {

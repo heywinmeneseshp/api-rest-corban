@@ -6,8 +6,21 @@ import { userRepository } from '../../repositories/seguridad/user.repository.js'
 import { mailService } from '../sistema/mail.service.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
+import { parseBulkFile } from '../../utils/bulkFileParser.js';
 
 const SALT_ROUNDS = 10;
+
+// A diferencia de motivoRepique/produccionSemanal (estado en blanco =
+// activo), acá en blanco significa "no tocar el estado" al actualizar un
+// usuario existente — para que volver a subir el mismo archivo sin la
+// columna estado no reactive por accidente una cuenta que alguien
+// desactivó a mano. En una fila de creación (usuario nuevo) sí aplica el
+// default: activo.
+function parseEstadoUsuario(valor) {
+  if (valor === undefined || valor === '') return undefined;
+  const texto = String(valor).trim().toLowerCase();
+  return !['inactivo', 'false', '0', 'no'].includes(texto);
+}
 
 const findRoleByUuidOrFail = async (roleUuid) => {
   const role = await Role.findOne({ where: { uuid: roleUuid } });
@@ -158,6 +171,155 @@ export const userService = {
     if (!user) throw ApiError.notFound('Usuario no encontrado');
     const finca = await findFincaByUuidOrFail(fincaUuid);
     await userRepository.removeFinca(user.id, finca.id);
+  },
+
+  // Cargue masivo desde .csv/.xlsx, para crear y actualizar usuarios a la
+  // vez. Columnas esperadas: usuario, nombre, apellido, email, cargo
+  // (opcional), estado (opcional: activo/inactivo — en blanco no toca el
+  // estado de un usuario existente, y activa por defecto uno nuevo), roles
+  // (opcional, nombres de rol separados por coma) y fincas (opcional,
+  // códigos de finca separados por coma). La contraseña siempre se genera
+  // sola (igual que en bulkResetPassword) y se envía por correo — nunca se
+  // recibe por archivo. Clave natural: usuario. Sigue el mismo criterio que
+  // motivoRepique/produccionSemanal (siempre inserta/actualiza lo válido y
+  // reporta errores para el resto), no el de racimoMovimiento (que aborta
+  // todo si hay un solo error) — acá no aplica esa complejidad.
+  async bulkCreateUsuarios(file, actorId, { dryRun = false } = {}) {
+    const rows = parseBulkFile(file);
+    if (rows.length === 0) throw ApiError.badRequest('El archivo no tiene filas para procesar');
+
+    const errores = [];
+    const filasValidas = [];
+
+    for (let i = 0; i < rows.length; i += 1) {
+      const fila = i + 2;
+      const row = rows[i];
+      const usuario = String(row.usuario || '').trim();
+      const nombre = String(row.nombre || '').trim();
+      const apellido = String(row.apellido || '').trim();
+      const email = String(row.email || '').trim();
+
+      if (!usuario || !nombre || !apellido || !email) {
+        errores.push({ fila, mensaje: 'Faltan columnas requeridas: usuario, nombre, apellido, email' });
+        continue;
+      }
+
+      const cargo = row.cargo ? String(row.cargo).trim() : undefined;
+      const estado = parseEstadoUsuario(row.estado);
+      const rolesTexto = row.roles ? String(row.roles).split(',').map((r) => r.trim()).filter(Boolean) : [];
+      const fincasTexto = row.fincas ? String(row.fincas).split(',').map((f) => f.trim()).filter(Boolean) : [];
+
+      filasValidas.push({ fila, usuario, nombre, apellido, email, cargo, estado, rolesTexto, fincasTexto });
+    }
+
+    // Si el mismo usuario aparece varias veces en el archivo, se procesa
+    // una sola vez con los valores de su última aparición (mismo criterio
+    // que motivoRepique).
+    const porUsuario = new Map();
+    for (const f of filasValidas) porUsuario.set(f.usuario, f);
+    const filasUnicas = [...porUsuario.values()];
+
+    const usuarios = filasUnicas.map((f) => f.usuario);
+    const emails = filasUnicas.map((f) => f.email);
+    const existentesPorUsuario = usuarios.length ? await userRepository.findByUsuarios(usuarios) : [];
+    const existentesPorEmail = emails.length ? await userRepository.findByEmails(emails) : [];
+    const mapaExistentesPorUsuario = new Map(existentesPorUsuario.map((u) => [u.usuario, u]));
+    const mapaExistentesPorEmail = new Map(existentesPorEmail.map((u) => [u.email, u]));
+
+    // Roles/fincas mencionados en el archivo se resuelven una sola vez
+    // (nombre de rol / código de finca) en vez de una consulta por fila.
+    const nombresRoles = [...new Set(filasUnicas.flatMap((f) => f.rolesTexto))];
+    const codigosFincas = [...new Set(filasUnicas.flatMap((f) => f.fincasTexto))];
+    const rolesEncontrados = nombresRoles.length ? await Role.findAll({ where: { nombre: nombresRoles } }) : [];
+    const fincasEncontradas = codigosFincas.length ? await Finca.findAll({ where: { codigo: codigosFincas } }) : [];
+    const mapaRoles = new Map(rolesEncontrados.map((r) => [r.nombre, r]));
+    const mapaFincas = new Map(fincasEncontradas.map((f) => [f.codigo, f]));
+
+    let creados = 0;
+    let actualizados = 0;
+    const nuevosParaCorreo = [];
+
+    if (!dryRun) {
+      await sequelize.transaction(async (transaction) => {
+        for (const f of filasUnicas) {
+          // Un email ya usado por OTRO usuario (login distinto) es un
+          // conflicto real — se reporta como error y no se procesa esa
+          // fila, en vez de fallar toda la transacción.
+          const usuarioPorEmail = mapaExistentesPorEmail.get(f.email);
+          const usuarioExistente = mapaExistentesPorUsuario.get(f.usuario);
+          if (usuarioPorEmail && (!usuarioExistente || usuarioPorEmail.id !== usuarioExistente.id)) {
+            errores.push({ fila: f.fila, mensaje: `El email ${f.email} ya está en uso por otro usuario` });
+            continue;
+          }
+
+          // Roles/fincas desconocidos: error duro para esa fila, no se
+          // adivina ni se ignora silenciosamente.
+          const rolesDesconocidos = f.rolesTexto.filter((r) => !mapaRoles.has(r));
+          const fincasDesconocidas = f.fincasTexto.filter((c) => !mapaFincas.has(c));
+          if (rolesDesconocidos.length || fincasDesconocidas.length) {
+            const partes = [];
+            if (rolesDesconocidos.length) partes.push(`rol(es) no encontrado(s): ${rolesDesconocidos.join(', ')}`);
+            if (fincasDesconocidas.length) partes.push(`finca(s) no encontrada(s): ${fincasDesconocidas.join(', ')}`);
+            errores.push({ fila: f.fila, mensaje: partes.join('; ') });
+            continue;
+          }
+
+          const roleIds = f.rolesTexto.map((r) => mapaRoles.get(r).id);
+          const fincaIds = f.fincasTexto.map((c) => mapaFincas.get(c).id);
+
+          let user;
+          if (usuarioExistente) {
+            const data = {
+              nombre: f.nombre,
+              apellido: f.apellido,
+              email: f.email,
+              cargo: f.cargo ?? usuarioExistente.cargo,
+              updatedBy: actorId,
+            };
+            if (f.estado !== undefined) data.estado = f.estado;
+            user = await userRepository.update(usuarioExistente, data, { transaction });
+            actualizados += 1;
+          } else {
+            const passwordGenerada = crypto.randomBytes(4).toString('hex');
+            const hashedPassword = await bcrypt.hash(passwordGenerada, SALT_ROUNDS);
+            user = await userRepository.create(
+              {
+                usuario: f.usuario,
+                nombre: f.nombre,
+                apellido: f.apellido,
+                email: f.email,
+                password: hashedPassword,
+                estado: f.estado ?? true,
+                cargo: f.cargo || null,
+                createdBy: actorId,
+              },
+              { transaction },
+            );
+            creados += 1;
+            nuevosParaCorreo.push({ user, passwordGenerada });
+          }
+
+          if (f.rolesTexto.length) await userRepository.setRoles(user.id, roleIds, actorId, { transaction });
+          if (f.fincasTexto.length) await userRepository.setFincas(user.id, fincaIds, actorId, { transaction });
+        }
+      });
+
+      // El envío de correo va después de confirmar la transacción, y con
+      // try/catch por usuario (mismo criterio que bulkResetPassword) para
+      // que un correo fallido no eche para atrás usuarios ya creados.
+      for (const { user, passwordGenerada } of nuevosParaCorreo) {
+        try {
+          await mailService.sendPasswordReset(user.toSafeJSON(), passwordGenerada);
+        } catch {
+          errores.push({ fila: null, mensaje: `Usuario ${user.usuario} creado, pero falló el envío del correo con la contraseña` });
+        }
+      }
+    } else {
+      creados = filasUnicas.filter((f) => !mapaExistentesPorUsuario.has(f.usuario)).length;
+      actualizados = filasUnicas.length - creados;
+    }
+
+    return { totalFilas: rows.length, usuariosCreados: creados, usuariosActualizados: actualizados, errores };
   },
 };
 

@@ -589,6 +589,10 @@ export const estimacionFincaService = {
     return { columnas: columnasOut, filas, semanaActual: semanaActualOut, anioSeleccionado: anioVigenteBase, aniosDisponibles };
   },
 
+  // Antes, si ya existía un registro para la misma semana/finca/usuario, la
+  // fila se omitía y había que usar el botón "Sobrescribir" (bulk-update)
+  // para actualizarla. Ahora se comporta como un upsert directo: si existe,
+  // se actualiza; si no, se crea — sin paso intermedio.
   async bulkCreateEstimaciones(file, actorId, user) {
     const filas = parseBulkFile(file);
     if (filas.length === 0) throw ApiError.badRequest('El archivo está vacío');
@@ -607,7 +611,7 @@ export const estimacionFincaService = {
       fincaIdsPermitidas,
     });
     if (filasValidas.length === 0) {
-      return { totalFilas: filas.length, creados: 0, errores };
+      return { totalFilas: filas.length, creados: 0, actualizados: 0, errores };
     }
     // Existentes del mismo usuario — clave única ahora incluye semana_registro_id
     const semanaIds = [...new Set(filasValidas.map((f) => f.semanaId))];
@@ -620,21 +624,22 @@ export const estimacionFincaService = {
       createdBy: actorId,
     });
     const existenteSet = new Set(existentes.map((e) => `${e.semanaId}-${e.fincaId}-${e.semanaRegistroId}`));
-    const aInsertar = [];
-    for (const f of filasValidas) {
-      const clave = `${f.semanaId}-${f.fincaId}-${f.semanaRegistroId}`;
-      if (existenteSet.has(clave)) continue;
-      existenteSet.add(clave);
-      aInsertar.push({ ...f, createdBy: actorId, updatedBy: actorId });
-    }
-    const saltados = filasValidas.length - aInsertar.length;
-    if (aInsertar.length > 0) {
-      await estimacionFincaRepository.bulkCreate(aInsertar);
-    }
+    // Deduplicar dentro del archivo (última gana) antes del upsert — el
+    // conteo de creados/actualizados se calcula sobre este arreglo YA
+    // deduplicado, no sobre filasValidas, porque si el archivo repite la
+    // misma combinación semana+finca+registro varias veces, solo una
+    // sobrevive al upsert (la última) y contar sobre filasValidas antes de
+    // deduplicar infla el número reportado muy por encima de lo que
+    // realmente queda en la base.
+    const dedup = new Map();
+    for (const f of filasValidas) dedup.set(`${f.semanaId}-${f.fincaId}-${f.semanaRegistroId}`, { ...f, createdBy: actorId, updatedBy: actorId });
+    const filasUnicas = [...dedup.values()];
+    const actualizados = filasUnicas.filter((f) => existenteSet.has(`${f.semanaId}-${f.fincaId}-${f.semanaRegistroId}`)).length;
+    await estimacionFincaRepository.bulkUpsert(filasUnicas);
     return {
       totalFilas: filas.length,
-      creados: aInsertar.length,
-      saltados,
+      creados: filasUnicas.length - actualizados,
+      actualizados,
       errores: errores.length > 0 ? errores : undefined,
     };
   },
@@ -874,15 +879,23 @@ export const estimacionFincaService = {
     // del gráfico. No es el ratio ponderado/estacional completo de
     // Pronóstico (ver pronostico.service.js): acá es un promedio simple,
     // por finca puntual, pensado solo para este panel.
-    const HISTORICO_RATIO_SEMANAS = 26;
-    const historicoIdxMin = Math.max(currentIdx - HISTORICO_RATIO_SEMANAS + 1, 0);
+    //
+    // El tramo "real hasta hoy" del gráfico arranca en la PRIMERA semana del
+    // año en curso (no una ventana fija de 26 semanas) — así el gráfico
+    // siempre cubre el año completo, desde S01 hasta la última semana
+    // proyectada.
+    const anioActual = semanaActual.anio;
+    let inicioAnioIdx = currentIdx;
+    for (let idx = currentIdx; idx >= 0 && semanasAll[idx].anio === anioActual; idx--) {
+      inicioAnioIdx = idx;
+    }
+    const historicoIdxMin = inicioAnioIdx;
     const semanasHistoricoRatio = semanasAll.slice(historicoIdxMin, currentIdx + 1);
 
     // Todas las semanas restantes del año actual (desde la próxima hasta la
     // última semana con ese mismo año en el calendario) — para que el
     // gráfico de ratio llegue hasta el final del año, no solo las 8 de
     // "Sugerido próximas semanas".
-    const anioActual = semanaActual.anio;
     let finAnioIdx = currentIdx;
     for (let idx = currentIdx; idx < semanasAll.length && semanasAll[idx].anio === anioActual; idx++) {
       finAnioIdx = idx;
@@ -919,6 +932,31 @@ export const estimacionFincaService = {
       const lista = ratiosPorNumeroSemana.get(numeroSemana) || [];
       return lista.length ? Math.round((lista.reduce((a, b) => a + b, 0) / lista.length) * 100000) / 100000 : null;
     };
+    // Limpieza automática: un ratio guardado por número de semana (para que
+    // se repita año a año, ver guardarRatioCajasPorSemana) deja de tener
+    // sentido una vez que ESE año la semana ya se volvió real — dejarlo
+    // guardado haría que el año que viene se reutilice a ciegas un ratio
+    // pensado para una temporada distinta. Se borra en cuanto la semana de
+    // este año con ese número ya arrancó (es real, no una proyección
+    // futura), oportunistamente cada vez que se abre el panel de la finca.
+    if (finca.ratioCajasPorSemana && Object.keys(finca.ratioCajasPorSemana).length > 0) {
+      const semanasEsteAnioPorNumero = new Map(
+        semanasAll.filter((s) => s.anio === semanaActual.anio).map((s) => [s.numeroSemana, s]),
+      );
+      const ratiosLimpios = { ...finca.ratioCajasPorSemana };
+      let huboLimpieza = false;
+      for (const numeroSemanaStr of Object.keys(finca.ratioCajasPorSemana)) {
+        const semanaEsteAnio = semanasEsteAnioPorNumero.get(Number(numeroSemanaStr));
+        if (semanaEsteAnio && semanaEsteAnio.fechaInicio <= hoy) {
+          delete ratiosLimpios[numeroSemanaStr];
+          huboLimpieza = true;
+        }
+      }
+      if (huboLimpieza) {
+        await finca.update({ ratioCajasPorSemana: Object.keys(ratiosLimpios).length ? ratiosLimpios : null });
+      }
+    }
+
     const ratiosGuardados = finca.ratioCajasPorSemana || {};
     const conRatiosGuardados = (s) => {
       const guardadoRaw = ratiosGuardados[String(s.numeroSemana)];
@@ -932,11 +970,10 @@ export const estimacionFincaService = {
     const proyeccionAnio = proyeccionAnioBase.map(conRatiosGuardados);
 
     // Serie histórica del ratio (cajas ÷ racimos cosechados) semana a semana,
-    // en orden cronológico, para graficar su evolución real — últimas
-    // HISTORICO_RATIO_SEMANAS semanas con dato completo (cajas y cosechado
-    // > 0), respecto a HOY (no a la próxima semana) — junto con el promedio
-    // histórico de esa MISMA semana de calendario (numeroSemana) en años
-    // anteriores, para comparar en el gráfico.
+    // en orden cronológico, para graficar su evolución real — desde la
+    // primera semana del año en curso hasta HOY (no a la próxima semana) —
+    // junto con el promedio histórico de esa MISMA semana de calendario
+    // (numeroSemana) en años anteriores, para comparar en el gráfico.
     const historicoRatio = semanasHistoricoRatio
       .map((s) => {
         const ratio = ratioPorFincaYSemana.get(`${finca.id}-${s.id}`);

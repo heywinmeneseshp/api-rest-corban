@@ -3,6 +3,7 @@ import { userController } from '../../controllers/seguridad/user.controller.js';
 import { auth } from '../../middlewares/auth.middleware.js';
 import { permission } from '../../middlewares/permission.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
+import { uploadBulkFile } from '../../middlewares/upload.middleware.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import {
   listUsersSchema,
@@ -59,6 +60,24 @@ router.post(
   permission(PERMISSIONS.MENU_MAESTROS_USUARIOS),
   validate(bulkResetPasswordSchema),
   userController.bulkResetPassword,
+);
+
+/**
+ * @openapi
+ * /users/bulk-upload:
+ *   post:
+ *     tags: [Usuarios]
+ *     summary: Cargue masivo de usuarios (crear y actualizar) desde un archivo .csv/.xlsx
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.post(
+  '/bulk-upload',
+  auth,
+  permission(PERMISSIONS.MENU_MAESTROS_USUARIOS),
+  uploadBulkFile,
+  userController.bulkUpload,
 );
 
 /**

@@ -35,12 +35,66 @@ export const articuloRepository = {
     return Articulo.findOne({ where: { uuid }, include: INCLUDE });
   },
 
+  // Solo artículos eliminados lógicamente (deleted_at no nulo) — para la
+  // papelera, restringida al rol Administrador (ver requireAdmin en la
+  // ruta).
+  async findAndCountAllDeleted({ limit, offset, search }) {
+    const where = {
+      deletedAt: { [Op.ne]: null },
+      ...(search ? { [Op.or]: [{ codigo: { [Op.like]: `%${search}%` } }, { nombre: { [Op.like]: `%${search}%` } }] } : {}),
+    };
+    return Articulo.findAndCountAll({
+      where,
+      limit,
+      offset,
+      order: [['deletedAt', 'DESC']],
+      include: INCLUDE,
+      paranoid: false,
+    });
+  },
+
   findByNombre(nombre) {
     return Articulo.findOne({ where: { nombre } });
   },
 
   findByNombreIncludingDeleted(nombre) {
     return Articulo.findOne({ where: { nombre }, paranoid: false });
+  },
+
+  findByUuidIncludingDeleted(uuid) {
+    return Articulo.findOne({ where: { uuid }, paranoid: false });
+  },
+
+  async restore(articulo, { transaction } = {}) {
+    await articulo.restore({ transaction });
+    await articulo.update({ deletedBy: null }, { transaction });
+    return articulo;
+  },
+
+  findByNombres(nombres) {
+    if (!nombres || nombres.length === 0) return [];
+    return Articulo.findAll({ where: { nombre: { [Op.in]: nombres } } });
+  },
+
+  // Inserta los nuevos y actualiza los existentes (por nombre, que es
+  // único) en una sola sentencia SQL, en vez de una consulta por fila —
+  // para el cargue masivo.
+  bulkUpsert(rows) {
+    return Articulo.bulkCreate(rows, {
+      updateOnDuplicate: [
+        'codigo',
+        'descripcion',
+        'categoriaId',
+        'unidadMedidaId',
+        'costoCompra',
+        'precioVenta',
+        'manejaInventario',
+        'stockMinimo',
+        'stockMaximo',
+        'estado',
+        'updatedBy',
+      ],
+    });
   },
 
   create(data, { transaction } = {}) {
