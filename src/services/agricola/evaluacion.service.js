@@ -1,6 +1,6 @@
 import { Op } from 'sequelize';
 import { sequelize } from '../../database/connection.js';
-import { Planta, User, TipoEvaluacion, Semana, Finca, Lote, Role } from '../../database/associations.js';
+import { Planta, User, TipoEvaluacion, Semana, Finca, Lote } from '../../database/associations.js';
 import { evaluacionRepository } from '../../repositories/agricola/evaluacion.repository.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
@@ -9,6 +9,7 @@ import { adjuntarTotales, adjuntarValoresPorHoja, calcularIndicadorHoja } from '
 import { configuracionService } from '../sistema/configuracion.service.js';
 import { mailService } from '../sistema/mail.service.js';
 import { semanasEntre } from '../../utils/edadPlanta.js';
+import { resolverDestinatarios } from '../../utils/resolverDestinatarios.js';
 
 const HOJAS_INDICADOR = [3, 5];
 import { calcularIndiceInfeccion } from './indiceInfeccion.js';
@@ -485,26 +486,15 @@ export const evaluacionService = {
   },
 
   // Resuelve la config de destinatarios (correos sueltos + roles + usuarios
-  // puntuales) a una lista real de emails — mismo patrón que
-  // laborCultural.service.js#resolverCcCompleto.
+  // puntuales) a una lista real de emails. Delega en el helper compartido
+  // resolverDestinatarios — que además normaliza uuids que hayan quedado
+  // guardados como objetos { uuid, label, sublabel } por el TagPicker del
+  // panel (sin eso, Sequelize revienta con "Invalid value { uuid, ... }" al
+  // armar el WHERE y el envío nunca sale).
   async resolverDestinatariosAlertas() {
-    const destinatarios = await configuracionService.getAlertasSanidadDestinatarios();
-    const correos = new Set((destinatarios.correos || []).filter(Boolean));
-
-    if (destinatarios.rolesUuids?.length) {
-      const usuariosPorRol = await User.findAll({
-        where: { estado: true },
-        include: [{ model: Role, as: 'roles', where: { uuid: destinatarios.rolesUuids }, through: { attributes: [] } }],
-      });
-      usuariosPorRol.forEach((u) => u.email && correos.add(u.email));
-    }
-
-    if (destinatarios.usuariosUuids?.length) {
-      const usuariosPuntuales = await User.findAll({ where: { uuid: destinatarios.usuariosUuids, estado: true } });
-      usuariosPuntuales.forEach((u) => u.email && correos.add(u.email));
-    }
-
-    return [...correos];
+    const config = await configuracionService.getAlertasSanidadDestinatarios();
+    const personas = await resolverDestinatarios(config);
+    return personas.map((p) => p.email).filter(Boolean);
   },
 
   // Calcula las alertas de la última semana cerrada (sin restricción de

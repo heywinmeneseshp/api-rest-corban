@@ -36,6 +36,22 @@ const MARCA_APP_DEFAULT = {
   logoUrl: null,
 };
 
+// Acepta una lista que debería ser de uuids pero puede traer objetos
+// { uuid, label, sublabel } (el TagPicker del panel emite objetos, y una
+// config vieja pudo haberse guardado con ellos adentro) y devuelve solo
+// los uuids como strings — sin esto, Sequelize revienta con "Invalid value
+// { uuid, ... }" al armar el WHERE del envío de correos.
+const normalizarUuids = (lista) =>
+  Array.isArray(lista)
+    ? lista.map((x) => (typeof x === 'string' ? x : x?.uuid)).filter((x) => typeof x === 'string' && x.length > 0)
+    : [];
+
+const normalizarDestinatarios = (cfg) => ({
+  correos: Array.isArray(cfg?.correos) ? cfg.correos.filter(Boolean) : [],
+  rolesUuids: normalizarUuids(cfg?.rolesUuids),
+  usuariosUuids: normalizarUuids(cfg?.usuariosUuids),
+});
+
 // Sin valor guardado todavía = nada en copia.
 const LABOR_REVISOR_CC_DEFAULT = { correos: [], rolesUuids: [], usuariosUuids: [] };
 // Sin valor guardado todavía = nadie recibe el correo de alertas de Sanidad
@@ -183,25 +199,19 @@ export const configuracionService = {
     const config = await configuracionRepository.findByClave(CLAVE_ALERTAS_SANIDAD_DESTINATARIOS);
     if (!config?.valor) return ALERTAS_SANIDAD_DESTINATARIOS_DEFAULT;
     try {
-      return { ...ALERTAS_SANIDAD_DESTINATARIOS_DEFAULT, ...JSON.parse(config.valor) };
+      // Normaliza al leer: si una config vieja quedó con objetos adentro,
+      // la API igual devuelve strings limpios (así el modal del panel
+      // muestra bien lo seleccionado y el envío no revienta).
+      return normalizarDestinatarios({ ...ALERTAS_SANIDAD_DESTINATARIOS_DEFAULT, ...JSON.parse(config.valor) });
     } catch {
       return ALERTAS_SANIDAD_DESTINATARIOS_DEFAULT;
     }
   },
 
   async setAlertasSanidadDestinatarios(destinatarios, actorId) {
-    // Acepta uuids sueltos u objetos { uuid, ... } (el TagPicker del panel
-    // emite objetos) y guarda siempre strings — así una config vieja
-    // contaminada se sanea al volver a guardar y el envío no revienta.
-    const soloUuids = (lista) =>
-      Array.isArray(lista)
-        ? lista.map((x) => (typeof x === 'string' ? x : x?.uuid)).filter((x) => typeof x === 'string' && x.length > 0)
-        : [];
-    const valor = JSON.stringify({
-      correos: Array.isArray(destinatarios?.correos) ? destinatarios.correos : [],
-      rolesUuids: soloUuids(destinatarios?.rolesUuids),
-      usuariosUuids: soloUuids(destinatarios?.usuariosUuids),
-    });
+    // Guarda siempre strings — así una config vieja contaminada se sanea al
+    // volver a guardar.
+    const valor = JSON.stringify(normalizarDestinatarios(destinatarios));
     const config = await configuracionRepository.upsert(CLAVE_ALERTAS_SANIDAD_DESTINATARIOS, valor, actorId);
     return JSON.parse(config.valor);
   },
