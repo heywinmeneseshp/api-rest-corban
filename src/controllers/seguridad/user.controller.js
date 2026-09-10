@@ -1,4 +1,5 @@
 import { userService } from '../../services/seguridad/user.service.js';
+import { authService } from '../../services/seguridad/auth.service.js';
 import { ApiResponse } from '../../utils/ApiResponse.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { HTTP_STATUS } from '../../constants/httpStatus.constants.js';
@@ -76,6 +77,11 @@ export const userController = {
     const dryRun = req.body?.dryRun === 'true';
     const resultado = await userService.bulkCreateUsuarios(req.file, req.user?.id, { dryRun });
     ApiResponse.send(res, { message: 'Cargue masivo de usuarios procesado', data: resultado });
+  }),
+
+  impersonate: asyncHandler(async (req, res) => {
+    const tokenPair = await authService.impersonate(req.params.uuid, req.user);
+    ApiResponse.send(res, { message: 'Sesión de suplantación creada', data: tokenPair });
   }),
 };
 

@@ -60,6 +60,7 @@ import resetDatosRoutes from './routes/sistema/resetDatos.routes.js';
 import setupRoutes from './routes/sistema/setup.routes.js';
 import backupRoutes from './routes/sistema/backup.routes.js';
 import cronRoutes from './routes/sistema/cron.routes.js';
+import comunicadoRoutes from './routes/sistema/comunicado.routes.js';
 import inventarioRoutes from './routes/inventario/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -154,6 +155,7 @@ router.use('/programacion-corte', programacionCorteRoutes);
 router.use('/rechazos-corte', rechazoCorteRoutes);
 
 router.use('/configuraciones', configuracionRoutes);
+router.use('/comunicados', comunicadoRoutes);
 router.use('/sistema', resetDatosRoutes);
 router.use('/sistema', setupRoutes);
 router.use('/sistema', backupRoutes);

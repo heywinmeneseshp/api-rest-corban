@@ -61,4 +61,31 @@ export const uploadSqlDump = multer({
   },
 }).single('file');
 
+// Adjuntos de un Comunicado (Configuración → Comunicados) — memoryStorage
+// porque se mandan directo como adjunto del correo, nunca tocan disco.
+// Tipos comunes de oficina/imagen; el límite por archivo y de cantidad
+// evita mensajes gigantes que muchos SMTP rechazan.
+const ALLOWED_ADJUNTO_MIME = [
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/csv',
+  'text/plain',
+];
+
+export const uploadComunicadoAdjuntos = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024, files: 5 },
+  fileFilter: (_req, file, cb) => {
+    const isAllowedExt = /\.(pdf|jpe?g|png|webp|docx?|xlsx?|csv|txt)$/i.test(file.originalname);
+    if (isAllowedExt || ALLOWED_ADJUNTO_MIME.includes(file.mimetype)) cb(null, true);
+    else cb(Object.assign(new Error('Formato de adjunto no soportado'), { statusCode: 400 }));
+  },
+}).array('adjuntos', 5);
+
 export default uploadBulkFile;

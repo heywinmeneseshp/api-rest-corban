@@ -37,6 +37,16 @@ services:
       SMTP_PASS: ${SMTP_PASS}
       SMTP_FROM: noreply@banarica.cloud
 
+      # Fotos de Labores/Sanidad Vegetal y Pruebas de Mezcla (Google Drive)
+      # — faltaban acá: el contenedor nunca las recibía, así que
+      # getDrive() fallaba con "Falta GOOGLE_DRIVE_CREDENTIALS en el
+      # entorno" para cualquier subida/descarga de fotos en producción
+      # (confirmado: el archivo en Drive es accesible y se descarga bien
+      # con las credenciales de dev, así que no era un problema del
+      # archivo ni del código — solo nunca llegaban al contenedor).
+      GOOGLE_DRIVE_CREDENTIALS: ${GOOGLE_DRIVE_CREDENTIALS}
+      GOOGLE_DRIVE_FOLDER: ${GOOGLE_DRIVE_FOLDER}
+
     networks:
       - banarica-network
       - database-banarica_banarica-network

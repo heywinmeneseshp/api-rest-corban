@@ -15,8 +15,14 @@ export const elaboracionController = {
   }),
 
   create: asyncHandler(async (req, res) => {
-    const elaboracion = await elaboracionService.create(req.body, req.user?.id);
-    ApiResponse.send(res, { statusCode: HTTP_STATUS.CREATED, message: 'Elaboración creada correctamente', data: elaboracion });
+    const resultado = await elaboracionService.create(req.body, req.user?.id, {
+      forzarSaldoNegativo: req.body?.forzarSaldoNegativo === true,
+    });
+    ApiResponse.send(res, {
+      statusCode: resultado.requiereConfirmacion ? HTTP_STATUS.OK : HTTP_STATUS.CREATED,
+      message: resultado.requiereConfirmacion ? 'Confirmación requerida' : 'Elaboración creada correctamente',
+      data: resultado,
+    });
   }),
 };
 

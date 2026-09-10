@@ -10,6 +10,9 @@ export const createElaboracionSchema = Joi.object({
     fecha: Joi.date().iso().required(),
     documento: Joi.string().trim().max(50).allow(null, ''),
     observaciones: Joi.string().allow(null, '').max(1000),
+    // true solo en el reenvío tras confirmar la advertencia de stock
+    // insuficiente (ver elaboracion.service.js#create).
+    forzarSaldoNegativo: Joi.boolean().default(false),
   }),
   params: Joi.object({}),
   query: Joi.object({}),

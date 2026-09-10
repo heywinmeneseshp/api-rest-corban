@@ -12,6 +12,13 @@ export async function generarCorrelativo(model, { prefijo, columna = 'numero', p
     order: [['id', 'DESC']],
     transaction,
     lock: transaction ? transaction.LOCK.UPDATE : undefined,
+    // En un modelo paranoid (soft-delete), Sequelize excluye por defecto
+    // las filas eliminadas (`deleted_at IS NULL` implícito) — sin esto, al
+    // eliminarse el último registro con un número dado, el siguiente
+    // cálculo volvía a generar ese mismo número, chocando con el UNIQUE de
+    // la columna (que sí sigue contando las filas soft-eliminadas). Los
+    // números correlativos nunca se reutilizan, se eliminen o no sus filas.
+    paranoid: false,
   });
 
   let siguiente = 1;

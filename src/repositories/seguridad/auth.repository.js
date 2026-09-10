@@ -1,8 +1,8 @@
 import { RefreshToken } from '../../database/associations.js';
 
 export const authRepository = {
-  createRefreshToken({ userId, tokenHash, expiresAt }, { transaction } = {}) {
-    return RefreshToken.create({ userId, tokenHash, expiresAt }, { transaction });
+  createRefreshToken({ userId, tokenHash, expiresAt, impersonatedBy }, { transaction } = {}) {
+    return RefreshToken.create({ userId, tokenHash, expiresAt, impersonatedBy: impersonatedBy || null }, { transaction });
   },
 
   findByTokenHash(tokenHash) {

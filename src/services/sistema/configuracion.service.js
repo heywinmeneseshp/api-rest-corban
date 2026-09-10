@@ -1,5 +1,6 @@
 import { configuracionRepository } from '../../repositories/sistema/configuracion.repository.js';
 import { env } from '../../config/env.config.js';
+import { ApiError } from '../../utils/ApiError.js';
 
 export const CLAVE_BANARICA_API_URL = 'banarica_api_url';
 export const CLAVE_BANARICA_API_KEY = 'banarica_api_key';
@@ -10,6 +11,7 @@ export const CLAVE_MARCA_APP = 'marca_app';
 export const CLAVE_LABOR_REVISOR_CC = 'sanidad_vegetal_revisor_cc';
 export const CLAVE_ALERTAS_SANIDAD_DESTINATARIOS = 'sanidad_vegetal_alertas_destinatarios';
 export const CLAVE_SB_HOJA_UMBRALES = 'sanidad_vegetal_sb_hoja_umbrales';
+export const CLAVE_MEZCLA_PARAMETROS = 'inventario_mezcla_parametros';
 
 // "Cajas de 20kg" es el nombre convencional de la unidad, pero el peso neto
 // real de referencia es otro (ej. 18.6) — configurable en vez de fijo por
@@ -44,6 +46,10 @@ const ALERTAS_SANIDAD_DESTINATARIOS_DEFAULT = { correos: [], rolesUuids: [], usu
 // antes de hacerlos configurables. `alerta` (rojo) además dispara el aviso
 // en Alertas de Sanidad Vegetal cuando el promedio de la semana lo supera.
 const SB_HOJA_UMBRALES_DEFAULT = { advertencia: 450, alerta: 650 };
+// Parámetros de validación de pruebas de Mezclas (Inventarios → Mezclas —
+// ver mezcla.service.js#finalizarPrueba). Una prueba es válida cuando
+// phMinimo <= phFinal <= phMaximo Y ceFinal < ceMaxima.
+const MEZCLA_PARAMETROS_DEFAULT = { phMinimo: 4, phMaximo: 6, ceMaxima: 4 };
 
 export const configuracionService = {
   async getBanaricaApiUrl() {
@@ -184,10 +190,17 @@ export const configuracionService = {
   },
 
   async setAlertasSanidadDestinatarios(destinatarios, actorId) {
+    // Acepta uuids sueltos u objetos { uuid, ... } (el TagPicker del panel
+    // emite objetos) y guarda siempre strings — así una config vieja
+    // contaminada se sanea al volver a guardar y el envío no revienta.
+    const soloUuids = (lista) =>
+      Array.isArray(lista)
+        ? lista.map((x) => (typeof x === 'string' ? x : x?.uuid)).filter((x) => typeof x === 'string' && x.length > 0)
+        : [];
     const valor = JSON.stringify({
       correos: Array.isArray(destinatarios?.correos) ? destinatarios.correos : [],
-      rolesUuids: Array.isArray(destinatarios?.rolesUuids) ? destinatarios.rolesUuids : [],
-      usuariosUuids: Array.isArray(destinatarios?.usuariosUuids) ? destinatarios.usuariosUuids : [],
+      rolesUuids: soloUuids(destinatarios?.rolesUuids),
+      usuariosUuids: soloUuids(destinatarios?.usuariosUuids),
     });
     const config = await configuracionRepository.upsert(CLAVE_ALERTAS_SANIDAD_DESTINATARIOS, valor, actorId);
     return JSON.parse(config.valor);
@@ -215,6 +228,33 @@ export const configuracionService = {
       alerta: Number.isFinite(alerta) ? alerta : SB_HOJA_UMBRALES_DEFAULT.alerta,
     });
     const config = await configuracionRepository.upsert(CLAVE_SB_HOJA_UMBRALES, valor, actorId);
+    return JSON.parse(config.valor);
+  },
+
+  async getMezclaParametros() {
+    const config = await configuracionRepository.findByClave(CLAVE_MEZCLA_PARAMETROS);
+    if (!config?.valor) return MEZCLA_PARAMETROS_DEFAULT;
+    try {
+      const guardado = JSON.parse(config.valor);
+      return { ...MEZCLA_PARAMETROS_DEFAULT, ...guardado };
+    } catch {
+      return MEZCLA_PARAMETROS_DEFAULT;
+    }
+  },
+
+  async setMezclaParametros(parametros, actorId) {
+    const phMinimo = Number(parametros?.phMinimo);
+    const phMaximo = Number(parametros?.phMaximo);
+    const ceMaxima = Number(parametros?.ceMaxima);
+    if (Number.isFinite(phMinimo) && Number.isFinite(phMaximo) && phMinimo > phMaximo) {
+      throw ApiError.badRequest('El pH mínimo no puede ser mayor al pH máximo');
+    }
+    const valor = JSON.stringify({
+      phMinimo: Number.isFinite(phMinimo) ? phMinimo : MEZCLA_PARAMETROS_DEFAULT.phMinimo,
+      phMaximo: Number.isFinite(phMaximo) ? phMaximo : MEZCLA_PARAMETROS_DEFAULT.phMaximo,
+      ceMaxima: Number.isFinite(ceMaxima) ? ceMaxima : MEZCLA_PARAMETROS_DEFAULT.ceMaxima,
+    });
+    const config = await configuracionRepository.upsert(CLAVE_MEZCLA_PARAMETROS, valor, actorId);
     return JSON.parse(config.valor);
   },
 };

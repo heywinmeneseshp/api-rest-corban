@@ -25,7 +25,7 @@ import {
  */
 const ALL_PERMISSION_CODES = Object.values(PERMISSIONS);
 
-const buildTokenPair = async (user) => {
+const buildTokenPair = async (user, { impersonatedBy } = {}) => {
   const roleNames = (user.roles || []).map((r) => r.nombre);
   const roleIds = (user.roles || []).map((r) => r.id);
   const esAdmin = roleNames.includes(ROLES.ADMINISTRADOR);
@@ -57,6 +57,10 @@ const buildTokenPair = async (user) => {
     roles: roleNames,
     permissions,
     fincaIds,
+    // Presente solo en tokens de suplantación (ver authService.impersonate)
+    // — queda en el JWT para poder rastrear, si hace falta, qué admin
+    // suplantó a quién durante una sesión puntual.
+    ...(impersonatedBy ? { impersonatedBy } : {}),
   });
 
   const refreshTokenPlain = generateRefreshToken();
@@ -64,6 +68,7 @@ const buildTokenPair = async (user) => {
     userId: user.id,
     tokenHash: hashRefreshToken(refreshTokenPlain),
     expiresAt: refreshTokenExpiryDate(),
+    impersonatedBy,
   });
 
   return {
@@ -107,8 +112,35 @@ export const authService = {
         throw ApiError.unauthorized('Usuario no encontrado o inactivo');
       }
       const fullUser = await userRepository.findByUuid(user.uuid);
-      return buildTokenPair(fullUser);
+      // Si el refresh token que se está renovando venía de una sesión de
+      // suplantación, la renovación tiene que seguir siéndolo — si no, al
+      // primer refresh silencioso (access token de 15 min) se perdería el
+      // admin real como actor y quedaría el usuario suplantado otra vez.
+      return buildTokenPair(fullUser, { impersonatedBy: storedToken.impersonatedBy || undefined });
     });
+  },
+
+  // Suplantación real: emite un token propio del usuario elegido (mismos
+  // permisos/fincaIds que tendría si iniciara sesión de verdad), sin pedir
+  // su contraseña. Reservado a Administrador (ver requireAdmin en la
+  // ruta) — a diferencia de "Ver como rol/usuario" (simulación de
+  // frontend, ver lib/auth.js en app-corbana), esto sí cambia con qué
+  // identidad responde el backend: los selectores/listados/reportes
+  // quedan filtrados exactamente como los vería esa persona.
+  async impersonate(targetUuid, actor) {
+    const target = await userRepository.findByUuid(targetUuid);
+    if (!target) throw ApiError.notFound('Usuario no encontrado');
+    if (!target.estado) throw ApiError.badRequest('No se puede ver como un usuario inactivo');
+    if (target.id === actor.id) throw ApiError.badRequest('No podés verte como vos mismo');
+
+    logger.info('Suplantación de usuario (Ver como)', {
+      adminId: actor.id,
+      adminUsuario: actor.usuario,
+      targetId: target.id,
+      targetUsuario: target.usuario,
+    });
+
+    return buildTokenPair(target, { impersonatedBy: { id: actor.id, uuid: actor.uuid, usuario: actor.usuario } });
   },
 
   async logout(refreshTokenPlain) {

@@ -39,6 +39,7 @@ import { ColaboradorLabor } from './models/colaboradorLabor.model.js';
 import { ProgramacionCorte } from './models/programacionCorte.model.js';
 import { Producto } from './models/producto.model.js';
 import { RechazoCorte } from './models/rechazoCorte.model.js';
+import { Comunicado } from './models/comunicado.model.js';
 import { PrecipitacionDiariaConfig } from './models/precipitacionDiariaConfig.model.js';
 import { PrecipitacionDiaria } from './models/precipitacionDiaria.model.js';
 import { Articulo } from './models/articulo.model.js';
@@ -51,6 +52,8 @@ import { MovimientoInventario } from './models/movimientoInventario.model.js';
 import { Mezcla } from './models/mezcla.model.js';
 import { MezclaVersion } from './models/mezclaVersion.model.js';
 import { MezclaComponente } from './models/mezclaComponente.model.js';
+import { MezclaEtapa } from './models/mezclaEtapa.model.js';
+import { MezclaFoto } from './models/mezclaFoto.model.js';
 import { Elaboracion } from './models/elaboracion.model.js';
 import { Proforma } from './models/proforma.model.js';
 import { ProformaDetalle } from './models/proformaDetalle.model.js';
@@ -377,6 +380,9 @@ export const setupAssociations = () => {
   withAuditAssociations(ProgramacionCorte);
   withAuditAssociations(Producto);
 
+  // Comunicados: log inmutable, solo createdBy (ver comunicado.model.js).
+  Comunicado.belongsTo(User, { foreignKey: 'createdBy', as: 'creadoPor' });
+
   // Precipitación Diaria — relaciones reales agregadas después (la tabla se
   // creó con SQL crudo, ver precipitacionDiaria.service.js y la migración
   // 20260821000003-fk-precipitacion-diaria).
@@ -470,6 +476,31 @@ export const setupAssociations = () => {
 
   Elaboracion.belongsTo(User, { foreignKey: 'usuarioId', as: 'usuario' });
   User.hasMany(Elaboracion, { foreignKey: 'usuarioId', as: 'elaboraciones' });
+
+  // Prueba de laboratorio (MezclaVersion extendida): almacén de donde
+  // consume, elaboración a la que dio lugar (trazabilidad inversa),
+  // etapas de medición y fotos de evidencia.
+  MezclaVersion.belongsTo(Almacen, { foreignKey: 'almacenId', as: 'almacen' });
+  Almacen.hasMany(MezclaVersion, { foreignKey: 'almacenId', as: 'pruebasMezcla' });
+
+  MezclaVersion.belongsTo(Elaboracion, { foreignKey: 'elaboracionId', as: 'elaboracionGenerada' });
+  Elaboracion.hasOne(MezclaVersion, { foreignKey: 'elaboracionId', as: 'pruebaOrigen' });
+
+  MezclaVersion.belongsTo(User, { foreignKey: 'createdBy', as: 'operador' });
+
+  MezclaVersion.hasMany(MezclaEtapa, { foreignKey: 'mezclaVersionId', as: 'etapas' });
+  MezclaEtapa.belongsTo(MezclaVersion, { foreignKey: 'mezclaVersionId', as: 'version' });
+
+  MezclaEtapa.belongsTo(MezclaComponente, { foreignKey: 'componenteId', as: 'componente' });
+  MezclaComponente.hasMany(MezclaEtapa, { foreignKey: 'componenteId', as: 'etapas' });
+
+  MezclaEtapa.belongsTo(User, { foreignKey: 'createdBy', as: 'creadoPor' });
+
+  MezclaVersion.hasMany(MezclaFoto, { foreignKey: 'mezclaVersionId', as: 'fotos' });
+  MezclaFoto.belongsTo(MezclaVersion, { foreignKey: 'mezclaVersionId', as: 'version' });
+
+  MezclaEtapa.hasMany(MezclaFoto, { foreignKey: 'mezclaEtapaId', as: 'fotos' });
+  MezclaFoto.belongsTo(MezclaEtapa, { foreignKey: 'mezclaEtapaId', as: 'etapa' });
 
   withAuditAssociations(Mezcla);
 
@@ -603,6 +634,7 @@ export {
   ProgramacionCorte,
   Producto,
   RechazoCorte,
+  Comunicado,
   PrecipitacionDiariaConfig,
   PrecipitacionDiaria,
   Articulo,
@@ -615,6 +647,8 @@ export {
   Mezcla,
   MezclaVersion,
   MezclaComponente,
+  MezclaEtapa,
+  MezclaFoto,
   Elaboracion,
   Proforma,
   ProformaDetalle,

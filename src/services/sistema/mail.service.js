@@ -22,6 +22,20 @@ if (isConfigured) {
   });
 }
 
+// El mensaje de un Comunicado es texto plano escrito a mano en un
+// textarea — se escapa antes de insertarlo en el HTML del correo (nunca se
+// confía en texto libre de un formulario) y los saltos de línea se
+// convierten a <br> para que se vea igual que se escribió.
+function escaparYFormatearMensaje(texto) {
+  const escapado = String(texto || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+  return escapado.replace(/\n/g, '<br>');
+}
+
 export const mailService = {
   async sendPasswordReset(usuario, newPassword) {
     const html = `
@@ -253,6 +267,50 @@ export const mailService = {
       to: destinatarios,
       subject: `CORBANA — Alertas de Sanidad Vegetal: ${alertas.length} finca(s) — semana ${semana.codigo} (enviado ${new Date().toISOString().slice(0, 10)})`,
       html,
+    });
+  },
+
+  // Comunicado manual (Configuración → Comunicados) — un correo por
+  // destinatario (no en copia entre ellos), personalizado con su nombre
+  // cuando se conoce (llegó por rol/usuario, no por correo suelto).
+  async sendComunicado({ email, nombre }, { asunto, mensaje, attachments = [] }) {
+    const saludo = nombre ? `Hola <strong style="color: #166534;">${nombre}</strong>,` : 'Hola,';
+    const html = `
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.08);">
+        <div style="background: linear-gradient(135deg, #166534 0%, #22a35e 100%); padding: 28px 32px; text-align: center;">
+          <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">CORBANA</h1>
+          <p style="color: rgba(255,255,255,.85); margin: 4px 0 0; font-size: 13px;">Comunicado</p>
+        </div>
+        <div style="padding: 32px;">
+          <p style="margin: 0 0 16px; color: #374151; font-size: 15px; line-height: 1.5;">${saludo}</p>
+          <p style="margin: 0 0 4px; color: #166534; font-weight: 700; font-size: 15px;">${escaparYFormatearMensaje(asunto)}</p>
+          <div style="color: #374151; font-size: 14px; line-height: 1.6; white-space: normal;">
+            ${escaparYFormatearMensaje(mensaje)}
+          </div>
+        </div>
+        <div style="background: #f9fafb; padding: 16px 32px; text-align: center; border-top: 1px solid #e5e7eb;">
+          <p style="margin: 0; color: #9ca3af; font-size: 11px;">Este mensaje se generó automáticamente, por favor no respondas a este correo.</p>
+        </div>
+      </div>
+    `;
+
+    if (!isConfigured || !transporter) {
+      console.log('═══════════════════════════════════════════════');
+      console.log('📧  MAIL SERVICE (no configurado) — comunicado');
+      console.log(`To:      ${email}`);
+      console.log(`Asunto:  ${asunto}`);
+      console.log(`Mensaje: ${mensaje}`);
+      if (attachments.length) console.log(`Adjuntos: ${attachments.map((a) => a.filename).join(', ')}`);
+      console.log('═══════════════════════════════════════════════');
+      return;
+    }
+
+    await transporter.sendMail({
+      from: SMTP_FROM,
+      to: email,
+      subject: `CORBANA — ${asunto}`,
+      html,
+      attachments,
     });
   },
 };

@@ -31,6 +31,16 @@ RefreshToken.init(
       allowNull: true,
       field: 'revoked_at',
     },
+    // Presente solo si este refresh token pertenece a una sesión de
+    // suplantación ("Ver como usuario", ver authService.impersonate) — se
+    // reenvía a cada renovación (authService.refresh) para que el admin
+    // suplantador siga siendo el actor de createdBy/updatedBy aunque la
+    // sesión dure más que la vida del access token original.
+    impersonatedBy: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      field: 'impersonated_by',
+    },
   },
   {
     sequelize,

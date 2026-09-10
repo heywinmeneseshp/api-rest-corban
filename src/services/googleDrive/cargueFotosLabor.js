@@ -158,6 +158,58 @@ export async function cargarFotosLaborCultural({ fincaNombre, semanaCodigo, fech
   }
 }
 
+const MODULO_MEZCLAS = 'Pruebas_Mezcla';
+
+// Sube las fotos de evidencia de UNA prueba de mezcla (Inventarios →
+// Mezclas — ver mezcla.service.js). Jerarquía en Drive:
+// GOOGLE_DRIVE_FOLDER / Pruebas_Mezcla / {documento}_{nombreMezcla} / archivos
+// Mismo criterio que cargarFotosLaborCultural: la subcarpeta se reutiliza
+// si ya existe (varias tandas de fotos para la misma prueba).
+export async function cargarFotosMezclaPrueba({ documento, mezclaNombre }, archivos) {
+  if (!archivos?.length) throw new Error('No hay fotos para subir');
+
+  const drive = getDrive();
+  const identificador = [normalizarTexto(documento) || 'sin_documento', normalizarTexto(mezclaNombre) || 'sin_nombre'].join('_');
+
+  try {
+    const carpetaModuloId = await obtenerCarpetaModulo(MODULO_MEZCLAS);
+    const subcarpetaId = await obtenerOCrearCarpeta(identificador, carpetaModuloId);
+
+    const fotosSubidas = [];
+    let contador = 1;
+    for (const foto of archivos) {
+      if (!foto.buffer?.length) continue;
+
+      const extension = path.extname(foto.originalname || '').toLowerCase() || '.jpg';
+      const nombreArchivo = `${identificador}_${contador}${extension}`;
+
+      const archivoSubido = await drive.files.create({
+        resource: { name: nombreArchivo, parents: [subcarpetaId] },
+        media: { mimeType: foto.mimetype || 'image/jpeg', body: Readable.from(foto.buffer) },
+        fields: 'id, webViewLink',
+        supportsAllDrives: true,
+      });
+
+      fotosSubidas.push({
+        idDrive: archivoSubido.data.id,
+        urlDrive: archivoSubido.data.webViewLink,
+        nombreOriginal: foto.originalname,
+        nombreDrive: nombreArchivo,
+      });
+      contador += 1;
+    }
+
+    if (fotosSubidas.length === 0) {
+      throw new Error('Ninguna de las fotos recibidas tenía contenido válido');
+    }
+
+    return { carpetaId: subcarpetaId, carpetaUrl: `https://drive.google.com/drive/folders/${subcarpetaId}`, fotos: fotosSubidas };
+  } catch (error) {
+    logger.error('Error al subir fotos de prueba de mezcla a Google Drive', { message: error.message });
+    throw normalizarErrorGoogleDrive(error);
+  }
+}
+
 export async function eliminarFotoDeDrive(fileId) {
   try {
     await getDrive().files.delete({ fileId, supportsAllDrives: true });
@@ -187,4 +239,4 @@ export async function descargarArchivoDeDrive(fileId) {
   return { stream: contenido.data, mimeType: metadata.data.mimeType, nombre: metadata.data.name };
 }
 
-export default { cargarFotosLaborCultural, eliminarFotoDeDrive, descargarArchivoDeDrive };
+export default { cargarFotosLaborCultural, cargarFotosMezclaPrueba, eliminarFotoDeDrive, descargarArchivoDeDrive };

@@ -11,7 +11,17 @@ const INCLUDE = [
         as: 'mezcla',
         attributes: ['uuid', 'nombre', 'codigo', 'rendimiento'],
         include: [
-          { model: Articulo, as: 'articuloElaborado', attributes: ['uuid', 'nombre', 'codigo'] },
+          {
+            model: Articulo,
+            as: 'articuloElaborado',
+            attributes: ['uuid', 'nombre', 'codigo'],
+            // La unidad real del producto elaborado es la que se eligió al
+            // crearlo (articuloUnidadMedidaUuid en mezcla.service.js#crearElaborado)
+            // — mezcla.unidadRendimiento es un campo legado que el flujo
+            // actual nunca asigna, así que mostrarlo dejaba la cantidad sin
+            // unidad en el detalle/listado de Elaboraciones.
+            include: [{ model: UnidadMedida, as: 'unidadMedida', attributes: ['uuid', 'nombre', 'simbolo'] }],
+          },
           { model: UnidadMedida, as: 'unidadRendimiento', attributes: ['uuid', 'nombre', 'simbolo'] },
         ],
       },
@@ -68,8 +78,13 @@ export const elaboracionRepository = {
     });
   },
 
-  findByUuid(uuid) {
-    return Elaboracion.findOne({ where: { uuid }, include: INCLUDE });
+  // `transaction` es necesario cuando se llama justo después de crear
+  // dentro de la misma transacción (elaboracion.service.js#create) — sin
+  // pasarla, esta consulta corre en otra conexión y, según el nivel de
+  // aislamiento, puede no ver todavía la fila recién escrita (devuelve
+  // null antes de que la transacción externa haga commit).
+  findByUuid(uuid, { transaction } = {}) {
+    return Elaboracion.findOne({ where: { uuid }, include: INCLUDE, transaction });
   },
 
   create(data, { transaction } = {}) {

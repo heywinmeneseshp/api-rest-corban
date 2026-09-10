@@ -24,6 +24,25 @@ export const auth = asyncHandler(async (req, _res, next) => {
       // solo esas fincas. Ver src/utils/fincaScope.js para cómo se usa.
       fincaIds: payload.fincaIds === null ? null : payload.fincaIds || [],
     };
+
+    // Suplantación ("Ver como usuario", ver authService.impersonate): el
+    // token es el REAL del usuario suplantado (por eso permissions/
+    // fincaIds/roles arriba ya quedan correctos — así se ve exactamente lo
+    // que esa persona vería). Pero `id`/`uuid`/`usuario` se pisan acá con
+    // los del admin que está suplantando: son los que casi todo el código
+    // usa como `createdBy`/`updatedBy` al crear o editar algo, y así lo que
+    // se guarde queda a nombre del admin real, no del usuario suplantado
+    // (pedido explícito). `req.user.viendoComo` guarda la identidad
+    // suplantada por si algún caso puntual la necesita (ver
+    // estimacionFinca.service.js#resolverVisibilidad, "solo mis
+    // estimaciones" — ahí sí interesa saber quién está mirando de verdad).
+    if (payload.impersonatedBy) {
+      req.user.viendoComo = { id: payload.id, uuid: payload.uuid, usuario: payload.usuario };
+      req.user.id = payload.impersonatedBy.id;
+      req.user.uuid = payload.impersonatedBy.uuid;
+      req.user.usuario = payload.impersonatedBy.usuario;
+    }
+
     next();
   } catch {
     throw ApiError.unauthorized('Token de acceso inválido o expirado');

@@ -1,22 +1,20 @@
 import { sequelize } from '../../database/connection.js';
 import { movimientoRepository } from '../../repositories/inventario/movimiento.repository.js';
-import { Almacen, Articulo, UnidadMedida, Motivo, UnidadConversion } from '../../database/associations.js';
+import { Almacen, Articulo, UnidadMedida, Motivo } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { assertStockSuficiente, registrarMovimientoEnCache, TIPOS_SALIDA } from './stock.helper.js';
+import { convertirACantidadBase } from '../../utils/unidadConversion.js';
 
-// Convierte cantidad a unidad base del artículo (usa factor de conversión si unidad distinta)
+// Convierte cantidad a unidad base del artículo — delega en
+// unidadConversion.js#convertirACantidadBase, que resuelve la conversión
+// como un grafo bidireccional (directa, inversa o encadenada a través de
+// varias unidades), no solo un par directo origen→destino.
 async function toBaseCantidad(articulo, unidadUuid, cantidad) {
-  if (!unidadUuid || !articulo.unidadMedidaId) return Number(cantidad);
+  if (!unidadUuid) return Number(cantidad);
   const unidad = await UnidadMedida.findOne({ where: { uuid: unidadUuid } });
-  if (!unidad || unidad.id === articulo.unidadMedidaId) return Number(cantidad);
-
-  // Busca conversión directa
-  const conv = await UnidadConversion.findOne({
-    where: { unidadOrigenId: unidad.id, unidadDestinoId: articulo.unidadMedidaId },
-  });
-  if (!conv) throw ApiError.badRequest(`No hay conversión de ${unidad.codigo} a unidad base del artículo`);
-  return Number(cantidad) * Number(conv.factor);
+  if (!unidad) return Number(cantidad);
+  return convertirACantidadBase(articulo, unidad.id, cantidad);
 }
 
 export const movimientoService = {
@@ -70,7 +68,18 @@ export const movimientoService = {
     }
 
     const cantidadBase = await toBaseCantidad(articulo, payload.unidadUuid, payload.cantidad);
+    // El costo TOTAL (en dinero) no cambia según la unidad en que se haya
+    // digitado la cantidad — se calcula con los valores tal cual los
+    // ingresó el operador, y de ahí se deriva el costo unitario que
+    // corresponde a `cantidadBase` (para que costoUnitario × cantidad siga
+    // dando el mismo total, ahora expresado en la unidad base).
     const costoTotal = Number(payload.costoUnitario || 0) * Number(payload.cantidad);
+    const costoUnitarioBase = cantidadBase > 0 ? costoTotal / cantidadBase : Number(payload.costoUnitario || 0);
+    // El movimiento se guarda SIEMPRE en la unidad base del artículo (si
+    // tiene una configurada) — pedido explícito: aunque se haya medido en
+    // otra unidad, el listado de Movimientos debe reflejar la unidad por
+    // defecto del artículo, no la que se usó para digitar.
+    const unidadIdGuardado = articulo.unidadMedidaId || unidadId;
 
     return sequelize.transaction(async (t) => {
       // Valida stock para salidas (bloqueo de fila dentro de la misma transacción
@@ -90,10 +99,10 @@ export const movimientoService = {
           fecha: payload.fecha,
           almacenId: almacen.id,
           articuloId: articulo.id,
-          cantidad: payload.cantidad,
+          cantidad: cantidadBase,
           cantidadBase,
-          unidadId,
-          costoUnitario: payload.costoUnitario || 0,
+          unidadId: unidadIdGuardado,
+          costoUnitario: costoUnitarioBase,
           costoTotal,
           lote: payload.lote || null,
           fechaVencimiento: payload.fechaVencimiento || null,
@@ -127,7 +136,11 @@ export const movimientoService = {
       unidadId = uni?.id || null;
     }
 
+    // Mismo criterio que create(): el costo total no depende de la unidad
+    // elegida, y el movimiento se guarda en la unidad base del artículo.
     const costoTotal = Number(payload.costoUnitario || 0) * Number(payload.cantidad);
+    const costoUnitarioBase = cantidadBase > 0 ? costoTotal / cantidadBase : Number(payload.costoUnitario || 0);
+    const unidadIdGuardado = articulo.unidadMedidaId || unidadId;
 
     return sequelize.transaction(async (t) => {
       await assertStockSuficiente(almacenOrigen.id, articulo.id, cantidadBase, {
@@ -143,10 +156,10 @@ export const movimientoService = {
           fecha: payload.fecha,
           almacenId: almacenOrigen.id,
           articuloId: articulo.id,
-          cantidad: payload.cantidad,
+          cantidad: cantidadBase,
           cantidadBase,
-          unidadId,
-          costoUnitario: payload.costoUnitario || 0,
+          unidadId: unidadIdGuardado,
+          costoUnitario: costoUnitarioBase,
           costoTotal,
           observaciones: payload.observaciones || null,
           usuarioId: actorId,
@@ -161,10 +174,10 @@ export const movimientoService = {
           fecha: payload.fecha,
           almacenId: almacenDestino.id,
           articuloId: articulo.id,
-          cantidad: payload.cantidad,
+          cantidad: cantidadBase,
           cantidadBase,
-          unidadId,
-          costoUnitario: payload.costoUnitario || 0,
+          unidadId: unidadIdGuardado,
+          costoUnitario: costoUnitarioBase,
           costoTotal,
           observaciones: payload.observaciones || null,
           usuarioId: actorId,

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { userController } from '../../controllers/seguridad/user.controller.js';
 import { auth } from '../../middlewares/auth.middleware.js';
 import { permission } from '../../middlewares/permission.middleware.js';
+import { requireAdmin } from '../../middlewares/requireAdmin.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
 import { uploadBulkFile } from '../../middlewares/upload.middleware.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
@@ -128,6 +129,21 @@ router.delete(
   validate(getUserSchema),
   userController.remove,
 );
+
+/**
+ * @openapi
+ * /users/{uuid}/impersonate:
+ *   post:
+ *     tags: [Usuarios]
+ *     summary: >
+ *       Suplantación real ("Ver como"): emite un token propio del usuario
+ *       elegido (mismos permisos y fincas que tendría en un login real),
+ *       sin pedir su contraseña. Solo Administrador.
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.post('/:uuid/impersonate', auth, requireAdmin, validate(getUserSchema), userController.impersonate);
 
 /**
  * @openapi
