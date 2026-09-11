@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { configuracionService } from './configuracion.service.js';
 
 const {
   SMTP_HOST,
@@ -8,6 +9,25 @@ const {
   SMTP_FROM = 'noreply@corbana.com',
   APP_URL = 'http://localhost:3003',
 } = process.env;
+
+function escaparHtml(texto) {
+  return String(texto || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// El nombre del sistema que va en el encabezado, el remitente y el asunto
+// de todos los correos sale de Configuración → Marca (no está hardcodeado
+// como "CORBANA"). Si nunca se configuró, cae a "Corbana". Nunca revienta:
+// getMarcaApp() ya devuelve el default ante cualquier error.
+async function obtenerMarca() {
+  const { nombreApp } = await configuracionService.getMarcaApp();
+  const nombre = nombreApp || 'Corbana';
+  return { nombre, nombreHtml: escaparHtml(nombre), from: `${nombre} <${SMTP_FROM}>` };
+}
 
 const isConfigured = !!(SMTP_HOST && SMTP_USER && SMTP_PASS);
 
@@ -38,10 +58,11 @@ function escaparYFormatearMensaje(texto) {
 
 export const mailService = {
   async sendPasswordReset(usuario, newPassword) {
+    const { nombre: marca, nombreHtml: marcaHtml, from } = await obtenerMarca();
     const html = `
-      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.08);">
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.08);">
         <div style="background: linear-gradient(135deg, #166534 0%, #22a35e 100%); padding: 28px 32px; text-align: center;">
-          <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">CORBANA</h1>
+          <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">${marcaHtml}</h1>
           <p style="color: rgba(255,255,255,.85); margin: 4px 0 0; font-size: 13px;">Gestión y Control del Cultivo de Banano</p>
         </div>
         <div style="padding: 32px;">
@@ -71,7 +92,7 @@ export const mailService = {
       console.log('═══════════════════════════════════════════════');
       console.log('📧  MAIL SERVICE (no configurado)');
       console.log(`To:       ${usuario.email}`);
-      console.log(`Subject:  CORBANA — Credenciales restablecidas`);
+      console.log(`Subject:  ${marca} — Credenciales restablecidas`);
       console.log(`Usuario:  ${usuario.usuario}`);
       console.log(`Password: ${newPassword}`);
       console.log(`Link:     ${APP_URL}/login`);
@@ -80,9 +101,9 @@ export const mailService = {
     }
 
     await transporter.sendMail({
-      from: SMTP_FROM,
+      from,
       to: usuario.email,
-      subject: 'CORBANA — Credenciales restablecidas',
+      subject: `${marca} — Credenciales restablecidas`,
       html,
     });
   },
@@ -100,10 +121,11 @@ export const mailService = {
     const destinatariosFinales = destinatarios?.length ? destinatarios : cc;
     if (!destinatariosFinales?.length) return;
 
+    const { nombre: marca, nombreHtml: marcaHtml, from } = await obtenerMarca();
     const html = `
-      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.08);">
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.08);">
         <div style="background: linear-gradient(135deg, #166534 0%, #22a35e 100%); padding: 28px 32px; text-align: center;">
-          <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">CORBANA</h1>
+          <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">${marcaHtml}</h1>
           <p style="color: rgba(255,255,255,.85); margin: 4px 0 0; font-size: 13px;">Sanidad Vegetal — Evaluación de Labores</p>
         </div>
         <div style="padding: 32px;">
@@ -136,10 +158,10 @@ export const mailService = {
     }
 
     await transporter.sendMail({
-      from: SMTP_FROM,
+      from,
       to: destinatariosFinales,
       cc: !usaCcComoPrincipal && cc?.length ? cc : undefined,
-      subject: `CORBANA — Nueva evaluación de labores: ${fincaNombre} (semana ${semanaCodigo})`,
+      subject: `${marca} — Nueva evaluación de labores: ${fincaNombre} (semana ${semanaCodigo})`,
       html,
     });
   },
@@ -156,10 +178,11 @@ export const mailService = {
     const destinatariosFinales = destinatarios?.length ? destinatarios : cc;
     if (!destinatariosFinales?.length) return;
 
+    const { nombre: marca, nombreHtml: marcaHtml, from } = await obtenerMarca();
     const html = `
-      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.08);">
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.08);">
         <div style="background: linear-gradient(135deg, #166534 0%, #22a35e 100%); padding: 28px 32px; text-align: center;">
-          <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">CORBANA</h1>
+          <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">${marcaHtml}</h1>
           <p style="color: rgba(255,255,255,.85); margin: 4px 0 0; font-size: 13px;">Sanidad Vegetal — Evaluación de Labores</p>
         </div>
         <div style="padding: 32px;">
@@ -191,10 +214,10 @@ export const mailService = {
     }
 
     await transporter.sendMail({
-      from: SMTP_FROM,
+      from,
       to: destinatariosFinales,
       cc: !usaCcComoPrincipal && cc?.length ? cc : undefined,
-      subject: `CORBANA — Evaluación de labores revisada: ${fincaNombre} (semana ${semanaCodigo})`,
+      subject: `${marca} — Evaluación de labores revisada: ${fincaNombre} (semana ${semanaCodigo})`,
       html,
       attachments: pdfBuffer ? [{ filename: pdfNombre || 'visita.pdf', content: pdfBuffer, contentType: 'application/pdf' }] : [],
     });
@@ -207,6 +230,8 @@ export const mailService = {
   // expandidos — ver evaluacion.service.js#resolverDestinatariosAlertas).
   async sendAlertasSemana({ destinatarios, semana, alertas }) {
     if (!destinatarios?.length) return;
+
+    const { nombre: marca, nombreHtml: marcaHtml, from } = await obtenerMarca();
 
     const filas = alertas
       .map(
@@ -221,9 +246,9 @@ export const mailService = {
       .join('');
 
     const html = `
-      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 620px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.08);">
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 720px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.08);">
         <div style="background: linear-gradient(135deg, #b45309 0%, #dc2626 100%); padding: 28px 32px; text-align: center;">
-          <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">CORBANA</h1>
+          <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">${marcaHtml}</h1>
           <p style="color: rgba(255,255,255,.9); margin: 4px 0 0; font-size: 13px;">Alertas de Sanidad Vegetal — Semana ${semana.codigo}</p>
         </div>
         <div style="padding: 32px;">
@@ -263,9 +288,9 @@ export const mailService = {
     }
 
     await transporter.sendMail({
-      from: SMTP_FROM,
+      from,
       to: destinatarios,
-      subject: `CORBANA — Alertas de Sanidad Vegetal: ${alertas.length} finca(s) — semana ${semana.codigo} (enviado ${new Date().toISOString().slice(0, 10)})`,
+      subject: `${marca} — Alertas de Sanidad Vegetal: ${alertas.length} finca(s) — semana ${semana.codigo} (enviado ${new Date().toISOString().slice(0, 10)})`,
       html,
     });
   },
@@ -274,11 +299,12 @@ export const mailService = {
   // destinatario (no en copia entre ellos), personalizado con su nombre
   // cuando se conoce (llegó por rol/usuario, no por correo suelto).
   async sendComunicado({ email, nombre }, { asunto, mensaje, attachments = [] }) {
+    const { nombre: marca, nombreHtml: marcaHtml, from } = await obtenerMarca();
     const saludo = nombre ? `Hola <strong style="color: #166534;">${nombre}</strong>,` : 'Hola,';
     const html = `
-      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.08);">
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.08);">
         <div style="background: linear-gradient(135deg, #166534 0%, #22a35e 100%); padding: 28px 32px; text-align: center;">
-          <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">CORBANA</h1>
+          <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">${marcaHtml}</h1>
           <p style="color: rgba(255,255,255,.85); margin: 4px 0 0; font-size: 13px;">Comunicado</p>
         </div>
         <div style="padding: 32px;">
@@ -306,9 +332,9 @@ export const mailService = {
     }
 
     await transporter.sendMail({
-      from: SMTP_FROM,
+      from,
       to: email,
-      subject: `CORBANA — ${asunto}`,
+      subject: `${marca} — ${asunto}`,
       html,
       attachments,
     });

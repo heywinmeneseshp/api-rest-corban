@@ -10,7 +10,17 @@ import {
   Almacen,
   Elaboracion,
   User,
+  Role,
 } from '../../database/associations.js';
+
+// Usuario + sus roles (el "cargo" que se muestra en el detalle: quién creó
+// / finalizó / aprobó la prueba).
+const usuarioConRoles = (as) => ({
+  model: User,
+  as,
+  attributes: ['uuid', 'usuario', 'nombre', 'apellido'],
+  include: [{ model: Role, as: 'roles', attributes: ['uuid', 'nombre'], through: { attributes: [] } }],
+});
 
 const LIST_INCLUDE = [
   { model: Articulo, as: 'articuloElaborado', attributes: ['uuid', 'nombre', 'codigo'] },
@@ -59,7 +69,9 @@ const VERSION_DETAIL_INCLUDE = [
     required: false,
   },
   { model: Almacen, as: 'almacen', attributes: ['uuid', 'nombre', 'codigo'] },
-  { model: User, as: 'operador', attributes: ['uuid', 'usuario', 'nombre', 'apellido'] },
+  usuarioConRoles('operador'),
+  usuarioConRoles('finalizadaPor'),
+  usuarioConRoles('aprobadaPor'),
   { model: Elaboracion, as: 'elaboracionGenerada', attributes: ['uuid', 'documento'] },
 ];
 
@@ -244,6 +256,15 @@ export const mezclaRepository = {
 
   updateVersion(version, data, { transaction } = {}) {
     return version.update(data, { transaction });
+  },
+
+  // UUIDs de los roles de un usuario — para el chequeo de aprobación de
+  // pruebas de mezcla (roles autorizados en Configuración → Parámetros).
+  async findRolUuidsByUserId(userId) {
+    const u = await User.findByPk(userId, {
+      include: [{ model: Role, as: 'roles', attributes: ['uuid'], through: { attributes: [] } }],
+    });
+    return (u?.roles || []).map((r) => r.uuid);
   },
 
   // ─── Componentes de una versión (en edición libre mientras la prueba

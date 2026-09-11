@@ -65,7 +65,7 @@ const SB_HOJA_UMBRALES_DEFAULT = { advertencia: 450, alerta: 650 };
 // Parámetros de validación de pruebas de Mezclas (Inventarios → Mezclas —
 // ver mezcla.service.js#finalizarPrueba). Una prueba es válida cuando
 // phMinimo <= phFinal <= phMaximo Y ceFinal < ceMaxima.
-const MEZCLA_PARAMETROS_DEFAULT = { phMinimo: 4, phMaximo: 6, ceMaxima: 4 };
+const MEZCLA_PARAMETROS_DEFAULT = { phMinimo: 4, phMaximo: 6, ceMaxima: 4, aprobadoresRolesUuids: [] };
 
 export const configuracionService = {
   async getBanaricaApiUrl() {
@@ -259,10 +259,16 @@ export const configuracionService = {
     if (Number.isFinite(phMinimo) && Number.isFinite(phMaximo) && phMinimo > phMaximo) {
       throw ApiError.badRequest('El pH mínimo no puede ser mayor al pH máximo');
     }
+    // Roles (uuids) autorizados a APROBAR una prueba de mezcla ya convertida
+    // en elaborado. Vacío = solo Administrador.
+    const aprobadoresRolesUuids = Array.isArray(parametros?.aprobadoresRolesUuids)
+      ? parametros.aprobadoresRolesUuids.filter((u) => typeof u === 'string' && u.length > 0)
+      : [];
     const valor = JSON.stringify({
       phMinimo: Number.isFinite(phMinimo) ? phMinimo : MEZCLA_PARAMETROS_DEFAULT.phMinimo,
       phMaximo: Number.isFinite(phMaximo) ? phMaximo : MEZCLA_PARAMETROS_DEFAULT.phMaximo,
       ceMaxima: Number.isFinite(ceMaxima) ? ceMaxima : MEZCLA_PARAMETROS_DEFAULT.ceMaxima,
+      aprobadoresRolesUuids,
     });
     const config = await configuracionRepository.upsert(CLAVE_MEZCLA_PARAMETROS, valor, actorId);
     return JSON.parse(config.valor);

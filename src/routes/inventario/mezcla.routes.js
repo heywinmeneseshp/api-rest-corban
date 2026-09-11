@@ -96,5 +96,8 @@ router.post(
   validate(crearElaboradoSchema),
   mezclaController.crearElaborado,
 );
+// Aprobación: solo `auth` — el chequeo de rol autorizado (o Administrador)
+// vive en el servicio, contra la lista configurada en Parámetros de Mezcla.
+router.post('/:uuid/versiones/:versionUuid/aprobar', auth, mezclaController.aprobar);
 
 export default router;

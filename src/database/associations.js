@@ -487,6 +487,8 @@ export const setupAssociations = () => {
   Elaboracion.hasOne(MezclaVersion, { foreignKey: 'elaboracionId', as: 'pruebaOrigen' });
 
   MezclaVersion.belongsTo(User, { foreignKey: 'createdBy', as: 'operador' });
+  MezclaVersion.belongsTo(User, { foreignKey: 'finalizadaPorId', as: 'finalizadaPor' });
+  MezclaVersion.belongsTo(User, { foreignKey: 'aprobadaPorId', as: 'aprobadaPor' });
 
   MezclaVersion.hasMany(MezclaEtapa, { foreignKey: 'mezclaVersionId', as: 'etapas' });
   MezclaEtapa.belongsTo(MezclaVersion, { foreignKey: 'mezclaVersionId', as: 'version' });

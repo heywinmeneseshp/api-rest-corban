@@ -98,6 +98,16 @@ export const mezclaController = {
     });
   }),
 
+  aprobar: asyncHandler(async (req, res) => {
+    const resultado = await mezclaService.aprobar(req.params.versionUuid, req.user?.id, req.user, {
+      forzarSaldoNegativo: req.body?.forzarSaldoNegativo === true,
+    });
+    ApiResponse.send(res, {
+      message: resultado.requiereConfirmacion ? 'Confirmación requerida' : 'Prueba de mezcla aprobada correctamente',
+      data: resultado,
+    });
+  }),
+
   // ─── Parámetros de validación (pH/CE) ───
 
   getParametros: asyncHandler(async (req, res) => {

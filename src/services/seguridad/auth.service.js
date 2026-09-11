@@ -163,7 +163,22 @@ export const authService = {
     // roles.join(', ') muestra "[object Object]" cuando la sesión se
     // recargó desde /auth/me en vez de login/refresh.
     const roleNames = (fullUser.roles || []).map((r) => r.nombre);
-    return { ...fullUser.toSafeJSON(), roles: roleNames };
+    const roleIds = (fullUser.roles || []).map((r) => r.id);
+    const esAdmin = roleNames.includes(ROLES.ADMINISTRADOR);
+
+    // `permissions` y `fincaIds` NO venían en /auth/me (solo en
+    // login/refresh) — la app móvil llama a /auth/me en segundo plano y
+    // pisa la sesión guardada, así que sin esto perdía los permisos y las
+    // fincas asignadas del usuario (y terminaba viendo TODAS las fincas en
+    // el selector de evaluaciones). Se recalculan frescos acá, mismo
+    // criterio que buildTokenPair.
+    const permissions = esAdmin
+      ? ALL_PERMISSION_CODES
+      : await roleRepository.findPermissionCodesByRoleIds(roleIds);
+    const fincaIdsAsignados = esAdmin ? null : await userRepository.findFincaIdsByUserId(fullUser.id);
+    const fincaIds = fincaIdsAsignados === null ? null : await expandirFincaIds(fincaIdsAsignados);
+
+    return { ...fullUser.toSafeJSON(), roles: roleNames, permissions, fincaIds };
   },
 
   async updateProfile(userId, payload) {

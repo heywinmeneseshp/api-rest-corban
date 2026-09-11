@@ -194,6 +194,29 @@ const sincronizarPrecipitacionDiaria = async (fincaUuid, fecha, mm) => {
   );
 };
 
+// UUIDs de las fincas que el usuario tiene habilitadas — los reportes de
+// clima se filtran por `finca_uuid`. null = sin restricción (Administrador,
+// o petición de la app móvil, ver auth.middleware.js).
+const fincaUuidsPermitidos = async (user) => {
+  const ids = getFincaIdsPermitidas(user);
+  if (ids === null) return null;
+  const fincas = await Finca.findAll({ where: { id: ids }, attributes: ['uuid'], raw: true });
+  return fincas.map((f) => f.uuid);
+};
+
+// Lista final de finca_uuids a la que acotar la consulta (o null = todas):
+// intersecta el filtro puntual `query.fincaUuid` (expandido a su Grupo de
+// Finca) con las fincas habilitadas del usuario.
+const resolverFincaUuids = async (query, user) => {
+  const permitidos = await fincaUuidsPermitidos(user);
+  if (query?.fincaUuid) {
+    let uuids = await expandirFincaUuids(String(query.fincaUuid).split(','));
+    if (permitidos !== null) uuids = uuids.filter((u) => permitidos.includes(u));
+    return uuids;
+  }
+  return permitidos;
+};
+
 export const climaService = {
   async create(payload, actorId) {
     await ensureTable();
@@ -247,7 +270,7 @@ export const climaService = {
     return { uuid, fincaUuid, semanaUuid, fecha, mm, temperatura, humedadRelativa };
   },
 
-  async list(query) {
+  async list(query, user) {
     await ensureTable();
 
     const page = Math.max(1, parseInt(query.page) || 1);
@@ -257,11 +280,12 @@ export const climaService = {
     const replacements = {};
     let where = 'WHERE 1=1';
 
-    if (query.fincaUuid) {
-      // Se expande a las fincas hermanas de su Grupo de Finca (ver
-      // utils/fincaScope.js), si tiene uno asignado.
+    // Filtro puntual de finca (expandido a su Grupo) intersectado con las
+    // fincas habilitadas del usuario. null = sin restricción.
+    const fincaUuids = await resolverFincaUuids(query, user);
+    if (fincaUuids) {
       where += ' AND p.finca_uuid IN (:fincaUuids)';
-      replacements.fincaUuids = await expandirFincaUuids([query.fincaUuid]);
+      replacements.fincaUuids = fincaUuids;
     }
 
     if (query.fechaDesde) {
@@ -428,22 +452,52 @@ export const climaService = {
   // gráfico de años distintos alineados por semana del año (mismo criterio
   // que dashboardService.getResumen). Sin `anio`, trae todas las semanas de
   // todos los años, en orden cronológico.
-  async promedioSemanal(query) {
+  async promedioSemanal(query, user) {
     await ensureTable();
 
-    let fincaUuids = null; // null = todas las fincas
-    if (query.fincaUuid) {
-      fincaUuids = await expandirFincaUuids(query.fincaUuid.split(','));
-    }
+    // null = todas las fincas; [] = ninguna (usuario restringido sin fincas
+    // que apliquen); [uuids] = solo esas.
+    const fincaUuids = await resolverFincaUuids(query, user);
     const whereFinca = fincaUuids ? 'WHERE finca_uuid IN (:fincaUuids)' : '';
     const replacementsFinca = fincaUuids ? { fincaUuids } : {};
 
+    const aIso = (f) => (f instanceof Date ? f.toISOString().slice(0, 10) : String(f).slice(0, 10));
+
+    // Precipitación DIARIA de las fincas (módulo Precipitación Diaria): es la
+    // fuente que MANDA para el mm de cada finca+fecha. `clima.mm` solo se usa
+    // como relleno cuando ese día NO tiene registro de precipitación diaria.
+    const filasPrecDiaria = await sequelize.query(
+      `SELECT finca_uuid AS fincaUuid, fecha, mm FROM precipitacion_diaria ${whereFinca}`,
+      { replacements: replacementsFinca, type: 'SELECT' },
+    );
+    const precDiariaPorFincaFecha = new Map(
+      filasPrecDiaria.filter((f) => f.mm !== null).map((f) => [`${f.fincaUuid}-${aIso(f.fecha)}`, Number(f.mm)]),
+    );
+
     // Rango real de captura de cada finca en el alcance pedido — el relleno
-    // de 0mm en días sin registro solo aplica DENTRO de este rango.
-    const rangosPorFinca = await sequelize.query(
+    // de 0mm en días sin registro solo aplica DENTRO de este rango. Se toma
+    // de AMBAS fuentes (clima y precipitación diaria): una finca puede tener
+    // precipitación diaria cargada aunque todavía no tenga nada en `clima`.
+    const rangosClima = await sequelize.query(
       `SELECT finca_uuid AS fincaUuid, MIN(fecha) AS desde, MAX(fecha) AS hasta FROM ${TABLE} ${whereFinca} GROUP BY finca_uuid`,
       { replacements: replacementsFinca, type: 'SELECT' },
     );
+    const rangosPrecDiaria = await sequelize.query(
+      `SELECT finca_uuid AS fincaUuid, MIN(fecha) AS desde, MAX(fecha) AS hasta FROM precipitacion_diaria ${whereFinca} GROUP BY finca_uuid`,
+      { replacements: replacementsFinca, type: 'SELECT' },
+    );
+    const rangoPorFinca = new Map(); // fincaUuid -> { fincaUuid, desde, hasta }
+    for (const r of [...rangosClima, ...rangosPrecDiaria]) {
+      if (r.desde === null || r.hasta === null) continue;
+      const prev = rangoPorFinca.get(r.fincaUuid);
+      if (!prev) {
+        rangoPorFinca.set(r.fincaUuid, { fincaUuid: r.fincaUuid, desde: r.desde, hasta: r.hasta });
+      } else {
+        if (new Date(r.desde) < new Date(prev.desde)) prev.desde = r.desde;
+        if (new Date(r.hasta) > new Date(prev.hasta)) prev.hasta = r.hasta;
+      }
+    }
+    const rangosPorFinca = [...rangoPorFinca.values()];
 
     const aniosDisponibles = await semanaRepository.findAniosDistintos();
     if (rangosPorFinca.length === 0) return { items: [], aniosDisponibles };
@@ -454,7 +508,6 @@ export const climaService = {
       `SELECT finca_uuid AS fincaUuid, fecha, mm, temperatura, humedad_relativa AS humedadRelativa FROM ${TABLE} ${whereFinca}`,
       { replacements: replacementsFinca, type: 'SELECT' },
     );
-    const aIso = (f) => (f instanceof Date ? f.toISOString().slice(0, 10) : String(f).slice(0, 10));
     const realPorFincaFecha = new Map(filasReales.map((f) => [`${f.fincaUuid}-${aIso(f.fecha)}`, f]));
 
     // Mapa fecha -> semana, armado una sola vez recorriendo cada semana (no
@@ -506,7 +559,11 @@ export const climaService = {
         }
 
         const real = realPorFincaFecha.get(`${r.fincaUuid}-${fechaIso}`);
-        const mm = real && real.mm !== null ? Number(real.mm) : 0; // sin captura ese día -> 0mm
+        // Precipitación diaria de la finca manda; si ese día no tiene
+        // registro de precipitación diaria, se usa el mm de `clima`; si
+        // tampoco -> 0mm.
+        const mmDiaria = precDiariaPorFincaFecha.get(`${r.fincaUuid}-${fechaIso}`);
+        const mm = mmDiaria !== undefined ? mmDiaria : real && real.mm !== null ? Number(real.mm) : 0;
 
         const claveFincaSemana = `${r.fincaUuid}-${semana.uuid}`;
         if (!acumPorFincaSemana.has(claveFincaSemana)) {
@@ -574,17 +631,14 @@ export const climaService = {
   // sumado entre todas — y solo se incluyen fincas cuyo rango real de
   // captura efectivamente cubre esta semana (si una finca todavía no
   // capturaba nada en esa fecha, no aparece con un 0 engañoso).
-  async detalleSemanaPorFinca(semanaUuid, query = {}) {
+  async detalleSemanaPorFinca(semanaUuid, query = {}, user) {
     await ensureTable();
     if (!semanaUuid) throw ApiError.badRequest('Debes indicar semanaUuid');
 
     const semana = await Semana.findOne({ where: { uuid: semanaUuid }, raw: true });
     if (!semana) throw ApiError.notFound('Semana no encontrada');
 
-    let fincaUuids = null;
-    if (query.fincaUuid) {
-      fincaUuids = await expandirFincaUuids(query.fincaUuid.split(','));
-    }
+    const fincaUuids = await resolverFincaUuids(query, user);
     const whereFinca = fincaUuids ? 'AND finca_uuid IN (:fincaUuids)' : '';
     const replacementsFinca = fincaUuids ? { fincaUuids } : {};
 
@@ -661,15 +715,12 @@ export const climaService = {
   // año (día del año 1-366, semana 1-53, o mes 1-12) — para poder alinear
   // en el mismo eje puntos de años distintos, igual que ya hace
   // promedioSemanal con `numeroSemana`.
-  async serieClima(query) {
+  async serieClima(query, user) {
     await ensureTable();
 
     const granularidad = ['dia', 'mes'].includes(query.granularidad) ? query.granularidad : 'semana';
 
-    let fincaUuids = null;
-    if (query.fincaUuid) {
-      fincaUuids = await expandirFincaUuids(query.fincaUuid.split(','));
-    }
+    const fincaUuids = await resolverFincaUuids(query, user);
     const whereFinca = fincaUuids ? 'WHERE finca_uuid IN (:fincaUuids)' : '';
     const replacementsFinca = fincaUuids ? { fincaUuids } : {};
 

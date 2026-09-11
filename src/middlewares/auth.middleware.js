@@ -25,6 +25,14 @@ export const auth = asyncHandler(async (req, _res, next) => {
       fincaIds: payload.fincaIds === null ? null : payload.fincaIds || [],
     };
 
+    // La app móvil (Corbana) NO aplica la restricción de "fincas que puede
+    // ver": un evaluador de campo puede trabajar en cualquier finca. El
+    // scoping por finca asignada es solo para la web (app-corbana). El
+    // cliente móvil se identifica con el header `X-Client-App: movil`.
+    if (req.headers['x-client-app'] === 'movil') {
+      req.user.fincaIds = null;
+    }
+
     // Suplantación ("Ver como usuario", ver authService.impersonate): el
     // token es el REAL del usuario suplantado (por eso permissions/
     // fincaIds/roles arriba ya quedan correctos — así se ve exactamente lo

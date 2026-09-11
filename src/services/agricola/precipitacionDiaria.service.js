@@ -99,6 +99,34 @@ const serializarRegistro = (r) => ({
   coincide_clima: r.coincideClima,
 });
 
+// UUIDs de las fincas que el usuario tiene habilitadas (para el scoping de
+// los reportes de precipitación diaria — la tabla se filtra por
+// `finca_uuid`, no por id). Devuelve null cuando el usuario NO tiene
+// restricción (Administrador, o petición de la app móvil — ver
+// auth.middleware.js). `precipitacion_diaria`/config exponen datos de finca
+// que un usuario restringido no debería ver.
+const fincaUuidsPermitidos = async (user) => {
+  const ids = getFincaIdsPermitidas(user);
+  if (ids === null) return null;
+  const fincas = await Finca.findAll({ where: { id: { [Op.in]: ids } }, attributes: ['uuid'], raw: true });
+  return fincas.map((f) => f.uuid);
+};
+
+// Aplica a un `where` de Sequelize el filtro por finca: intersecta el
+// `query.fincaUuid` puntual (expandido a su Grupo de Finca) con lo que el
+// usuario tiene permitido. Sin restricción y sin filtro puntual, no toca
+// `where.fincaUuid`.
+const aplicarFiltroFinca = async (where, query, user) => {
+  const permitidos = await fincaUuidsPermitidos(user);
+  if (query?.fincaUuid) {
+    let uuids = await expandirFincaUuids([query.fincaUuid]);
+    if (permitidos !== null) uuids = uuids.filter((u) => permitidos.includes(u));
+    where.fincaUuid = { [Op.in]: uuids };
+  } else if (permitidos !== null) {
+    where.fincaUuid = { [Op.in]: permitidos };
+  }
+};
+
 export const precipitacionDiariaService = {
   // ─── Configuración (admin) ───
 
@@ -247,17 +275,14 @@ export const precipitacionDiariaService = {
     return resultados;
   },
 
-  async list(query) {
+  async list(query, user) {
     const page = Math.max(1, parseInt(query.page) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(query.limit) || 50));
     const offset = (page - 1) * limit;
 
     const where = {};
-    if (query.fincaUuid) {
-      // Se expande a las fincas hermanas de su Grupo de Finca (ver
-      // utils/fincaScope.js), si tiene uno asignado.
-      where.fincaUuid = { [Op.in]: await expandirFincaUuids([query.fincaUuid]) };
-    }
+    // Filtro por finca puntual + scoping por fincas habilitadas del usuario.
+    await aplicarFiltroFinca(where, query, user);
     if (query.fechaDesde || query.fechaHasta) {
       where.fecha = {};
       if (query.fechaDesde) where.fecha[Op.gte] = query.fechaDesde;
@@ -375,11 +400,9 @@ export const precipitacionDiariaService = {
   // usuario decida cuál tomar como definitivo. Mismos filtros que list()
   // (Finca/Semana-rango de fechas/Usuario), para que el filtro de arriba
   // de la pantalla aplique a las dos tablas a la vez.
-  async listInconsistencias(query = {}) {
+  async listInconsistencias(query = {}, user) {
     const where = { coincideClima: false };
-    if (query.fincaUuid) {
-      where.fincaUuid = { [Op.in]: await expandirFincaUuids([query.fincaUuid]) };
-    }
+    await aplicarFiltroFinca(where, query, user);
     if (query.fechaDesde || query.fechaHasta) {
       where.fecha = {};
       if (query.fechaDesde) where.fecha[Op.gte] = query.fechaDesde;

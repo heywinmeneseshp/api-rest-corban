@@ -631,6 +631,8 @@ export const mezclaService = {
           ceFinal: ultimaEtapa.ce,
           parametrosUsados: parametros,
           movimientoDocumento: documento,
+          finalizadaEn: new Date(),
+          finalizadaPorId: actorId,
           updatedBy: actorId,
         },
         { transaction: t },
@@ -681,7 +683,10 @@ export const mezclaService = {
           unidadMedidaUuid: payload.articuloUnidadMedidaUuid || null,
           costoCompra: 0,
           precioVenta: payload.articuloPrecioVenta ?? 0,
-          estado: true,
+          // Nace INACTIVO: no se puede usar en movimientos/elaboraciones/
+          // proformas hasta que un aprobador autorizado apruebe la prueba
+          // (ver aprobar() más abajo), que es cuando se activa.
+          estado: false,
         },
         actorId,
       );
@@ -700,39 +705,92 @@ export const mezclaService = {
       });
     }
 
-    const resultado = await elaboracionService.create(
-      {
-        mezclaVersionUuid: version.uuid,
+    // NO se genera todavía la Elaboración ni su entrada de inventario: eso
+    // recién ocurre al APROBAR (ver aprobar()). Acá solo se guardan los
+    // datos que el operador ingresó, para reusarlos en ese momento — así el
+    // elaborado NO entra al inventario hasta que un aprobador lo valide.
+    await mezclaRepository.updateVersion(version, {
+      estadoPrueba: 'PENDIENTE_APROBACION',
+      elaboradoPayload: {
         cantidadElaborada: payload.cantidadElaborada,
         almacenUuid: payload.almacenUuid,
         fecha: payload.fecha,
-        observaciones: payload.observaciones,
+        observaciones: payload.observaciones ?? null,
+        forzarSaldoNegativo: payload.forzarSaldoNegativo === true,
+      },
+      updatedBy: actorId,
+    });
+
+    const versionFinal = await getVersionOrFail(versionUuid);
+    return { requiereConfirmacion: false, advertencias: [], version: versionFinal };
+  },
+
+  // Aprobación de la prueba pendiente: solo un usuario cuyo rol esté en la
+  // lista configurada (Configuración → Parámetros de Mezcla) o un
+  // Administrador. RECIÉN ACÁ se genera la Elaboración y su entrada de
+  // inventario del artículo elaborado (con los datos guardados en
+  // crearElaborado()), la prueba pasa a CONVERTIDA, se registra fecha/hora
+  // + usuario, y el artículo elaborado se ACTIVA para poder usarse.
+  async aprobar(versionUuid, actorId, user, { forzarSaldoNegativo = false } = {}) {
+    const version = await getVersionOrFail(versionUuid);
+    if (version.estadoPrueba !== 'PENDIENTE_APROBACION') {
+      throw ApiError.badRequest('Esta prueba no está pendiente de aprobación');
+    }
+    if (!version.elaboradoPayload) {
+      throw ApiError.badRequest('Faltan los datos del elaborado — vuelve a usar "Crear elaborado"');
+    }
+
+    const esAdmin = (user?.roles || []).includes('Administrador');
+    if (!esAdmin) {
+      const { aprobadoresRolesUuids = [] } = await configuracionService.getMezclaParametros();
+      const rolesUsuario = await mezclaRepository.findRolUuidsByUserId(actorId);
+      const autorizado = aprobadoresRolesUuids.length > 0 && rolesUsuario.some((r) => aprobadoresRolesUuids.includes(r));
+      if (!autorizado) {
+        throw ApiError.forbidden('Tu rol no está autorizado para aprobar pruebas de mezcla');
+      }
+    }
+
+    const pl = version.elaboradoPayload;
+    const resultado = await elaboracionService.create(
+      {
+        mezclaVersionUuid: version.uuid,
+        cantidadElaborada: pl.cantidadElaborada,
+        almacenUuid: pl.almacenUuid,
+        fecha: pl.fecha,
+        observaciones: pl.observaciones,
       },
       actorId,
-      // omitirSalidaComponentes: los insumos ya se descontaron una vez al
-      // finalizar la prueba (arriba, en finalizar()) — esta conversión no
-      // debe volver a generar esa misma salida (pedido explícito, evita
-      // doble descuento). Solo registra la entrada del artículo elaborado.
-      { forzarSaldoNegativo: payload.forzarSaldoNegativo === true, omitirSalidaComponentes: true },
+      // omitirSalidaComponentes: los insumos ya se descontaron al finalizar
+      // la prueba — esta conversión solo registra la ENTRADA del elaborado.
+      { forzarSaldoNegativo: forzarSaldoNegativo || pl.forzarSaldoNegativo === true, omitirSalidaComponentes: true },
     );
-
-    // Igual que finalizar(): si falta stock y no vino forzarSaldoNegativo,
-    // no se escribió ningún movimiento/elaboración todavía (el artículo
-    // elaborado, si se acaba de crear arriba, sí queda persistido — un
-    // reintento lo reutiliza en vez de duplicarlo). Se le devuelve la
-    // advertencia al frontend para que confirme y reenvíe con
-    // forzarSaldoNegativo: true.
     if (resultado.requiereConfirmacion) {
       return { requiereConfirmacion: true, advertencias: resultado.advertencias, version: null };
     }
 
-    await mezclaRepository.updateVersion(
-      version,
-      { estadoPrueba: 'CONVERTIDA', elaboracionId: resultado.elaboracion.id, updatedBy: actorId },
-    );
+    await sequelize.transaction(async (t) => {
+      const fresh = await MezclaVersion.findByPk(version.id, { transaction: t, lock: t.LOCK.UPDATE });
+      if (fresh.estadoPrueba !== 'PENDIENTE_APROBACION') {
+        throw ApiError.conflict('Esta prueba ya fue aprobada');
+      }
+      await mezclaRepository.updateVersion(
+        fresh,
+        {
+          estadoPrueba: 'CONVERTIDA',
+          elaboracionId: resultado.elaboracion.id,
+          aprobadaEn: new Date(),
+          aprobadaPorId: actorId,
+          updatedBy: actorId,
+        },
+        { transaction: t },
+      );
+      const articuloElaboradoId = version.mezcla?.articuloElaboradoId;
+      if (articuloElaboradoId) {
+        await Articulo.update({ estado: true, updatedBy: actorId }, { where: { id: articuloElaboradoId }, transaction: t });
+      }
+    });
 
-    const versionFinal = await getVersionOrFail(versionUuid);
-    return { requiereConfirmacion: false, advertencias: [], version: versionFinal };
+    return { requiereConfirmacion: false, advertencias: [], version: await getVersionOrFail(versionUuid) };
   },
 };
 

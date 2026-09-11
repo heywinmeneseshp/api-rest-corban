@@ -18,11 +18,20 @@ MezclaVersion.init(
     // ya generó un Elaboracion). Independiente del campo `activa` de
     // arriba, que sigue siendo "es la versión vigente de esta mezcla".
     estadoPrueba: {
-      type: DataTypes.ENUM('BORRADOR', 'EN_PRUEBA', 'OPTIMA', 'NO_VALIDA', 'CONVERTIDA'),
+      type: DataTypes.ENUM('BORRADOR', 'EN_PRUEBA', 'OPTIMA', 'NO_VALIDA', 'PENDIENTE_APROBACION', 'CONVERTIDA'),
       allowNull: false,
       defaultValue: 'BORRADOR',
       field: 'estado_prueba',
     },
+    // Fecha/hora y usuario que finalizó la prueba (OPTIMA/NO_VALIDA) y que
+    // la aprobó (paso de PENDIENTE_APROBACION a CONVERTIDA).
+    finalizadaEn: { type: DataTypes.DATE, allowNull: true, field: 'finalizada_en' },
+    finalizadaPorId: { type: DataTypes.INTEGER, allowNull: true, field: 'finalizada_por' },
+    aprobadaEn: { type: DataTypes.DATE, allowNull: true, field: 'aprobada_en' },
+    aprobadaPorId: { type: DataTypes.INTEGER, allowNull: true, field: 'aprobada_por' },
+    // Datos de "Crear elaborado" en espera de aprobación (la Elaboración y
+    // su entrada de inventario recién se generan al aprobar).
+    elaboradoPayload: { type: DataTypes.JSON, allowNull: true, field: 'elaborado_payload' },
     phFinal: { type: DataTypes.DECIMAL(4, 2), allowNull: true, field: 'ph_final' },
     ceFinal: { type: DataTypes.DECIMAL(6, 2), allowNull: true, field: 'ce_final' },
     // Snapshot de CLAVE_MEZCLA_PARAMETROS al finalizar — para que un

@@ -22,6 +22,17 @@ import {
 
 const router = Router();
 
+// Lectura de evaluaciones: además del permiso puntual `evaluacion.ver`,
+// basta con poder ver cualquiera de los submenús de Sanidad Vegetal que
+// muestran estos datos (Evaluaciones o Gráficos) — quien ve el módulo ve
+// todo su contenido, sin tener que asignarle también `evaluacion.ver` por
+// separado. Crear/editar/eliminar siguen exigiendo su permiso propio.
+const VER_EVALUACIONES = [
+  PERMISSIONS.EVALUACION_VER,
+  PERMISSIONS.MENU_SANIDAD_VEGETAL_EVALUACIONES,
+  PERMISSIONS.MENU_SANIDAD_VEGETAL_GRAFICOS,
+];
+
 /**
  * @openapi
  * /evaluaciones:
@@ -41,7 +52,7 @@ const router = Router();
 router.get(
   '/',
   auth,
-  permission(PERMISSIONS.EVALUACION_VER),
+  permission(...VER_EVALUACIONES),
   validate(listEvaluacionesSchema),
   evaluacionController.list,
 );
@@ -66,7 +77,7 @@ router.post(
 router.get(
   '/suma-bruta-promedio',
   auth,
-  permission(PERMISSIONS.EVALUACION_VER),
+  permission(...VER_EVALUACIONES),
   validate(promedioPorSemanaSchema),
   evaluacionController.promedioSumaBruta,
 );
@@ -84,7 +95,7 @@ router.get(
 router.get(
   '/suma-bruta-promedio-por-hoja',
   auth,
-  permission(PERMISSIONS.EVALUACION_VER),
+  permission(...VER_EVALUACIONES),
   validate(promedioPorSemanaSchema),
   evaluacionController.promedioSumaBrutaPorHoja,
 );
@@ -102,7 +113,7 @@ router.get(
 router.get(
   '/conteo-promedio',
   auth,
-  permission(PERMISSIONS.EVALUACION_VER),
+  permission(...VER_EVALUACIONES),
   validate(promedioPorSemanaSchema),
   evaluacionController.promedioConteo,
 );
@@ -120,7 +131,7 @@ router.get(
 router.get(
   '/infeccion-promedio',
   auth,
-  permission(PERMISSIONS.EVALUACION_VER),
+  permission(...VER_EVALUACIONES),
   validate(promedioPorSemanaSchema),
   evaluacionController.promedioInfeccion,
 );
@@ -138,7 +149,7 @@ router.get(
 router.get(
   '/indicadores',
   auth,
-  permission(PERMISSIONS.EVALUACION_VER),
+  permission(...VER_EVALUACIONES),
   validate(indicadoresSchema),
   evaluacionController.indicadores,
 );
@@ -156,7 +167,7 @@ router.get(
 router.get(
   '/alertas-semana',
   auth,
-  permission(PERMISSIONS.EVALUACION_VER),
+  permission(...VER_EVALUACIONES, PERMISSIONS.MENU_SANIDAD_VEGETAL_ALERTAS),
   evaluacionController.alertasSemana,
 );
 
@@ -225,7 +236,7 @@ router.put(
 router.get(
   '/sb-hoja-umbrales',
   auth,
-  permission(PERMISSIONS.EVALUACION_VER),
+  permission(...VER_EVALUACIONES),
   evaluacionController.getSbHojaUmbrales,
 );
 router.put(
@@ -353,7 +364,7 @@ router.delete(
 router.get(
   '/:uuid',
   auth,
-  permission(PERMISSIONS.EVALUACION_VER),
+  permission(...VER_EVALUACIONES),
   validate(getEvaluacionSchema),
   evaluacionController.getByUuid,
 );
