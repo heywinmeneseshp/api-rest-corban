@@ -102,8 +102,8 @@ export const getObjetivoSchema = Joi.object({
 export const createObjetivoSchema = Joi.object({
   body: Joi.object({
     tipoEvaluacionUuid: uuidRef.required(),
-    fincaUuid: uuidRef,
-    loteUuid: uuidRef,
+    fincaUuid: uuidRef.allow(null),
+    loteUuid: uuidRef.allow(null),
     cantidad: Joi.number().integer().min(1).required(),
     edadMinima: Joi.number().integer().min(1).allow(null),
     edadMaxima: Joi.number().integer().min(1).allow(null),
