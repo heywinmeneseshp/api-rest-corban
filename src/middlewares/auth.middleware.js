@@ -29,7 +29,20 @@ export const auth = asyncHandler(async (req, _res, next) => {
     // ver": un evaluador de campo puede trabajar en cualquier finca. El
     // scoping por finca asignada es solo para la web (app-corbana). El
     // cliente móvil se identifica con el header `X-Client-App: movil`.
-    if (req.headers['x-client-app'] === 'movil') {
+    //
+    // Compatibilidad temporal: las instalaciones de la app móvil hechas
+    // ANTES de que se agregara ese header (React Native/Expo no tiene
+    // auto-actualización OTA configurada en este proyecto, así que esos
+    // dispositivos van a seguir sin mandarlo hasta que el usuario instale
+    // una build nueva) igual deben quedar sin restricción — si no, un
+    // evaluador de campo con finca(s) asignada(s) para la web se queda
+    // bloqueado (403 "No tienes acceso a esta finca") al subir evaluaciones
+    // de una planta fuera de esas fincas desde el celular. Como fallback se
+    // detecta el cliente Android/OkHttp que usa React Network por defecto.
+    // Quitar este fallback una vez que se confirme que todos los
+    // dispositivos activos ya tienen la build con el header.
+    const userAgent = req.headers['user-agent'] || '';
+    if (req.headers['x-client-app'] === 'movil' || /^okhttp\//i.test(userAgent)) {
       req.user.fincaIds = null;
     }
 
