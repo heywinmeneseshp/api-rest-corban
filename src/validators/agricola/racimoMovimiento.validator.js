@@ -126,6 +126,7 @@ export const reporteEmbolsesSchema = Joi.object({
     tipo: Joi.string().valid('EMBOLSE', 'REPIQUE', 'RECUSE', 'PROCESADO'),
     motivoUuid: uuidRef,
     motivoUuids: Joi.string(),
+    edades: Joi.string(),
   }),
 });
 

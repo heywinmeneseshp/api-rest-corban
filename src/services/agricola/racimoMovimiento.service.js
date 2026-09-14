@@ -1268,6 +1268,15 @@ export const racimoMovimientoService = {
         ? motivosSeleccionadosDb.map((m) => m.id)
         : undefined;
 
+    // Filtro por edad(es) de repique (clic — o ctrl/cmd+clic — en una barra
+    // del gráfico "Por edad", mismo estilo que motivo). `edades` es una
+    // lista de enteros separados por coma (ej. "5,6"). Solo tiene efecto
+    // real cuando tipo=REPIQUE — en cualquier otro tipo no hay "edad de
+    // repique" que filtrar, así que se ignora en silencio.
+    const edadesSeleccionadas = query.edades
+      ? query.edades.split(',').map((n) => Number(n.trim())).filter((n) => Number.isFinite(n))
+      : [];
+
     // `fincaUuids` (varias, separadas por coma) es el filtro nuevo; se
     // mantiene `fincaUuid` (una sola) por compatibilidad con quien todavía
     // llame a la API con el parámetro viejo.
@@ -1302,6 +1311,7 @@ export const racimoMovimientoService = {
           tipo,
           campo,
           motivoRepiqueId,
+          edadSemanas: edadesSeleccionadas,
         });
 
         const puntos = semanas.map((s) => {
@@ -1344,6 +1354,7 @@ export const racimoMovimientoService = {
       tipo,
       campo,
       motivoRepiqueId,
+      edadSemanas: edadesSeleccionadas,
     });
     const fincasConDato = await Finca.findAll({
       where: { id: { [Op.in]: [...totalPorFinca.keys()] } },
@@ -1376,6 +1387,7 @@ export const racimoMovimientoService = {
         tipo,
         campo,
         motivoRepiqueId,
+        edadSemanas: edadesSeleccionadas,
       });
       const fincasParaComparar = fincasSeleccionadas.length > 0 ? fincasSeleccionadas : fincasConDato;
       rankingSemanal = {
@@ -1408,9 +1420,21 @@ export const racimoMovimientoService = {
     // queda mostrando todas las categorías aunque una esté marcada como
     // filtro activo.
     const semanaIdsParaMotivos = query.semanaUuid && semanaRef ? [semanaRef.id] : semanaIdsTodas;
+    // motivosRepique no se filtra por motivoRepiqueId (su propia dimension —
+    // ver comentario de arriba, estilo Power BI), pero si por edadSemanas
+    // (una dimension distinta, es correcto que la respete).
     const motivosRepique = tipo === 'REPIQUE'
-      ? (await racimoMovimientoRepository.getTotalPorMotivoRepique({ fincaIds: fincaIdsFiltro, semanaIds: semanaIdsParaMotivos, campo }))
+      ? (await racimoMovimientoRepository.getTotalPorMotivoRepique({ fincaIds: fincaIdsFiltro, semanaIds: semanaIdsParaMotivos, campo, edadSemanas: edadesSeleccionadas }))
         .sort((a, b) => b.total - a.total)
+      : null;
+
+    // Desglose por edad (mismo alcance/filtros que motivosRepique: semana
+    // elegida si hay, finca(s), y el motivo ya seleccionado si lo hay — para
+    // que responda a los mismos filtros que el resto de la pantalla). No se
+    // filtra por edadSemanas (su propia dimension), mismo criterio que
+    // motivosRepique con motivoRepiqueId.
+    const edadesRepique = tipo === 'REPIQUE'
+      ? await racimoMovimientoRepository.getTotalPorEdadRepique({ fincaIds: fincaIdsFiltro, semanaIds: semanaIdsParaMotivos, campo, motivoRepiqueId })
       : null;
 
     return {
@@ -1421,6 +1445,8 @@ export const racimoMovimientoService = {
       rankingSemanal,
       motivosRepique,
       motivosSeleccionados: motivosSeleccionadosDb.map((m) => m.uuid),
+      edadesRepique,
+      edadesSeleccionadas,
     };
   },
 

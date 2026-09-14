@@ -27,6 +27,25 @@ const listIncludes = [
   { model: User, as: 'creadoPor', attributes: ['id', 'uuid', 'usuario', 'nombre'] },
 ];
 
+// Condicion adicional para filtrar por "edad" (semanas entre el embolse de
+// la cinta y el registro de esa fila puntual — ver getTotalPorEdadRepique).
+// No es una columna guardada, así que se calcula con subconsultas
+// correlacionadas contra `semanas` en el propio WHERE — evita tener que
+// convertir estas consultas (raw:true, sin include) a usar joins de
+// Sequelize solo para esto. Mismo "+1" que el resto del código (edad 1 =
+// registrado la misma semana del embolse).
+function condicionEdad(edadSemanas) {
+  if (!edadSemanas || edadSemanas.length === 0) return null;
+  const lista = edadSemanas.map((n) => Number(n)).filter((n) => Number.isFinite(n));
+  if (lista.length === 0) return null;
+  return literal(
+    `(TIMESTAMPDIFF(WEEK, ` +
+      `(SELECT fecha_inicio FROM semanas WHERE id = \`semana_embolse_id\`), ` +
+      `(SELECT fecha_inicio FROM semanas WHERE id = \`semana_registro_id\`)` +
+      `) + 1) IN (${lista.join(',')})`,
+  );
+}
+
 export const racimoMovimientoRepository = {
   async findAndCountAll({
     limit,
@@ -123,15 +142,17 @@ export const racimoMovimientoRepository = {
   // `semanaRegistroId` (cuándo se registró el movimiento — lo que pidió el
   // usuario para Repique: "por semana de registro", no por cinta de
   // origen).
-  async getEmbolsePorSemana({ semanaIds, fincaId, fincaIds, tipo = 'EMBOLSE', campo = 'semanaEmbolseId', motivoRepiqueId }) {
+  async getEmbolsePorSemana({ semanaIds, fincaId, fincaIds, tipo = 'EMBOLSE', campo = 'semanaEmbolseId', motivoRepiqueId, edadSemanas }) {
     if (semanaIds.length === 0) return new Map();
 
+    const condEdad = condicionEdad(edadSemanas);
     const results = await RacimoMovimiento.findAll({
       where: {
         tipo,
         [campo]: { [Op.in]: semanaIds },
         ...(fincaId ? { fincaId } : fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
         ...(motivoRepiqueId ? { motivoRepiqueId: Array.isArray(motivoRepiqueId) ? { [Op.in]: motivoRepiqueId } : motivoRepiqueId } : {}),
+        ...(condEdad ? { [Op.and]: [condEdad] } : {}),
       },
       attributes: [campo, [fn('SUM', col('cantidad')), 'total']],
       group: [campo],
@@ -204,15 +225,17 @@ export const racimoMovimientoRepository = {
   // sigue igual). `semanaEmbolseIds` sigue con ese nombre por compatibilidad
   // con ese llamador, aunque con `campo: 'semanaRegistroId'` en realidad son
   // ids de semanas de registro — misma tabla `semanas`, mismo tipo de id.
-  async getEmbolsePorFincaYSemana({ fincaIds, semanaEmbolseIds, tipo = 'EMBOLSE', campo = 'semanaEmbolseId', motivoRepiqueId }) {
+  async getEmbolsePorFincaYSemana({ fincaIds, semanaEmbolseIds, tipo = 'EMBOLSE', campo = 'semanaEmbolseId', motivoRepiqueId, edadSemanas }) {
     if (semanaEmbolseIds.length === 0) return new Map();
 
+    const condEdad = condicionEdad(edadSemanas);
     const results = await RacimoMovimiento.findAll({
       where: {
         tipo,
         [campo]: { [Op.in]: semanaEmbolseIds },
         ...(fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
         ...(motivoRepiqueId ? { motivoRepiqueId: Array.isArray(motivoRepiqueId) ? { [Op.in]: motivoRepiqueId } : motivoRepiqueId } : {}),
+        ...(condEdad ? { [Op.and]: [condEdad] } : {}),
       },
       attributes: ['fincaId', campo, [fn('SUM', col('cantidad')), 'total']],
       group: ['fincaId', campo],
@@ -227,15 +250,17 @@ export const racimoMovimientoRepository = {
   // Total por finca (sumado, no por semana) de un tipo de movimiento en las
   // semanas dadas — para el ranking de fincas del Gráfico de
   // Embolses/Repiques.
-  async getEmbolseTotalPorFinca({ fincaIds, semanaEmbolseIds, tipo = 'EMBOLSE', campo = 'semanaEmbolseId', motivoRepiqueId }) {
+  async getEmbolseTotalPorFinca({ fincaIds, semanaEmbolseIds, tipo = 'EMBOLSE', campo = 'semanaEmbolseId', motivoRepiqueId, edadSemanas }) {
     if (semanaEmbolseIds.length === 0) return new Map();
 
+    const condEdad = condicionEdad(edadSemanas);
     const results = await RacimoMovimiento.findAll({
       where: {
         tipo,
         [campo]: { [Op.in]: semanaEmbolseIds },
         ...(fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
         ...(motivoRepiqueId ? { motivoRepiqueId: Array.isArray(motivoRepiqueId) ? { [Op.in]: motivoRepiqueId } : motivoRepiqueId } : {}),
+        ...(condEdad ? { [Op.and]: [condEdad] } : {}),
       },
       attributes: ['fincaId', [fn('SUM', col('cantidad')), 'total']],
       group: ['fincaId'],
@@ -252,14 +277,16 @@ export const racimoMovimientoRepository = {
   // motivos del alcance filtrado, sin aplicar el motivo seleccionado (si lo
   // hay) — igual que un gráfico de barras en Power BI, que se queda mostrando
   // todas las categorías aunque una esté marcada como filtro activo.
-  async getTotalPorMotivoRepique({ fincaIds, semanaIds, campo = 'semanaRegistroId' }) {
+  async getTotalPorMotivoRepique({ fincaIds, semanaIds, campo = 'semanaRegistroId', edadSemanas }) {
     if (semanaIds.length === 0) return [];
 
+    const condEdad = condicionEdad(edadSemanas);
     const results = await RacimoMovimiento.findAll({
       where: {
         tipo: 'REPIQUE',
         [campo]: { [Op.in]: semanaIds },
         ...(fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
+        ...(condEdad ? { [Op.and]: [condEdad] } : {}),
       },
       attributes: ['motivoRepiqueId', [fn('SUM', col('cantidad')), 'total']],
       group: ['motivoRepiqueId'],
@@ -271,6 +298,47 @@ export const racimoMovimientoRepository = {
     return results
       .filter((r) => r.motivoRepique)
       .map((r) => ({ uuid: r.motivoRepique.uuid, nombre: r.motivoRepique.nombre, total: Number(r.total) }));
+  },
+
+  // Desglose por "edad" de repique: cuantas semanas pasaron entre el
+  // embolse de la cohorte y el registro de ESE repique puntual (no relativo
+  // a "hoy", como en Saldos por Lotes y Cintas — cada fila tiene su propia
+  // edad segun sus dos semanas). No es una columna guardada (depende de la
+  // resta entre dos semanas), asi que se trae cada fila con ambas fechas de
+  // inicio y se agrupa en JS, mismo criterio de "+1" que ya usa el resto del
+  // codigo (edad 1 = repicado la misma semana del embolse).
+  async getTotalPorEdadRepique({ fincaIds, semanaIds, campo = 'semanaRegistroId', motivoRepiqueId }) {
+    if (semanaIds.length === 0) return [];
+
+    const rows = await RacimoMovimiento.findAll({
+      where: {
+        tipo: 'REPIQUE',
+        [campo]: { [Op.in]: semanaIds },
+        ...(fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
+        ...(motivoRepiqueId
+          ? { motivoRepiqueId: Array.isArray(motivoRepiqueId) ? { [Op.in]: motivoRepiqueId } : motivoRepiqueId }
+          : {}),
+      },
+      attributes: ['cantidad'],
+      include: [
+        { model: Semana, as: 'semanaEmbolse', attributes: ['fechaInicio'] },
+        { model: Semana, as: 'semanaRegistro', attributes: ['fechaInicio'] },
+      ],
+      raw: true,
+      nest: true,
+    });
+
+    const porEdad = new Map();
+    for (const r of rows) {
+      if (!r.semanaEmbolse?.fechaInicio || !r.semanaRegistro?.fechaInicio) continue;
+      const diffMs = new Date(r.semanaRegistro.fechaInicio) - new Date(r.semanaEmbolse.fechaInicio);
+      const edadSemanas = Math.round(diffMs / (7 * 86400000)) + 1;
+      porEdad.set(edadSemanas, (porEdad.get(edadSemanas) || 0) + Number(r.cantidad));
+    }
+
+    return [...porEdad.entries()]
+      .map(([edadSemanas, total]) => ({ edadSemanas, total }))
+      .sort((a, b) => a.edadSemanas - b.edadSemanas);
   },
 
   async update(movimiento, data, { transaction } = {}) {
