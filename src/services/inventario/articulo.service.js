@@ -75,6 +75,12 @@ export const articuloService = {
       if (!uni) throw ApiError.notFound('Unidad de medida no encontrada');
       unidadMedidaId = uni.id;
     }
+    let dosisMaximaUnidadId = null;
+    if (payload.dosisMaximaUnidadUuid) {
+      const uniDosis = await UnidadMedida.findOne({ where: { uuid: payload.dosisMaximaUnidadUuid } });
+      if (!uniDosis) throw ApiError.notFound('Unidad de dosificación no encontrada');
+      dosisMaximaUnidadId = uniDosis.id;
+    }
 
     const articulo = await sequelize.transaction(async (t) => {
       await assertSinDuplicado(Articulo, { nombre: payload.nombre }, t, 'Ya existe un artículo con ese nombre');
@@ -90,6 +96,8 @@ export const articuloService = {
           manejaInventario: payload.manejaInventario ?? true,
           stockMinimo: payload.stockMinimo ?? 0,
           stockMaximo: payload.stockMaximo ?? null,
+          dosisMaximaPorHectarea: payload.dosisMaximaPorHectarea ?? null,
+          dosisMaximaUnidadId,
           estado: payload.estado ?? true,
           createdBy: actorId,
         },
@@ -120,6 +128,15 @@ export const articuloService = {
         data.unidadMedidaId = uni.id;
       }
       delete data.unidadMedidaUuid;
+    }
+    if (payload.dosisMaximaUnidadUuid !== undefined) {
+      if (payload.dosisMaximaUnidadUuid === null) data.dosisMaximaUnidadId = null;
+      else {
+        const uniDosis = await UnidadMedida.findOne({ where: { uuid: payload.dosisMaximaUnidadUuid } });
+        if (!uniDosis) throw ApiError.notFound('Unidad de dosificación no encontrada');
+        data.dosisMaximaUnidadId = uniDosis.id;
+      }
+      delete data.dosisMaximaUnidadUuid;
     }
 
     const actualizado = await sequelize.transaction(async (t) => {

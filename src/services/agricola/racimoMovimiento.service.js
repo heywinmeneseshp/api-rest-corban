@@ -31,6 +31,14 @@ export const puedeForzarSaldoNegativo = (user) =>
   (user?.roles || []).includes(ROLES.ADMINISTRADOR) ||
   (user?.permissions || []).includes(PERMISSIONS.RACIMO_MOVIMIENTO_FORZAR_SALDO_NEGATIVO);
 
+// Mismo criterio que los anteriores: solo Administrador o quien tenga este
+// permiso puntual puede registrar un "ajuste" — un movimiento del mismo
+// tipo (EMBOLSE/REPIQUE/RECUSE/PROCESADO) con cantidad negativa que corrige
+// uno anterior sin borrarlo (ver crearMovimientosEnLote).
+export const puedeAjustar = (user) =>
+  (user?.roles || []).includes(ROLES.ADMINISTRADOR) ||
+  (user?.permissions || []).includes(PERMISSIONS.RACIMO_MOVIMIENTO_AJUSTAR);
+
 // La liquidación reemplaza la vieja restricción por fecha: un usuario normal
 // puede escribir en cualquier semana de la finca que NO esté liquidada
 // (vieja o nueva) — Administrador/editar_historico se saltea esto siempre.
@@ -491,11 +499,27 @@ export const racimoMovimientoService = {
         const semanaEmbolse = await findSemanaByUuidOrFail(m.semanaEmbolseUuid);
         const { motivoRepiqueId, motivoRecuseId } = await resolveMotivos(m.tipo, m);
 
-        if (!Number.isInteger(m.cantidad) || m.cantidad <= 0) {
+        const esAjuste = m.esAjuste === true;
+        if (esAjuste && !puedeAjustar(user)) {
+          throw new Error('No tienes permiso para registrar ajustes');
+        }
+
+        if (esAjuste) {
+          if (!Number.isInteger(m.cantidad) || m.cantidad === 0) {
+            throw new Error('La cantidad del ajuste debe ser un número entero distinto de 0');
+          }
+        } else if (!Number.isInteger(m.cantidad) || m.cantidad <= 0) {
           throw new Error('La cantidad debe ser un número entero mayor que 0');
         }
 
-        if (m.tipo !== 'EMBOLSE') {
+        // Contribución firmada de la línea al saldo disponible de la
+        // cohorte: EMBOLSE suma, el resto resta (mismo signo que usa
+        // getSaldoCohorte). Una línea normal solo se valida contra el saldo
+        // cuando resta (tipo !== EMBOLSE); un ajuste se valida SIEMPRE,
+        // incluso en EMBOLSE, porque su cantidad negativa también puede
+        // restar del saldo disponible (ver plan: ejemplo con PROCESADO).
+        const contribucion = m.tipo === 'EMBOLSE' ? m.cantidad : -m.cantidad;
+        if (esAjuste || m.tipo !== 'EMBOLSE') {
           const cohorteKey = `${lote.id}-${semanaEmbolse.id}`;
           if (!saldoBDCache.has(cohorteKey)) {
             saldoBDCache.set(
@@ -508,7 +532,8 @@ export const racimoMovimientoService = {
             );
           }
           const saldoDisponible = saldoBDCache.get(cohorteKey) + (saldoSimulado.get(cohorteKey) || 0);
-          if (m.cantidad > saldoDisponible) {
+          const saldoResultante = saldoDisponible + contribucion;
+          if (contribucion < 0 && saldoResultante < 0) {
             if (!puedeForzar) {
               throw new Error(`La cantidad (${m.cantidad}) supera el saldo disponible de esa cohorte (${saldoDisponible})`);
             }
@@ -517,7 +542,7 @@ export const racimoMovimientoService = {
               mensaje: `Línea ${nro}: la cantidad (${m.cantidad}) supera el saldo disponible de esa cohorte (${saldoDisponible}) y quedará en negativo`,
             });
           }
-          saldoSimulado.set(cohorteKey, (saldoSimulado.get(cohorteKey) || 0) - m.cantidad);
+          saldoSimulado.set(cohorteKey, (saldoSimulado.get(cohorteKey) || 0) + contribucion);
         }
 
         filasParaCrear.push({
@@ -531,6 +556,7 @@ export const racimoMovimientoService = {
           cantidad: m.cantidad,
           fecha,
           observacion: m.observacion,
+          esAjuste,
           createdBy: actorId,
         });
       } catch (error) {

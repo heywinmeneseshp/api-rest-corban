@@ -12,6 +12,8 @@ export const CLAVE_LABOR_REVISOR_CC = 'sanidad_vegetal_revisor_cc';
 export const CLAVE_ALERTAS_SANIDAD_DESTINATARIOS = 'sanidad_vegetal_alertas_destinatarios';
 export const CLAVE_SB_HOJA_UMBRALES = 'sanidad_vegetal_sb_hoja_umbrales';
 export const CLAVE_MEZCLA_PARAMETROS = 'inventario_mezcla_parametros';
+export const CLAVE_ASPERSION_DESTINATARIOS = 'aspersion_correo_destinatarios';
+export const CLAVE_ASPERSION_RESUMEN_SEMANAL_DESTINATARIOS = 'aspersion_resumen_semanal_destinatarios';
 
 // "Cajas de 20kg" es el nombre convencional de la unidad, pero el peso neto
 // real de referencia es otro (ej. 18.6) — configurable en vez de fijo por
@@ -57,6 +59,14 @@ const LABOR_REVISOR_CC_DEFAULT = { correos: [], rolesUuids: [], usuariosUuids: [
 // Sin valor guardado todavía = nadie recibe el correo de alertas de Sanidad
 // Vegetal (ni el automático semanal ni el botón de envío manual mandan nada).
 const ALERTAS_SANIDAD_DESTINATARIOS_DEFAULT = { correos: [], rolesUuids: [], usuariosUuids: [] };
+// Sin valor guardado todavía = nadie recibe el aviso/cancelación de
+// Programación de Aspersiones por correo (además del destinatario puntual
+// que se escoge al momento de enviar el aviso).
+const ASPERSION_DESTINATARIOS_DEFAULT = { correos: [], rolesUuids: [], usuariosUuids: [] };
+// Sin valor guardado todavía = nadie recibe el resumen semanal (Excel) de
+// Programación de Aspersiones — este NO se filtra por finca (es un solo
+// Excel con toda la semana, igual que el botón "Excel" del Calendario).
+const ASPERSION_RESUMEN_SEMANAL_DESTINATARIOS_DEFAULT = { correos: [], rolesUuids: [], usuariosUuids: [] };
 // Líneas de referencia del gráfico "Promedio de Suma Bruta por Hoja" —
 // mismos valores que estaban hardcodeados en PromedioSumaBrutaPorHojaChart
 // antes de hacerlos configurables. `alerta` (rojo) además dispara el aviso
@@ -213,6 +223,52 @@ export const configuracionService = {
     // volver a guardar.
     const valor = JSON.stringify(normalizarDestinatarios(destinatarios));
     const config = await configuracionRepository.upsert(CLAVE_ALERTAS_SANIDAD_DESTINATARIOS, valor, actorId);
+    return JSON.parse(config.valor);
+  },
+
+  // Config de quién recibe el correo de Programación de Aspersiones (aviso
+  // al enviar y notificación al cancelar), además del destinatario puntual
+  // de la finca que se escoge al enviar el aviso. Los roles se resuelven
+  // filtrando por la finca de cada programación — solo los usuarios de ese
+  // rol que tengan esa finca habilitada (o que no tengan ninguna finca
+  // asignada, es decir que ven todas) reciben el correo. Los usuarios
+  // puntuales y los correos sueltos siempre van en copia, sin importar la
+  // finca. Resolución completa en
+  // aspersionProgramacion.service.js#resolverDestinatariosConfigurados.
+  async getAspersionDestinatarios() {
+    const config = await configuracionRepository.findByClave(CLAVE_ASPERSION_DESTINATARIOS);
+    if (!config?.valor) return ASPERSION_DESTINATARIOS_DEFAULT;
+    try {
+      return normalizarDestinatarios({ ...ASPERSION_DESTINATARIOS_DEFAULT, ...JSON.parse(config.valor) });
+    } catch {
+      return ASPERSION_DESTINATARIOS_DEFAULT;
+    }
+  },
+
+  async setAspersionDestinatarios(destinatarios, actorId) {
+    const valor = JSON.stringify(normalizarDestinatarios(destinatarios));
+    const config = await configuracionRepository.upsert(CLAVE_ASPERSION_DESTINATARIOS, valor, actorId);
+    return JSON.parse(config.valor);
+  },
+
+  // Config de quién recibe el resumen semanal (Excel) de Programación de
+  // Aspersiones — un correo aparte del aviso por aspersión, con el mismo
+  // Excel descargable del Calendario, adjunto. Resolución a emails reales
+  // en aspersionProgramacion.service.js#enviarResumenSemanal (reutiliza el
+  // helper compartido resolverDestinatarios, sin filtro de finca).
+  async getAspersionResumenSemanalDestinatarios() {
+    const config = await configuracionRepository.findByClave(CLAVE_ASPERSION_RESUMEN_SEMANAL_DESTINATARIOS);
+    if (!config?.valor) return ASPERSION_RESUMEN_SEMANAL_DESTINATARIOS_DEFAULT;
+    try {
+      return normalizarDestinatarios({ ...ASPERSION_RESUMEN_SEMANAL_DESTINATARIOS_DEFAULT, ...JSON.parse(config.valor) });
+    } catch {
+      return ASPERSION_RESUMEN_SEMANAL_DESTINATARIOS_DEFAULT;
+    }
+  },
+
+  async setAspersionResumenSemanalDestinatarios(destinatarios, actorId) {
+    const valor = JSON.stringify(normalizarDestinatarios(destinatarios));
+    const config = await configuracionRepository.upsert(CLAVE_ASPERSION_RESUMEN_SEMANAL_DESTINATARIOS, valor, actorId);
     return JSON.parse(config.valor);
   },
 

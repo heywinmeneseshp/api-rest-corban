@@ -54,6 +54,8 @@ import { MezclaVersion } from './models/mezclaVersion.model.js';
 import { MezclaComponente } from './models/mezclaComponente.model.js';
 import { MezclaEtapa } from './models/mezclaEtapa.model.js';
 import { MezclaFoto } from './models/mezclaFoto.model.js';
+import { MezclaHomogeneidad } from './models/mezclaHomogeneidad.model.js';
+import { EstacionClimaDiaria } from './models/estacionClimaDiaria.model.js';
 import { Elaboracion } from './models/elaboracion.model.js';
 import { Proforma } from './models/proforma.model.js';
 import { ProformaDetalle } from './models/proformaDetalle.model.js';
@@ -71,6 +73,8 @@ import { Proveedor } from './models/proveedor.model.js';
 import { Existencia } from './models/existencia.model.js';
 import { Factura } from './models/factura.model.js';
 import { FacturaDetalle } from './models/facturaDetalle.model.js';
+import { AspersionProgramacion } from './models/aspersionProgramacion.model.js';
+import { AspersionProgramacionComponente } from './models/aspersionProgramacionComponente.model.js';
 
 const withAuditAssociations = (TargetModel) => {
   TargetModel.belongsTo(User, { as: 'creadoPor', foreignKey: 'createdBy' });
@@ -409,6 +413,7 @@ export const setupAssociations = () => {
 
   UnidadMedida.hasMany(Articulo, { foreignKey: 'unidadMedidaId', as: 'articulos' });
   Articulo.belongsTo(UnidadMedida, { foreignKey: 'unidadMedidaId', as: 'unidadMedida' });
+  Articulo.belongsTo(UnidadMedida, { foreignKey: 'dosisMaximaUnidadId', as: 'dosisMaximaUnidad' });
 
   UnidadMedida.hasMany(UnidadConversion, { foreignKey: 'unidadOrigenId', as: 'conversionesOrigen' });
   UnidadMedida.hasMany(UnidadConversion, { foreignKey: 'unidadDestinoId', as: 'conversionesDestino' });
@@ -460,6 +465,7 @@ export const setupAssociations = () => {
   Articulo.hasMany(Mezcla, { foreignKey: 'articuloElaboradoId', as: 'mezclas' });
 
   Mezcla.belongsTo(UnidadMedida, { foreignKey: 'unidadRendimientoId', as: 'unidadRendimiento' });
+  Mezcla.belongsTo(UnidadMedida, { foreignKey: 'dosisPorHectareaUnidadId', as: 'dosisPorHectareaUnidad' });
   UnidadMedida.hasMany(Mezcla, { foreignKey: 'unidadRendimientoId', as: 'mezclasRendimiento' });
 
   MezclaComponente.belongsTo(Articulo, { foreignKey: 'articuloId', as: 'articulo' });
@@ -496,6 +502,11 @@ export const setupAssociations = () => {
   MezclaEtapa.belongsTo(MezclaComponente, { foreignKey: 'componenteId', as: 'componente' });
   MezclaComponente.hasMany(MezclaEtapa, { foreignKey: 'componenteId', as: 'etapas' });
 
+  // Insumo puntual de una corrección de pH (ej. regulador de pH) — distinto
+  // de `componente`, que apunta a la receta permanente (mezcla_componentes).
+  MezclaEtapa.belongsTo(Articulo, { foreignKey: 'articuloCorreccionId', as: 'articuloCorreccion' });
+  MezclaEtapa.belongsTo(UnidadMedida, { foreignKey: 'unidadCorreccionId', as: 'unidadCorreccion' });
+
   MezclaEtapa.belongsTo(User, { foreignKey: 'createdBy', as: 'creadoPor' });
 
   MezclaVersion.hasMany(MezclaFoto, { foreignKey: 'mezclaVersionId', as: 'fotos' });
@@ -503,6 +514,12 @@ export const setupAssociations = () => {
 
   MezclaEtapa.hasMany(MezclaFoto, { foreignKey: 'mezclaEtapaId', as: 'fotos' });
   MezclaFoto.belongsTo(MezclaEtapa, { foreignKey: 'mezclaEtapaId', as: 'etapa' });
+
+  MezclaVersion.hasMany(MezclaHomogeneidad, { foreignKey: 'mezclaVersionId', as: 'homogeneidad' });
+  MezclaHomogeneidad.belongsTo(MezclaVersion, { foreignKey: 'mezclaVersionId', as: 'version' });
+  MezclaHomogeneidad.hasMany(MezclaFoto, { foreignKey: 'mezclaHomogeneidadId', as: 'fotos' });
+  MezclaFoto.belongsTo(MezclaHomogeneidad, { foreignKey: 'mezclaHomogeneidadId', as: 'homogeneidad' });
+  MezclaHomogeneidad.belongsTo(User, { foreignKey: 'createdBy', as: 'creadoPor' });
 
   withAuditAssociations(Mezcla);
 
@@ -590,6 +607,27 @@ export const setupAssociations = () => {
   withAuditAssociations(Proveedor);
 
   withAuditAssociations(OrdenMantenimiento);
+
+  // Programación de Aspersiones (Sanidad Vegetal) — cabecera con la finca,
+  // fecha (resuelve semana), mezcla usada (con su receta/dosis) y almacén de
+  // donde se descuentan los insumos al ejecutarse.
+  AspersionProgramacion.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+  Finca.hasMany(AspersionProgramacion, { foreignKey: 'fincaId', as: 'aspersiones' });
+  AspersionProgramacion.belongsTo(Semana, { foreignKey: 'semanaId', as: 'semana' });
+  AspersionProgramacion.belongsTo(Mezcla, { foreignKey: 'mezclaId', as: 'mezcla' });
+  Mezcla.hasMany(AspersionProgramacion, { foreignKey: 'mezclaId', as: 'aspersiones' });
+  AspersionProgramacion.belongsTo(Almacen, { foreignKey: 'almacenId', as: 'almacen' });
+  AspersionProgramacion.belongsTo(User, { foreignKey: 'usuarioId', as: 'usuario' });
+  withAuditAssociations(AspersionProgramacion);
+
+  // Snapshot editable por línea de "cuánto insumo se va a consumir" (ver
+  // aspersionProgramacionComponente.model.js) — independiente de la receta
+  // viva de la mezcla, así ejecutar() no depende de que la receta no haya
+  // cambiado entre programar y ejecutar.
+  AspersionProgramacion.hasMany(AspersionProgramacionComponente, { foreignKey: 'aspersionProgramacionId', as: 'componentes' });
+  AspersionProgramacionComponente.belongsTo(AspersionProgramacion, { foreignKey: 'aspersionProgramacionId', as: 'aspersion' });
+  AspersionProgramacionComponente.belongsTo(Articulo, { foreignKey: 'articuloId', as: 'articulo' });
+  AspersionProgramacionComponente.belongsTo(UnidadMedida, { foreignKey: 'unidadId', as: 'unidad' });
 };
 
 export {
@@ -651,6 +689,8 @@ export {
   MezclaComponente,
   MezclaEtapa,
   MezclaFoto,
+  MezclaHomogeneidad,
+  EstacionClimaDiaria,
   Elaboracion,
   Proforma,
   ProformaDetalle,
@@ -668,6 +708,8 @@ export {
   Existencia,
   Factura,
   FacturaDetalle,
+  AspersionProgramacion,
+  AspersionProgramacionComponente,
 };
 
 export default setupAssociations;

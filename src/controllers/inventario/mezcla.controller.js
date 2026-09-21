@@ -47,6 +47,16 @@ export const mezclaController = {
     ApiResponse.send(res, { message: 'Componentes actualizados correctamente', data: version });
   }),
 
+  agregarComponente: asyncHandler(async (req, res) => {
+    const resultado = await mezclaService.agregarComponente(req.params.versionUuid, req.body, req.user?.id);
+    ApiResponse.send(res, { statusCode: HTTP_STATUS.CREATED, message: 'Insumo agregado correctamente', data: resultado });
+  }),
+
+  actualizarComponente: asyncHandler(async (req, res) => {
+    const version = await mezclaService.actualizarComponente(req.params.versionUuid, req.params.componenteUuid, req.body, req.user?.id);
+    ApiResponse.send(res, { message: 'Insumo actualizado correctamente', data: version });
+  }),
+
   agregarEtapa: asyncHandler(async (req, res) => {
     const version = await mezclaService.agregarEtapa(req.params.versionUuid, req.body, req.user?.id);
     ApiResponse.send(res, { statusCode: HTTP_STATUS.CREATED, message: 'Etapa registrada correctamente', data: version });
@@ -58,8 +68,19 @@ export const mezclaController = {
   }),
 
   subirFotos: asyncHandler(async (req, res) => {
-    const version = await mezclaService.subirFotos(req.params.versionUuid, req.files, req.user?.id, req.body?.etapaUuid);
+    const version = await mezclaService.subirFotos(
+      req.params.versionUuid,
+      req.files,
+      req.user?.id,
+      req.body?.etapaUuid,
+      req.body?.homogeneidadUuid,
+    );
     ApiResponse.send(res, { statusCode: HTTP_STATUS.CREATED, message: 'Fotos subidas correctamente', data: version });
+  }),
+
+  registrarHomogeneidad: asyncHandler(async (req, res) => {
+    const version = await mezclaService.registrarHomogeneidad(req.params.versionUuid, req.body, req.user?.id);
+    ApiResponse.send(res, { statusCode: HTTP_STATUS.CREATED, message: 'Punto de control registrado correctamente', data: version });
   }),
 
   eliminarFoto: asyncHandler(async (req, res) => {
@@ -87,6 +108,11 @@ export const mezclaController = {
       message: resultado.requiereConfirmacion ? 'Confirmación requerida' : 'Prueba finalizada correctamente',
       data: resultado,
     });
+  }),
+
+  crearDirecta: asyncHandler(async (req, res) => {
+    const resultado = await mezclaService.crearDirecta(req.body, req.user?.id, req.user);
+    ApiResponse.send(res, { statusCode: HTTP_STATUS.CREATED, message: 'Receta creada correctamente', data: resultado });
   }),
 
   crearElaborado: asyncHandler(async (req, res) => {

@@ -48,6 +48,31 @@ export const uploadPdfLabor = multer({
   },
 }).single('pdf');
 
+// PDF del aviso de aspersión (Sanidad Vegetal), generado en el navegador —
+// mismo criterio que uploadPdfLabor: nunca se guarda, solo se adjunta al
+// correo y se descarta.
+export const uploadPdfAspersion = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype === 'application/pdf') cb(null, true);
+    else cb(Object.assign(new Error('El archivo debe ser un PDF'), { statusCode: 400 }));
+  },
+}).single('pdf');
+
+// Excel del resumen semanal de Programación de Aspersiones, armado en el
+// navegador (exceljs) — igual criterio que uploadPdfAspersion: nunca se
+// guarda, solo se adjunta al correo del resumen semanal y se descarta.
+export const uploadExcelAspersion = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const esXlsx = file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || /\.xlsx$/i.test(file.originalname);
+    if (esXlsx) cb(null, true);
+    else cb(Object.assign(new Error('El archivo debe ser un Excel (.xlsx)'), { statusCode: 400 }));
+  },
+}).single('excel');
+
 // Dump completo de la base de datos a importar (Configuración → Base de
 // datos) — puede pesar bastante más que un cargue masivo normal, de ahí el
 // límite propio y más generoso.

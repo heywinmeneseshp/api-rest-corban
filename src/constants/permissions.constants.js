@@ -112,6 +112,11 @@ export const PERMISSIONS = {
   // criterio que los anteriores): permite eliminar varios movimientos de
   // una sola vez desde la tabla de Movimientos, con casillas de selección.
   RACIMO_MOVIMIENTO_ELIMINAR_MASIVO: 'racimo_movimiento.eliminar_masivo',
+  // Permiso aparte (no lo tiene nadie por defecto salvo Administrador, mismo
+  // criterio que los anteriores): permite registrar un "ajuste" — un
+  // movimiento del mismo tipo (EMBOLSE/REPIQUE/RECUSE/PROCESADO) con
+  // cantidad negativa que corrige uno anterior, sin borrar el original.
+  RACIMO_MOVIMIENTO_AJUSTAR: 'racimo_movimiento.ajustar',
 
   PRODUCCION_VER: 'produccion.ver',
   PRODUCCION_CREAR: 'produccion.crear',
@@ -145,6 +150,10 @@ export const PERMISSIONS = {
   // el registro (solo administración).
   PRECIPITACION_DIARIA_VER: 'precipitacion_diaria.ver',
   PRECIPITACION_DIARIA_CONFIGURAR: 'precipitacion_diaria.configurar',
+
+  // Estación Meteorológica (WeatherLink) — módulo aparte, de solo
+  // consulta; no comparte datos con Clima ni Precipitación Diaria.
+  ESTACION_METEOROLOGICA_VER: 'estacion_meteorologica.ver',
 
   // Si el rol tiene este permiso, cada registro que haga en Precipitación
   // Diaria también se copia (siempre, la pise o no) al mm de `clima` de esa
@@ -256,9 +265,11 @@ export const PERMISSIONS = {
   MENU_SANIDAD_VEGETAL_LABORES: 'menu.sanidad_vegetal.labores',
   MENU_SANIDAD_VEGETAL_ALERTAS: 'menu.sanidad_vegetal.alertas',
   MENU_SANIDAD_VEGETAL_OBJETIVOS: 'menu.sanidad_vegetal.objetivos',
+  MENU_SANIDAD_VEGETAL_ASPERSIONES: 'menu.sanidad_vegetal.aspersiones',
 
   // Ítems planos del menú (hoy sin submenú propio, un solo código cada uno).
   MENU_PRECIPITACION_DIARIA: 'menu.precipitacion_diaria',
+  MENU_ESTACION_METEOROLOGICA: 'menu.estacion_meteorologica',
   MENU_PRODUCCION_SEMANAL: 'menu.produccion_semanal',
   MENU_PRONOSTICO: 'menu.pronostico',
   MENU_CARGUE_MASIVO: 'menu.cargue_masivo',
@@ -345,6 +356,13 @@ export const PERMISSIONS = {
   INVENTARIO_ORDENES_EDITAR: 'inventario.ordenes.editar',
   INVENTARIO_ORDENES_ELIMINAR: 'inventario.ordenes.eliminar',
   INVENTARIO_ORDENES_CERRAR: 'inventario.ordenes.cerrar',
+
+  SANIDAD_ASPERSIONES_VER: 'sanidad_vegetal.aspersiones.ver',
+  SANIDAD_ASPERSIONES_CREAR: 'sanidad_vegetal.aspersiones.crear',
+  SANIDAD_ASPERSIONES_EDITAR: 'sanidad_vegetal.aspersiones.editar',
+  SANIDAD_ASPERSIONES_ELIMINAR: 'sanidad_vegetal.aspersiones.eliminar',
+  SANIDAD_ASPERSIONES_EJECUTAR: 'sanidad_vegetal.aspersiones.ejecutar',
+  SANIDAD_ASPERSIONES_ENVIAR_CORREO: 'sanidad_vegetal.aspersiones.enviar_correo',
 
   MENU_INVENTARIOS_PLANES: 'menu.inventarios.planes',
   MENU_INVENTARIOS_PROGRAMACIONES: 'menu.inventarios.programaciones',
@@ -442,6 +460,7 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.RACIMO_MOVIMIENTO_EDITAR_HISTORICO, nombre: 'Crear/eliminar movimientos de semanas anteriores' },
   { codigo: PERMISSIONS.RACIMO_MOVIMIENTO_FORZAR_SALDO_NEGATIVO, nombre: 'Forzar registro de movimientos con saldo negativo' },
   { codigo: PERMISSIONS.RACIMO_MOVIMIENTO_ELIMINAR_MASIVO, nombre: 'Eliminar movimientos de racimos en bloque' },
+  { codigo: PERMISSIONS.RACIMO_MOVIMIENTO_AJUSTAR, nombre: 'Registrar ajustes en movimientos de racimos' },
 
   { codigo: PERMISSIONS.PRODUCCION_VER, nombre: 'Ver producción semanal' },
   { codigo: PERMISSIONS.PRODUCCION_CREAR, nombre: 'Crear producción semanal' },
@@ -454,6 +473,8 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.ESTIMACION_CREAR, nombre: 'Crear estimaciones de fincas' },
   { codigo: PERMISSIONS.ESTIMACION_EDITAR_DISTRIBUCION, nombre: 'Editar % de distribución del estimado (patrón de corte)' },
   { codigo: PERMISSIONS.MENU_ESTIMACIONES, nombre: 'Ver ítem de menú Estimaciones de Fincas' },
+
+  { codigo: PERMISSIONS.ESTACION_METEOROLOGICA_VER, nombre: 'Ver Estación Meteorológica' },
 
   { codigo: PERMISSIONS.PRECIPITACION_DIARIA_VER, nombre: 'Ver precipitación diaria y su configuración' },
   { codigo: PERMISSIONS.PRECIPITACION_DIARIA_CONFIGURAR, nombre: 'Programar captura obligatoria de precipitación diaria' },
@@ -529,8 +550,10 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.MENU_SANIDAD_VEGETAL_LABORES, nombre: 'Ver submenú Evaluación de Labores' },
   { codigo: PERMISSIONS.MENU_SANIDAD_VEGETAL_ALERTAS, nombre: 'Ver submenú Alertas' },
   { codigo: PERMISSIONS.MENU_SANIDAD_VEGETAL_OBJETIVOS, nombre: 'Ver submenú Objetivos' },
+  { codigo: PERMISSIONS.MENU_SANIDAD_VEGETAL_ASPERSIONES, nombre: 'Ver submenú Programación de Aspersiones' },
 
   { codigo: PERMISSIONS.MENU_PRECIPITACION_DIARIA, nombre: 'Ver ítem de menú Precipitación Diaria' },
+  { codigo: PERMISSIONS.MENU_ESTACION_METEOROLOGICA, nombre: 'Ver ítem de menú Estación Meteorológica' },
   { codigo: PERMISSIONS.MENU_PRODUCCION_SEMANAL, nombre: 'Ver ítem de menú Producción Semanal' },
   { codigo: PERMISSIONS.MENU_PRONOSTICO, nombre: 'Ver ítem de menú Pronóstico de Cajas' },
   { codigo: PERMISSIONS.MENU_CARGUE_MASIVO, nombre: 'Ver ítem de menú Cargue Masivo' },
@@ -599,6 +622,13 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.INVENTARIO_ORDENES_EDITAR, nombre: 'Editar órdenes de mantenimiento' },
   { codigo: PERMISSIONS.INVENTARIO_ORDENES_ELIMINAR, nombre: 'Eliminar órdenes de mantenimiento' },
   { codigo: PERMISSIONS.INVENTARIO_ORDENES_CERRAR, nombre: 'Cerrar órdenes de mantenimiento (genera salida de inventario)' },
+
+  { codigo: PERMISSIONS.SANIDAD_ASPERSIONES_VER, nombre: 'Ver programaciones de aspersión' },
+  { codigo: PERMISSIONS.SANIDAD_ASPERSIONES_CREAR, nombre: 'Programar aspersiones' },
+  { codigo: PERMISSIONS.SANIDAD_ASPERSIONES_EDITAR, nombre: 'Editar programaciones de aspersión' },
+  { codigo: PERMISSIONS.SANIDAD_ASPERSIONES_ELIMINAR, nombre: 'Eliminar/cancelar programaciones de aspersión' },
+  { codigo: PERMISSIONS.SANIDAD_ASPERSIONES_EJECUTAR, nombre: 'Ejecutar aspersión (genera salida de inventario)' },
+  { codigo: PERMISSIONS.SANIDAD_ASPERSIONES_ENVIAR_CORREO, nombre: 'Enviar aviso de aspersión por correo' },
   { codigo: PERMISSIONS.MENU_INVENTARIOS_PLANES, nombre: 'Ver submenú Planes de Mantenimiento (Inventarios)' },
   { codigo: PERMISSIONS.MENU_INVENTARIOS_PROGRAMACIONES, nombre: 'Ver submenú Programaciones de Mantenimiento (Inventarios)' },
   { codigo: PERMISSIONS.MENU_INVENTARIOS_ORDENES, nombre: 'Ver submenú Órdenes de Mantenimiento (Inventarios)' },

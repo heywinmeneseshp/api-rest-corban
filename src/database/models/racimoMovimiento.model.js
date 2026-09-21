@@ -19,6 +19,11 @@ RacimoMovimiento.init(
     cantidad: { type: DataTypes.INTEGER, allowNull: false },
     fecha: { type: DataTypes.DATEONLY, allowNull: false },
     observacion: { type: DataTypes.STRING(255), allowNull: true },
+    // Corrección de un movimiento del mismo `tipo` ya registrado (no un
+    // tipo nuevo) — permite `cantidad` negativa. Los reportes de neto/curva
+    // ya suman por tipo, así que un ajuste se refleja solo; este flag es
+    // solo para distinguirlo en listados/auditoría (ver racimoMovimiento.service.js).
+    esAjuste: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: 'es_ajuste' },
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
     updatedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'updated_by' },
     deletedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'deleted_by' },

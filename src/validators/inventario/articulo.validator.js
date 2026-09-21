@@ -12,6 +12,11 @@ export const createArticuloSchema = Joi.object({
     manejaInventario: Joi.boolean().default(true),
     stockMinimo: Joi.number().min(0).allow(null).default(0),
     stockMaximo: Joi.number().min(0).allow(null),
+    // Dosificación de referencia — solo aplica a insumos (categoría
+    // INSUMO), ver articulo.model.js. Opcional para cualquier artículo, el
+    // frontend solo la muestra cuando corresponde.
+    dosisMaximaPorHectarea: Joi.number().min(0).allow(null),
+    dosisMaximaUnidadUuid: Joi.string().uuid().allow(null),
     estado: Joi.boolean().default(true),
   }),
   params: Joi.object({}),
@@ -30,6 +35,8 @@ export const updateArticuloSchema = Joi.object({
     manejaInventario: Joi.boolean(),
     stockMinimo: Joi.number().min(0).allow(null),
     stockMaximo: Joi.number().min(0).allow(null),
+    dosisMaximaPorHectarea: Joi.number().min(0).allow(null),
+    dosisMaximaUnidadUuid: Joi.string().uuid().allow(null),
     estado: Joi.boolean(),
   }).min(1),
   params: Joi.object({ uuid: Joi.string().uuid().required() }),

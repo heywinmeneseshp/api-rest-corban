@@ -1,5 +1,6 @@
 import { programacionCorteService } from '../../services/agricola/programacionCorte.service.js';
 import { evaluacionService } from '../../services/agricola/evaluacion.service.js';
+import { estacionMeteorologicaService } from '../../services/agricola/estacionMeteorologica.service.js';
 import { ApiResponse } from '../../utils/ApiResponse.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 
@@ -25,6 +26,15 @@ export const cronController = {
         : 'Alertas de Sanidad Vegetal: nada que enviar (sin alertas o sin destinatarios configurados)',
       data: result,
     });
+  }),
+
+  // Llamado una vez al día por Vercel Cron (ver vercel.json) — trae de
+  // WeatherLink el resumen del día que recién cerró (lluvia total,
+  // temperatura y humedad promedio) y lo guarda en
+  // estacion_clima_diaria (ver estacionMeteorologica.service.js).
+  sincronizarEstacionMeteorologica: asyncHandler(async (req, res) => {
+    const result = await estacionMeteorologicaService.sincronizarDiaAnterior();
+    ApiResponse.send(res, { message: `Estación meteorológica sincronizada para ${result.fecha}`, data: result });
   }),
 };
 

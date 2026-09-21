@@ -17,6 +17,16 @@ Mezcla.init(
     articuloElaboradoId: { type: DataTypes.INTEGER, allowNull: true, field: 'articulo_elaborado_id' },
     unidadRendimientoId: { type: DataTypes.INTEGER, allowNull: true, field: 'unidad_rendimiento_id' },
     rendimiento: { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 1 },
+    // Dosis por hectárea en la unidad de `unidadRendimiento` (ej. "6" si
+    // unidadRendimiento es Galones, para "6 gls/ha") — la usa Programación
+    // de Aspersiones (Sanidad Vegetal) para calcular cuánto preparar según
+    // las hectáreas de la finca: cantidad = dosisPorHectarea × hectareas.
+    // Nullable: no todas las mezclas se usan para aspersión.
+    dosisPorHectarea: { type: DataTypes.DECIMAL(12, 4), allowNull: true, field: 'dosis_por_hectarea' },
+    // Unidad de `dosisPorHectarea` — puede ser distinta de unidadRendimiento
+    // (ej. dosis en Galones/ha aunque la mezcla rinda en Litros). Se
+    // convierte al calcular la cantidad real de una aspersión.
+    dosisPorHectareaUnidadId: { type: DataTypes.INTEGER, allowNull: true, field: 'dosis_por_hectarea_unidad_id' },
     precioVenta: { type: DataTypes.DECIMAL(12, 2), allowNull: true, defaultValue: 0, field: 'precio_venta' },
     estado: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },

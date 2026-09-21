@@ -5,6 +5,7 @@ import {
   MezclaComponente,
   MezclaEtapa,
   MezclaFoto,
+  MezclaHomogeneidad,
   Articulo,
   UnidadMedida,
   Almacen,
@@ -23,8 +24,15 @@ const usuarioConRoles = (as) => ({
 });
 
 const LIST_INCLUDE = [
-  { model: Articulo, as: 'articuloElaborado', attributes: ['uuid', 'nombre', 'codigo'] },
+  // 'estado': el frontend (Elaboraciones → Nueva elaboración) filtra por
+  // esto para no ofrecer un elaborado todavía inactivo (pendiente de
+  // aprobación) como opción para producir más.
+  { model: Articulo, as: 'articuloElaborado', attributes: ['uuid', 'nombre', 'codigo', 'estado'] },
   { model: UnidadMedida, as: 'unidadRendimiento', attributes: ['uuid', 'nombre', 'simbolo'] },
+  // Unidad de dosisPorHectarea — la usa Sanidad Vegetal → Programación de
+  // Aspersiones para mostrar/calcular en la unidad correcta (puede ser
+  // distinta de unidadRendimiento).
+  { model: UnidadMedida, as: 'dosisPorHectareaUnidad', attributes: ['uuid', 'nombre', 'simbolo'] },
   // Solo la versión activa (costo actual + estado de la prueba) — para
   // mostrarla en el listado sin traer todo el historial de etapas/fotos.
   {
@@ -33,8 +41,14 @@ const LIST_INCLUDE = [
     where: { activa: true },
     required: false,
     separate: true,
-    attributes: ['uuid', 'version', 'costoTotal', 'costoUnitario', 'estadoPrueba', 'phFinal', 'ceFinal', 'created_at'],
-    include: [{ model: User, as: 'operador', attributes: ['uuid', 'usuario', 'nombre', 'apellido'] }],
+    // 'esDirecta': el frontend de Elaboraciones lo usa para mostrar como
+    // "receta sin producir" una mezcla creada con crearDirecta() que
+    // todavía no generó ningún documento ELAB-000X.
+    attributes: ['uuid', 'version', 'costoTotal', 'costoUnitario', 'estadoPrueba', 'phFinal', 'ceFinal', 'created_at', 'esDirecta'],
+    include: [
+      { model: User, as: 'operador', attributes: ['uuid', 'usuario', 'nombre', 'apellido'] },
+      { model: Almacen, as: 'almacen', attributes: ['uuid', 'nombre', 'codigo'] },
+    ],
   },
 ];
 
@@ -46,7 +60,21 @@ const VERSION_DETAIL_INCLUDE = [
       // unidadMedidaId: necesario para convertir la cantidad del componente
       // a la unidad base del artículo antes de descontar inventario (ver
       // unidadConversion.js#convertirACantidadBase, usado en finalizar()).
-      { model: Articulo, as: 'articulo', attributes: ['uuid', 'nombre', 'codigo', 'costoCompra', 'unidadMedidaId'] },
+      // 'id': lo usa consumirStockConReceta (stock.helper.js) para resolver
+      // si este artículo es a su vez un elaborado — sin `id` en la lista,
+      // `comp.articulo.id` queda undefined y rompe esa consulta.
+      {
+        model: Articulo,
+        as: 'articulo',
+        // dosisMaximaPorHectarea/dosisMaximaUnidadId: dosis máxima de
+        // referencia del insumo (categoría INSUMO, ver articulo.model.js) —
+        // Programación de Aspersiones la usa para alertar si lo que se va a
+        // aplicar la supera. manejaInventario: lo necesita
+        // consumirStockConReceta (stock.helper.js) para saltear por
+        // completo el descuento de un artículo como el Agua.
+        attributes: ['id', 'uuid', 'nombre', 'codigo', 'costoCompra', 'unidadMedidaId', 'dosisMaximaPorHectarea', 'manejaInventario'],
+        include: [{ model: UnidadMedida, as: 'dosisMaximaUnidad', attributes: ['uuid', 'nombre', 'simbolo'] }],
+      },
       { model: UnidadMedida, as: 'unidad', attributes: ['uuid', 'nombre', 'simbolo', 'codigo'] },
     ],
   },
@@ -56,7 +84,23 @@ const VERSION_DETAIL_INCLUDE = [
     separate: true,
     order: [['numero', 'ASC']],
     include: [
-      { model: MezclaComponente, as: 'componente', include: [{ model: Articulo, as: 'articulo', attributes: ['uuid', 'nombre'] }] },
+      {
+        model: MezclaComponente,
+        as: 'componente',
+        include: [
+          { model: Articulo, as: 'articulo', attributes: ['uuid', 'nombre'] },
+          { model: UnidadMedida, as: 'unidad', attributes: ['uuid', 'nombre', 'simbolo'] },
+        ],
+      },
+      {
+        // attributes completos (no solo uuid/nombre/codigo): consumirStockConReceta
+        // (stock.helper.js) necesita id/unidadMedidaId/costoCompra/manejaInventario
+        // para descontar esta corrección de pH al finalizar la prueba.
+        model: Articulo,
+        as: 'articuloCorreccion',
+        attributes: ['id', 'uuid', 'nombre', 'codigo', 'costoCompra', 'unidadMedidaId', 'manejaInventario'],
+      },
+      { model: UnidadMedida, as: 'unidadCorreccion', attributes: ['uuid', 'nombre', 'simbolo'] },
       { model: User, as: 'creadoPor', attributes: ['uuid', 'usuario'] },
       { model: MezclaFoto, as: 'fotos' },
     ],
@@ -65,8 +109,21 @@ const VERSION_DETAIL_INCLUDE = [
     model: MezclaFoto,
     as: 'fotos',
     separate: true,
-    where: { mezclaEtapaId: null },
+    // Excluye tanto las fotos de una etapa puntual como las de un punto de
+    // control de homogeneidad — esas se muestran en sus propias secciones
+    // (ver 'etapas' arriba y 'homogeneidad' abajo), acá solo la evidencia
+    // general suelta.
+    where: { mezclaEtapaId: null, mezclaHomogeneidadId: null },
     required: false,
+  },
+  {
+    model: MezclaHomogeneidad,
+    as: 'homogeneidad',
+    separate: true,
+    include: [
+      { model: MezclaFoto, as: 'fotos' },
+      { model: User, as: 'creadoPor', attributes: ['uuid', 'usuario'] },
+    ],
   },
   { model: Almacen, as: 'almacen', attributes: ['uuid', 'nombre', 'codigo'] },
   usuarioConRoles('operador'),
@@ -86,6 +143,7 @@ const DETAIL_INCLUDE = [
     include: [{ model: UnidadMedida, as: 'unidadMedida', attributes: ['uuid', 'nombre', 'simbolo'] }],
   },
   { model: UnidadMedida, as: 'unidadRendimiento', attributes: ['uuid', 'nombre', 'simbolo', 'codigo'] },
+  { model: UnidadMedida, as: 'dosisPorHectareaUnidad', attributes: ['uuid', 'nombre', 'simbolo', 'codigo'] },
   { model: User, as: 'creadoPor', attributes: ['uuid', 'usuario'] },
   { model: User, as: 'actualizadoPor', attributes: ['uuid', 'usuario'] },
   {
@@ -111,7 +169,7 @@ const ORDEN_PRIORIDAD_OPTIMA_SIN_ELABORAR = literal(`(
 )`);
 
 export const mezclaRepository = {
-  async findAndCountAll({ limit, offset, search, estado, articuloElaboradoUuid }) {
+  async findAndCountAll({ limit, offset, search, estado, articuloElaboradoUuid, incluirDirectas = true }) {
     const where = {
       ...(search
         ? {
@@ -127,6 +185,19 @@ export const mezclaRepository = {
     if (articuloElaboradoUuid) {
       const prod = await Articulo.findOne({ where: { uuid: articuloElaboradoUuid } });
       where.articuloElaboradoId = prod ? prod.id : -1;
+    }
+
+    // "Mezclas — Pruebas de laboratorio" (incluirDirectas: false) no debe
+    // mostrar recetas creadas con crearDirecta() — nunca pasaron por la
+    // prueba de pH/CE, así que no son "pruebas de laboratorio" (pedido
+    // explícito). El resto de los usos de este listado (ej. el selector de
+    // Elaboraciones) sigue viendo todas, por eso el filtro es opt-in.
+    if (incluirDirectas === false) {
+      const directas = await MezclaVersion.findAll({ where: { activa: true, esDirecta: true }, attributes: ['mezclaId'] });
+      const idsExcluidos = directas.map((v) => v.mezclaId);
+      if (idsExcluidos.length) {
+        where.id = { [Op.notIn]: idsExcluidos };
+      }
     }
 
     return Mezcla.findAndCountAll({
@@ -282,6 +353,18 @@ export const mezclaRepository = {
     return MezclaComponente.create(data, { transaction });
   },
 
+  findComponenteByUuid(uuid, { transaction } = {}) {
+    return MezclaComponente.findOne({ where: { uuid }, transaction });
+  },
+
+  // Actualiza una fila EN EL LUGAR (preserva su id) — a diferencia de
+  // destroyComponentesByVersionId + createComponente, esto no invalida el
+  // `componenteId` que ya pueda tener guardado una MezclaEtapa apuntando a
+  // esta fila (ver mezcla.service.js#actualizarComponente/agregarComponente).
+  updateComponente(componente, data, { transaction } = {}) {
+    return componente.update(data, { transaction });
+  },
+
   // ─── Etapas ───
 
   countEtapas(mezclaVersionId, { transaction } = {}) {
@@ -324,6 +407,24 @@ export const mezclaRepository = {
 
   destroyFoto(foto) {
     return foto.destroy();
+  },
+
+  // ─── Prueba de homogeneidad ───
+
+  findHomogeneidadByVersionEIntervalo(mezclaVersionId, intervalo, { transaction } = {}) {
+    return MezclaHomogeneidad.findOne({ where: { mezclaVersionId, intervalo }, transaction });
+  },
+
+  findHomogeneidadByUuid(uuid, { transaction } = {}) {
+    return MezclaHomogeneidad.findOne({ where: { uuid }, transaction });
+  },
+
+  createHomogeneidad(data, { transaction } = {}) {
+    return MezclaHomogeneidad.create(data, { transaction });
+  },
+
+  updateHomogeneidad(homogeneidad, data, { transaction } = {}) {
+    return homogeneidad.update(data, { transaction });
   },
 };
 

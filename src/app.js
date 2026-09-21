@@ -45,6 +45,7 @@ import dashboardRoutes from './routes/agricola/dashboard.routes.js';
 import laborCulturalRoutes from './routes/agricola/laborCultural.routes.js';
 import climaRoutes from './routes/agricola/clima.routes.js';
 import precipitacionDiariaRoutes from './routes/agricola/precipitacionDiaria.routes.js';
+import estacionMeteorologicaRoutes from './routes/agricola/estacionMeteorologica.routes.js';
 import loteAreaConfigRoutes from './routes/agricola/loteAreaConfig.routes.js';
 import categoriaLaborRoutes from './routes/agricola/categoriaLabor.routes.js';
 import laborRoutes from './routes/agricola/labor.routes.js';
@@ -54,6 +55,7 @@ import estadioSigatokaRoutes from './routes/agricola/estadioSigatoka.routes.js';
 import colaboradorRoutes from './routes/agricola/colaborador.routes.js';
 import programacionCorteRoutes from './routes/agricola/programacionCorte.routes.js';
 import rechazoCorteRoutes from './routes/agricola/rechazoCorte.routes.js';
+import aspersionProgramacionRoutes from './routes/agricola/aspersionProgramacion.routes.js';
 
 import configuracionRoutes from './routes/sistema/configuracion.routes.js';
 import resetDatosRoutes from './routes/sistema/resetDatos.routes.js';
@@ -144,6 +146,7 @@ router.use('/clima', climaRoutes);
 // todavía le pegan a /precipitaciones (nombre anterior del módulo).
 router.use('/precipitaciones', climaRoutes);
 router.use('/precipitacion-diaria', precipitacionDiariaRoutes);
+router.use('/estacion-meteorologica', estacionMeteorologicaRoutes);
 router.use('/lote-area-config', loteAreaConfigRoutes);
 router.use('/categorias-labor', categoriaLaborRoutes);
 router.use('/labores', laborRoutes);
@@ -153,6 +156,7 @@ router.use('/estadios-sigatoka', estadioSigatokaRoutes);
 router.use('/colaboradores', colaboradorRoutes);
 router.use('/programacion-corte', programacionCorteRoutes);
 router.use('/rechazos-corte', rechazoCorteRoutes);
+router.use('/aspersiones', aspersionProgramacionRoutes);
 
 router.use('/configuraciones', configuracionRoutes);
 router.use('/comunicados', comunicadoRoutes);

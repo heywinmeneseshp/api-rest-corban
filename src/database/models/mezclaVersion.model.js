@@ -43,6 +43,12 @@ MezclaVersion.init(
     almacenId: { type: DataTypes.INTEGER, allowNull: true, field: 'almacen_id' },
     elaboracionId: { type: DataTypes.INTEGER, allowNull: true, field: 'elaboracion_id' },
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
+    // true solo para las creadas con mezclaService.crearDirecta() — un
+    // elaborado definido directamente, sin pasar por la prueba de
+    // laboratorio. El listado de Mezclas — Pruebas de laboratorio las
+    // excluye (pedido explícito: "una mezcla que no tiene prueba no
+    // debería registrarse ahí").
+    esDirecta: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: 'es_directa' },
   },
   {
     sequelize,

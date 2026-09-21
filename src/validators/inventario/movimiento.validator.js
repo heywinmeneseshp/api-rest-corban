@@ -16,6 +16,9 @@ export const createMovimientoSchema = Joi.object({
     fechaVencimiento: Joi.date().iso().allow(null),
     motivoUuid: Joi.string().uuid().allow(null),
     observaciones: Joi.string().allow(null, '').max(500),
+    // Solo aplica a la salida de un artículo ELABORADO cuando algún insumo
+    // de su receta queda insuficiente — mismo patrón que mezcla/elaboracion.
+    forzarSaldoNegativo: Joi.boolean().default(false),
   }),
   params: Joi.object({}),
   query: Joi.object({}),

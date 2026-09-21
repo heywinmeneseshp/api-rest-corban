@@ -72,8 +72,20 @@ export const createRacimoMovimientosEnLoteSchema = Joi.object({
           semanaEmbolseUuid: uuidRef.required(),
           motivoRepiqueUuid: uuidRef,
           motivoRecuseUuid: uuidRef,
-          cantidad: Joi.number().integer().min(1).required(),
-          observacion: Joi.string().max(255).allow('', null),
+          // Un ajuste corrige un movimiento del mismo tipo ya registrado
+          // (no crea un tipo nuevo): su cantidad puede ser negativa (resta
+          // del neto) o positiva (suma), pero nunca 0. Una línea normal
+          // sigue exigiendo cantidad positiva, como siempre.
+          esAjuste: Joi.boolean().default(false),
+          cantidad: Joi.number()
+            .integer()
+            .when('esAjuste', { is: true, then: Joi.number().integer().invalid(0), otherwise: Joi.number().integer().min(1) })
+            .required(),
+          // La observación es la justificación del ajuste — obligatoria en
+          // ese caso, opcional en un movimiento normal (como hoy).
+          observacion: Joi.string()
+            .max(255)
+            .when('esAjuste', { is: true, then: Joi.string().max(255).required(), otherwise: Joi.string().max(255).allow('', null) }),
         }),
       )
       .min(1)

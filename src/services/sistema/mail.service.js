@@ -10,6 +10,17 @@ const {
   APP_URL = 'http://localhost:3003',
 } = process.env;
 
+// "2026-09-18" -> "18 de septiembre de 2026" — mismo criterio de fecha
+// legible en español que ya usa el aviso en PDF (aspersionExport.js), para
+// que el correo de cancelación no muestre la fecha en crudo (ISO).
+function formatearFechaLarga(fechaIso) {
+  if (!fechaIso) return '—';
+  const [anio, mes, dia] = String(fechaIso).split('-').map(Number);
+  if (!anio || !mes || !dia) return fechaIso;
+  const fecha = new Date(anio, mes - 1, dia);
+  return fecha.toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
 function escaparHtml(texto) {
   return String(texto || '')
     .replace(/&/g, '&amp;')
@@ -337,6 +348,177 @@ export const mailService = {
       subject: `${marca} — ${asunto}`,
       html,
       attachments,
+    });
+  },
+
+  // Aviso de aspersión (Sanidad Vegetal → Programación de Aspersiones) con
+  // el PDF de aviso adjunto (mismo formato físico "AVISO DE ASPERSIÓN PARA
+  // CONTROL..." que se le entrega a la finca) — el PDF se arma en el
+  // navegador (jsPDF, ver app-corbana/lib/aspersionExport.js), acá solo se
+  // adjunta y despacha, mismo patrón que sendAvisoRevisionLabor.
+  async sendAvisoAspersion({ destinatarios, cc, fincaNombre, fecha, semanaCodigo, tipo, mezclaNombre, pdfBuffer, pdfNombre }) {
+    if (!destinatarios?.length) return;
+
+    const TIPO_LABEL = { SIGATOKA_NEGRA: 'Sigatoka Negra', DEFOLIADOR: 'Defoliador', FERTILIZACION: 'Fertilización' };
+    // `tipo` es un array (una aspersión puede marcar varios controles a la
+    // vez, ej. Sigatoka Negra + Defoliador).
+    const tipoLabel = (Array.isArray(tipo) ? tipo : [tipo]).map((t) => TIPO_LABEL[t] || t).join(' + ');
+    const fechaLegible = formatearFechaLarga(fecha);
+    const { nombre: marca, nombreHtml: marcaHtml, from } = await obtenerMarca();
+    const html = `
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.08);">
+        <div style="background: linear-gradient(135deg, #166534 0%, #22a35e 100%); padding: 28px 32px; text-align: center;">
+          <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">${marcaHtml}</h1>
+          <p style="color: rgba(255,255,255,.85); margin: 4px 0 0; font-size: 13px;">Sanidad Vegetal — Aviso de Aspersión</p>
+        </div>
+        <div style="padding: 32px;">
+          <p style="margin: 0 0 16px; color: #374151; font-size: 15px; line-height: 1.5;">Estimado(a),</p>
+          <p style="margin: 0 0 20px; color: #374151; font-size: 14px; line-height: 1.5;">
+            Le informamos que en la finca <strong style="color: #166534;">${escaparHtml(fincaNombre)}</strong>
+            (semana <strong>${escaparHtml(semanaCodigo)}</strong>) se realizará, el
+            <strong>${fechaLegible}</strong>, el ciclo de aspersión para el control de
+            <strong>${tipoLabel}</strong> mediante la mezcla <strong>${escaparHtml(mezclaNombre)}</strong>.
+          </p>
+          <p style="margin: 0; color: #374151; font-size: 14px; line-height: 1.5;">
+            Adjunto encontrará el aviso completo en formato PDF, con las instrucciones y las condiciones
+            climáticas requeridas para la aspersión.
+          </p>
+        </div>
+        <div style="background: #f9fafb; padding: 16px 32px; text-align: center; border-top: 1px solid #e5e7eb;">
+          <p style="margin: 0; color: #9ca3af; font-size: 11px;">Este mensaje se generó automáticamente, por favor no respondas a este correo.</p>
+        </div>
+      </div>
+    `;
+
+    if (!isConfigured || !transporter) {
+      console.log('═══════════════════════════════════════════════');
+      console.log('📧  MAIL SERVICE (no configurado) — aviso de aspersión');
+      console.log(`To:  ${destinatarios.join(', ')}`);
+      console.log(`Cc:  ${(cc || []).join(', ')}`);
+      console.log(`Finca: ${fincaNombre} — ${tipoLabel} — ${fechaLegible}`);
+      console.log(`Adjunto: ${pdfNombre} (${pdfBuffer?.length ?? 0} bytes)`);
+      console.log('═══════════════════════════════════════════════');
+      return;
+    }
+
+    await transporter.sendMail({
+      from,
+      to: destinatarios,
+      cc: cc?.length ? cc : undefined,
+      subject: `${marca} — Aviso de aspersión: ${fincaNombre} (${fecha})`,
+      html,
+      attachments: pdfBuffer ? [{ filename: pdfNombre || 'aviso-aspersion.pdf', content: pdfBuffer, contentType: 'application/pdf' }] : [],
+    });
+  },
+
+  // Notifica que una aspersión ya programada/avisada fue cancelada — sin
+  // PDF adjunto (no hay un aviso nuevo que enviar, solo dar de baja el
+  // anterior). Destinatarios: los mismos que Configuración → Programación
+  // de Aspersiones tenga configurados para esta finca (ver
+  // aspersionProgramacion.service.js#resolverDestinatariosConfigurados).
+  async sendCancelacionAspersion({ destinatarios, fincaNombre, fecha, semanaCodigo, tipo, mezclaNombre }) {
+    if (!destinatarios?.length) return;
+
+    const TIPO_LABEL = { SIGATOKA_NEGRA: 'Sigatoka Negra', DEFOLIADOR: 'Defoliador', FERTILIZACION: 'Fertilización' };
+    const tipoLabel = (Array.isArray(tipo) ? tipo : [tipo]).map((t) => TIPO_LABEL[t] || t).join(' + ');
+    const fechaLegible = formatearFechaLarga(fecha);
+    const { nombre: marca, nombreHtml: marcaHtml, from } = await obtenerMarca();
+    const html = `
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.08);">
+        <div style="background: linear-gradient(135deg, #b91c1c 0%, #dc2626 100%); padding: 28px 32px; text-align: center;">
+          <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">${marcaHtml}</h1>
+          <p style="color: rgba(255,255,255,.85); margin: 4px 0 0; font-size: 13px;">Sanidad Vegetal — Cancelación de Aspersión</p>
+        </div>
+        <div style="padding: 32px;">
+          <p style="margin: 0 0 16px; color: #374151; font-size: 15px; line-height: 1.5;">Estimado(a),</p>
+          <p style="margin: 0; color: #374151; font-size: 14px; line-height: 1.5;">
+            Le informamos que el ciclo de aspersión programado en la finca
+            <strong style="color: #b91c1c;">${escaparHtml(fincaNombre)}</strong> (semana
+            <strong>${escaparHtml(semanaCodigo)}</strong>), previsto para el
+            <strong>${fechaLegible}</strong> con el fin de realizar el control de
+            <strong>${tipoLabel}</strong> mediante la mezcla <strong>${escaparHtml(mezclaNombre)}</strong>,
+            <strong>ha sido cancelado</strong>.
+          </p>
+          <p style="margin: 16px 0 0; color: #374151; font-size: 14px; line-height: 1.5;">
+            Agradecemos tener en cuenta esta novedad para la planificación de las labores en la finca.
+          </p>
+        </div>
+        <div style="background: #f9fafb; padding: 16px 32px; text-align: center; border-top: 1px solid #e5e7eb;">
+          <p style="margin: 0; color: #9ca3af; font-size: 11px;">Este mensaje se generó automáticamente, por favor no respondas a este correo.</p>
+        </div>
+      </div>
+    `;
+
+    if (!isConfigured || !transporter) {
+      console.log('═══════════════════════════════════════════════');
+      console.log('📧  MAIL SERVICE (no configurado) — cancelación de aspersión');
+      console.log(`To:  ${destinatarios.join(', ')}`);
+      console.log(`Finca: ${fincaNombre} — ${tipoLabel} — ${fechaLegible}`);
+      console.log('═══════════════════════════════════════════════');
+      return;
+    }
+
+    await transporter.sendMail({
+      from,
+      to: destinatarios,
+      subject: `${marca} — Cancelación de aspersión: ${fincaNombre} (${fechaLegible})`,
+      html,
+    });
+  },
+
+  // Resumen semanal de Programación de Aspersiones — el mismo Excel
+  // descargable del Calendario (todas las fincas con aspersiones programadas
+  // esa semana), adjunto y enviado a los destinatarios configurados en
+  // Configuración → Programación de Aspersiones → Resumen semanal. Se
+  // dispara desde el botón "Enviar semana" del Calendario (ver
+  // aspersionProgramacion.service.js#enviarResumenSemanal).
+  async sendResumenSemanalAspersiones({ destinatarios, semanaCodigo, excelBuffer, excelNombre }) {
+    if (!destinatarios?.length) return;
+
+    const { nombre: marca, nombreHtml: marcaHtml, from } = await obtenerMarca();
+    const html = `
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.08);">
+        <div style="background: linear-gradient(135deg, #166534 0%, #22a35e 100%); padding: 28px 32px; text-align: center;">
+          <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">${marcaHtml}</h1>
+          <p style="color: rgba(255,255,255,.85); margin: 4px 0 0; font-size: 13px;">Sanidad Vegetal — Resumen Semanal de Aspersiones</p>
+        </div>
+        <div style="padding: 32px;">
+          <p style="margin: 0 0 16px; color: #374151; font-size: 15px; line-height: 1.5;">Estimado(a),</p>
+          <p style="margin: 0; color: #374151; font-size: 14px; line-height: 1.5;">
+            Adjunto encontrará el resumen completo, en formato Excel, de la Programación de Aspersiones
+            correspondiente a la semana <strong>${escaparHtml(semanaCodigo)}</strong>.
+          </p>
+        </div>
+        <div style="background: #f9fafb; padding: 16px 32px; text-align: center; border-top: 1px solid #e5e7eb;">
+          <p style="margin: 0; color: #9ca3af; font-size: 11px;">Este mensaje se generó automáticamente, por favor no respondas a este correo.</p>
+        </div>
+      </div>
+    `;
+
+    if (!isConfigured || !transporter) {
+      console.log('═══════════════════════════════════════════════');
+      console.log('📧  MAIL SERVICE (no configurado) — resumen semanal de aspersiones');
+      console.log(`To:  ${destinatarios.join(', ')}`);
+      console.log(`Semana: ${semanaCodigo}`);
+      console.log(`Adjunto: ${excelNombre} (${excelBuffer?.length ?? 0} bytes)`);
+      console.log('═══════════════════════════════════════════════');
+      return;
+    }
+
+    await transporter.sendMail({
+      from,
+      to: destinatarios,
+      subject: `${marca} — Resumen semanal de aspersiones (${semanaCodigo})`,
+      html,
+      attachments: excelBuffer
+        ? [
+            {
+              filename: excelNombre || 'Resumen-Aspersiones.xlsx',
+              content: excelBuffer,
+              contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            },
+          ]
+        : [],
     });
   },
 };

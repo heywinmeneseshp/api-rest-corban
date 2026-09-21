@@ -13,13 +13,17 @@ import {
   listMezclaSchema,
   getVersionSchema,
   setComponentesSchema,
+  agregarComponenteSchema,
+  actualizarComponenteSchema,
   agregarEtapaSchema,
   finalizarVersionSchema,
   crearElaboradoSchema,
+  crearDirectaSchema,
   eliminarFotoSchema,
   eliminarEtapaSchema,
   mezclaParametrosSchema,
   listHistorialSchema,
+  registrarHomogeneidadSchema,
 } from '../../validators/inventario/mezcla.validator.js';
 
 const router = Router();
@@ -42,6 +46,10 @@ router.delete('/etapas/:etapaUuid', auth, permission(PERMISSIONS.INVENTARIO_MEZC
 
 // Historial de pruebas — antes de /:uuid para no chocar con el parseo de uuid.
 router.get('/historial', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_VER), validate(listHistorialSchema), mezclaController.listHistorial);
+
+// Crear un elaborado SIN prueba de laboratorio — antes de /:uuid por el
+// mismo motivo. Mismo permiso que "Nueva elaboración"/"Crear elaborado".
+router.post('/directo', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_ELABORAR), validate(crearDirectaSchema), mezclaController.crearDirecta);
 
 router.get('/', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_VER), validate(listMezclaSchema), mezclaController.list);
 router.post('/', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_CREAR), validate(createMezclaSchema), mezclaController.create);
@@ -69,11 +77,32 @@ router.put(
   mezclaController.setComponentes,
 );
 router.post(
+  '/:uuid/versiones/:versionUuid/componentes/agregar',
+  auth,
+  permission(PERMISSIONS.INVENTARIO_MEZCLAS_CREAR),
+  validate(agregarComponenteSchema),
+  mezclaController.agregarComponente,
+);
+router.patch(
+  '/:uuid/versiones/:versionUuid/componentes/:componenteUuid',
+  auth,
+  permission(PERMISSIONS.INVENTARIO_MEZCLAS_CREAR),
+  validate(actualizarComponenteSchema),
+  mezclaController.actualizarComponente,
+);
+router.post(
   '/:uuid/versiones/:versionUuid/etapas',
   auth,
   permission(PERMISSIONS.INVENTARIO_MEZCLAS_CREAR),
   validate(agregarEtapaSchema),
   mezclaController.agregarEtapa,
+);
+router.post(
+  '/:uuid/versiones/:versionUuid/homogeneidad',
+  auth,
+  permission(PERMISSIONS.INVENTARIO_MEZCLAS_CREAR),
+  validate(registrarHomogeneidadSchema),
+  mezclaController.registrarHomogeneidad,
 );
 router.post(
   '/:uuid/versiones/:versionUuid/fotos',

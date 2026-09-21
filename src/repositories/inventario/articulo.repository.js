@@ -3,7 +3,8 @@ import { Articulo, ArticuloCategoria, UnidadMedida } from '../../database/associ
 
 const INCLUDE = [
   { model: ArticuloCategoria, as: 'categoria', attributes: ['uuid', 'nombre', 'tipo'] },
-  { model: UnidadMedida, as: 'unidadMedida', attributes: ['uuid', 'nombre', 'simbolo'] },
+  { model: UnidadMedida, as: 'unidadMedida', attributes: ['uuid', 'nombre', 'simbolo', 'codigo'] },
+  { model: UnidadMedida, as: 'dosisMaximaUnidad', attributes: ['uuid', 'nombre', 'simbolo'] },
 ];
 
 export const articuloRepository = {

@@ -16,6 +16,9 @@ MezclaFoto.init(
     // Nullable: hoy la foto se asocia a la prueba completa; queda listo
     // para asociarla a una etapa puntual sin migrar nada más.
     mezclaEtapaId: { type: DataTypes.INTEGER, allowNull: true, field: 'mezcla_etapa_id' },
+    // Foto de un punto de control de la prueba de homogeneidad (15/30/60
+    // min) — mismo patrón que mezclaEtapaId.
+    mezclaHomogeneidadId: { type: DataTypes.INTEGER, allowNull: true, field: 'mezcla_homogeneidad_id' },
     idDrive: { type: DataTypes.STRING(100), allowNull: false, field: 'id_drive' },
     urlDrive: { type: DataTypes.STRING(500), allowNull: true, field: 'url_drive' },
     nombreOriginal: { type: DataTypes.STRING(255), allowNull: true, field: 'nombre_original' },

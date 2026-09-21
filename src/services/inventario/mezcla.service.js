@@ -18,7 +18,7 @@ import { assertSinDuplicado } from '../../utils/duplicadoGuard.js';
 import { configuracionService } from '../sistema/configuracion.service.js';
 import { elaboracionService } from './elaboracion.service.js';
 import { articuloService } from './articulo.service.js';
-import { registrarMovimientoEnCache, getExistencia } from './stock.helper.js';
+import { consumirStockConReceta, RequiereConfirmacionStockError } from './stock.helper.js';
 import { convertirACantidadBase } from '../../utils/unidadConversion.js';
 import { generarCorrelativo } from '../../utils/correlativo.js';
 import { cargarFotosMezclaPrueba, eliminarFotoDeDrive, descargarArchivoDeDrive } from '../googleDrive/cargueFotosLabor.js';
@@ -50,6 +50,44 @@ async function resolveAlmacen(uuid) {
   return a;
 }
 
+const REGULADOR_PH_NOMBRE = 'Regulador de pH';
+const REGULADOR_PH_CATEGORIA = 'Insumo Corbana';
+const REGULADOR_PH_UNIDAD_CODIGO = 'Kg';
+
+// El insumo de corrección de pH es siempre "Regulador de pH" (pedido
+// explícito: no se elige otro) — si todavía no existe en el catálogo (ej.
+// primera vez que se usa en un servidor nuevo, antes de que corra el
+// seeder), se crea acá solo, sin pedirle al operador que lo haga a mano
+// desde Maestros → Artículos.
+async function resolveOrCrearReguladorPh(actorId) {
+  const existente = await Articulo.findOne({ where: { nombre: REGULADOR_PH_NOMBRE } });
+  if (existente) return existente;
+
+  const categoria = await ArticuloCategoria.findOne({ where: { nombre: REGULADOR_PH_CATEGORIA } });
+  const unidad = await UnidadMedida.findOne({ where: { codigo: REGULADOR_PH_UNIDAD_CODIGO } });
+  try {
+    return await articuloService.create(
+      {
+        nombre: REGULADOR_PH_NOMBRE,
+        categoriaUuid: categoria?.uuid || null,
+        unidadMedidaUuid: unidad?.uuid || null,
+        costoCompra: 0,
+        precioVenta: 0,
+        manejaInventario: true,
+        estado: true,
+      },
+      actorId,
+    );
+  } catch (err) {
+    // Dos correcciones de pH casi simultáneas, ambas sin el artículo
+    // creado todavía, pueden chocar contra el nombre único — la segunda
+    // simplemente reusa el que la primera acaba de crear.
+    const yaCreado = await Articulo.findOne({ where: { nombre: REGULADOR_PH_NOMBRE } });
+    if (yaCreado) return yaCreado;
+    throw err;
+  }
+}
+
 async function calcularCostos(componentesPayload, rendimiento) {
   let costoTotal = 0;
   const detalles = [];
@@ -60,9 +98,16 @@ async function calcularCostos(componentesPayload, rendimiento) {
       const unidad = await resolveUnidad(comp.unidadUuid);
       unidadId = unidad.id;
     }
-    const costoUnitarioSnapshot = Number(articulo.costoCompra || 0);
     const cantidad = Number(comp.cantidad);
-    const costoTotalSnapshot = costoUnitarioSnapshot * cantidad;
+    // costoCompra está expresado en la unidad BASE del artículo — si el
+    // insumo se cargó en otra unidad (ej. ml en la receta, L en el
+    // artículo), hay que convertir antes de costear, si no el costo queda
+    // multiplicado/dividido por el factor de conversión (ej. 100 ml
+    // tratados como si fueran 100 L). Mismo criterio que ya usa
+    // consumirStockConReceta al descontar stock.
+    const cantidadBase = await convertirACantidadBase(articulo, unidadId, cantidad);
+    const costoUnitarioSnapshot = Number(articulo.costoCompra || 0);
+    const costoTotalSnapshot = costoUnitarioSnapshot * cantidadBase;
     costoTotal += costoTotalSnapshot;
     detalles.push({
       articuloId: articulo.id,
@@ -79,10 +124,18 @@ async function calcularCostos(componentesPayload, rendimiento) {
 
 // pH mínimo <= pH <= pH máximo, y CE < CE máxima — nunca hardcodeado, ver
 // configuracion.service.js#getMezclaParametros.
-function evaluarResultado(ph, ce, parametros) {
+// Devuelve el resultado global MÁS el detalle de qué condición falló — el
+// pH se puede corregir con el Regulador de pH, la CE no tiene forma de
+// corregirse en esta prueba, así que el llamador necesita distinguir cuál
+// de las dos fue la que no cumplió.
+function evaluarResultadoDetalle(ph, ce, parametros) {
   const cumplePh = Number(ph) >= Number(parametros.phMinimo) && Number(ph) <= Number(parametros.phMaximo);
   const cumpleCe = Number(ce) < Number(parametros.ceMaxima);
-  return cumplePh && cumpleCe ? 'CUMPLE' : 'NO_CUMPLE';
+  return { resultado: cumplePh && cumpleCe ? 'CUMPLE' : 'NO_CUMPLE', cumplePh, cumpleCe };
+}
+
+function evaluarResultado(ph, ce, parametros) {
+  return evaluarResultadoDetalle(ph, ce, parametros).resultado;
 }
 
 async function getVersionOrFail(versionUuid, { transaction } = {}) {
@@ -108,6 +161,7 @@ export const mezclaService = {
       search: query.search,
       estado: query.estado,
       articuloElaboradoUuid: query.articuloElaboradoUuid,
+      incluirDirectas: query.incluirDirectas,
     });
     return { items: rows, meta: buildPaginationMeta({ page, limit, total: count }) };
   },
@@ -160,6 +214,7 @@ export const mezclaService = {
           articuloElaboradoId: null,
           unidadRendimientoId: unidad?.id || null,
           rendimiento,
+          dosisPorHectarea: payload.dosisPorHectarea ?? null,
           precioVenta: payload.precioVenta ?? 0,
           estado: payload.estado ?? true,
           createdBy: actorId,
@@ -214,12 +269,23 @@ export const mezclaService = {
       }
     }
 
+    let dosisPorHectareaUnidadId = mezcla.dosisPorHectareaUnidadId;
+    if (payload.dosisPorHectareaUnidadUuid !== undefined) {
+      if (!payload.dosisPorHectareaUnidadUuid) dosisPorHectareaUnidadId = null;
+      else {
+        const u = await resolveUnidad(payload.dosisPorHectareaUnidadUuid);
+        dosisPorHectareaUnidadId = u.id;
+      }
+    }
+
     const data = {
       ...(payload.codigo !== undefined ? { codigo: payload.codigo || null } : {}),
       ...(payload.nombre ? { nombre: payload.nombre } : {}),
       ...(payload.descripcion !== undefined ? { descripcion: payload.descripcion || null } : {}),
       unidadRendimientoId,
       ...(payload.rendimiento !== undefined ? { rendimiento: Number(payload.rendimiento) } : {}),
+      ...(payload.dosisPorHectarea !== undefined ? { dosisPorHectarea: payload.dosisPorHectarea } : {}),
+      ...(payload.dosisPorHectareaUnidadUuid !== undefined ? { dosisPorHectareaUnidadId } : {}),
       ...(payload.precioVenta !== undefined ? { precioVenta: payload.precioVenta } : {}),
       ...(payload.estado !== undefined ? { estado: payload.estado } : {}),
       updatedBy: actorId,
@@ -379,6 +445,88 @@ export const mezclaService = {
     });
   },
 
+  // Agrega UN insumo nuevo a la receta sin tocar los que ya existen — a
+  // diferencia de setComponentes (que destruye y recrea TODA la lista),
+  // esto preserva el id de los componentes ya guardados. Importante: una
+  // MezclaEtapa puede tener su `componenteId` apuntando a una fila ya
+  // guardada (ver agregarEtapa) — destruir y recrear esa fila (como hacía
+  // antes el flujo de "Agregar insumo" del frontend, llamando a
+  // setComponentes con la lista completa) le cambia el id por debajo y
+  // esa etapa vieja pierde la referencia, mostrando "—" en vez del
+  // insumo (bug real, reportado por el usuario).
+  async agregarComponente(versionUuid, payload, actorId) {
+    const version = await getVersionOrFail(versionUuid);
+    assertVersionEditable(version);
+
+    const rendimiento = Number(version.mezcla?.rendimiento || 1);
+    const existentes = (version.componentes || []).map((c) => ({
+      articuloUuid: c.articulo?.uuid,
+      cantidad: c.cantidad,
+      unidadUuid: c.unidad?.uuid || null,
+    }));
+    // Se costea la receta COMPLETA (existentes + el nuevo) para que
+    // costoTotal/costoUnitario de la versión queden consistentes, pero
+    // solo se INSERTA la fila nueva — el resto ni se toca.
+    const { costoTotal, costoUnitario, detalles } = await calcularCostos([...existentes, payload], rendimiento);
+    const nuevo = detalles[detalles.length - 1];
+
+    return sequelize.transaction(async (t) => {
+      const componenteCreado = await mezclaRepository.createComponente(
+        {
+          mezclaVersionId: version.id,
+          articuloId: nuevo.articuloId,
+          cantidad: nuevo.cantidad,
+          unidadId: nuevo.unidadId,
+          costoUnitarioSnapshot: nuevo.costoUnitarioSnapshot,
+          costoTotalSnapshot: nuevo.costoTotalSnapshot,
+        },
+        { transaction: t },
+      );
+      await mezclaRepository.updateVersion(version, { costoTotal, costoUnitario, updatedBy: actorId }, { transaction: t });
+      const versionFinal = await getVersionOrFail(versionUuid, { transaction: t });
+      return { version: versionFinal, componenteUuid: componenteCreado.uuid };
+    });
+  },
+
+  // Edita cantidad/unidad de un insumo YA guardado, EN EL LUGAR — mismo
+  // motivo que agregarComponente: no puede destruir y recrear la fila
+  // porque rompería el componenteId de cualquier etapa que ya la
+  // referencie.
+  async actualizarComponente(versionUuid, componenteUuid, payload, actorId) {
+    const version = await getVersionOrFail(versionUuid);
+    assertVersionEditable(version);
+
+    const componente = await mezclaRepository.findComponenteByUuid(componenteUuid);
+    if (!componente || componente.mezclaVersionId !== version.id) {
+      throw ApiError.notFound('Componente no encontrado en esta prueba');
+    }
+
+    const rendimiento = Number(version.mezcla?.rendimiento || 1);
+    const listaActualizada = (version.componentes || []).map((c) =>
+      c.uuid === componenteUuid
+        ? { articuloUuid: c.articulo?.uuid, cantidad: payload.cantidad, unidadUuid: payload.unidadUuid ?? null }
+        : { articuloUuid: c.articulo?.uuid, cantidad: c.cantidad, unidadUuid: c.unidad?.uuid || null },
+    );
+    const { costoTotal, costoUnitario, detalles } = await calcularCostos(listaActualizada, rendimiento);
+    const idx = (version.componentes || []).findIndex((c) => c.uuid === componenteUuid);
+    const detalle = detalles[idx];
+
+    return sequelize.transaction(async (t) => {
+      await mezclaRepository.updateComponente(
+        componente,
+        {
+          cantidad: detalle.cantidad,
+          unidadId: detalle.unidadId,
+          costoUnitarioSnapshot: detalle.costoUnitarioSnapshot,
+          costoTotalSnapshot: detalle.costoTotalSnapshot,
+        },
+        { transaction: t },
+      );
+      await mezclaRepository.updateVersion(version, { costoTotal, costoUnitario, updatedBy: actorId }, { transaction: t });
+      return getVersionOrFail(versionUuid, { transaction: t });
+    });
+  },
+
   // Agrega una etapa de medición ACUMULATIVA: qué componente se acaba de
   // incorporar (opcional) + pH + CE medidos en ese punto. El resultado de
   // la etapa se calcula y persiste con los parámetros VIGENTES en este
@@ -396,8 +544,21 @@ export const mezclaService = {
       componenteId = comp.id;
     }
 
+    // CORRECCION_PH: el insumo es siempre "Regulador de pH" (se
+    // resuelve/crea solo, ver resolveOrCrearReguladorPh) — NO se busca en
+    // version.componentes, a propósito no forma parte de la receta
+    // permanente.
+    let articuloCorreccionId = null;
+    let unidadCorreccionId = null;
+    if (payload.tipoEtapa === 'CORRECCION_PH') {
+      const articuloCorreccion = await resolveOrCrearReguladorPh(actorId);
+      articuloCorreccionId = articuloCorreccion.id;
+      const unidadCorreccion = await resolveUnidad(payload.unidadCorreccionUuid);
+      unidadCorreccionId = unidadCorreccion?.id || null;
+    }
+
     const parametros = await configuracionService.getMezclaParametros();
-    const resultado = evaluarResultado(payload.ph, payload.ce, parametros);
+    const { resultado, cumplePh, cumpleCe } = evaluarResultadoDetalle(payload.ph, payload.ce, parametros);
     const numero = (await mezclaRepository.countEtapas(version.id)) + 1;
 
     return sequelize.transaction(async (t) => {
@@ -406,9 +567,15 @@ export const mezclaService = {
           mezclaVersionId: version.id,
           numero,
           componenteId,
+          tipoEtapa: payload.tipoEtapa || 'MEDICION',
+          articuloCorreccionId,
+          cantidadCorreccion: payload.tipoEtapa === 'CORRECCION_PH' ? payload.cantidadCorreccion : null,
+          unidadCorreccionId,
           ph: payload.ph,
           ce: payload.ce,
           resultado,
+          cumplePh,
+          cumpleCe,
           observaciones: payload.observaciones || null,
           medidoEn: payload.medidoEn || new Date(),
           createdBy: actorId,
@@ -458,7 +625,7 @@ export const mezclaService = {
     });
   },
 
-  async subirFotos(versionUuid, archivos, actorId, etapaUuid) {
+  async subirFotos(versionUuid, archivos, actorId, etapaUuid, homogeneidadUuid) {
     const version = await getVersionOrFail(versionUuid);
     assertVersionEditable(version);
 
@@ -467,6 +634,13 @@ export const mezclaService = {
       const etapa = (version.etapas || []).find((e) => e.uuid === etapaUuid);
       if (!etapa) throw ApiError.notFound('Etapa no encontrada en esta prueba');
       mezclaEtapaId = etapa.id;
+    }
+
+    let mezclaHomogeneidadId = null;
+    if (homogeneidadUuid) {
+      const punto = (version.homogeneidad || []).find((h) => h.uuid === homogeneidadUuid);
+      if (!punto) throw ApiError.notFound('Punto de control de homogeneidad no encontrado en esta prueba');
+      mezclaHomogeneidadId = punto.id;
     }
 
     const resultado = await cargarFotosMezclaPrueba(
@@ -478,10 +652,42 @@ export const mezclaService = {
       await mezclaRepository.createFoto({
         mezclaVersionId: version.id,
         mezclaEtapaId,
+        mezclaHomogeneidadId,
         idDrive: foto.idDrive,
         urlDrive: foto.urlDrive,
         nombreOriginal: foto.nombreOriginal,
         nombreDrive: foto.nombreDrive,
+        createdBy: actorId,
+      });
+    }
+
+    return getVersionOrFail(versionUuid);
+  },
+
+  // Prueba de homogeneidad (15/30/60 min): registra o actualiza el punto de
+  // control — se llama ANTES de subir la foto correspondiente (ver
+  // subirFotos con homogeneidadUuid), mismo patrón de dos pasos que ya usa
+  // el frontend para etapas. Un solo registro por (versión, intervalo):
+  // volver a registrar el mismo intervalo actualiza el resultado anterior.
+  async registrarHomogeneidad(versionUuid, { intervalo, homogenea, observaciones }, actorId) {
+    const version = await getVersionOrFail(versionUuid);
+    assertVersionEditable(version);
+
+    const existente = await mezclaRepository.findHomogeneidadByVersionEIntervalo(version.id, intervalo);
+    if (existente) {
+      await mezclaRepository.updateHomogeneidad(existente, {
+        homogenea,
+        observaciones: observaciones || null,
+        medidoEn: new Date(),
+        updatedBy: actorId,
+      });
+    } else {
+      await mezclaRepository.createHomogeneidad({
+        mezclaVersionId: version.id,
+        intervalo,
+        homogenea,
+        observaciones: observaciones || null,
+        medidoEn: new Date(),
         createdBy: actorId,
       });
     }
@@ -507,6 +713,111 @@ export const mezclaService = {
     await mezclaRepository.destroyFoto(foto);
   },
 
+  // Crea un elaborado SIN pasar por la prueba de laboratorio (pH/CE/etapas)
+  // — pedido explícito: hay productos que no necesitan esa validación. Igual
+  // se guarda la receta (Mezcla + MezclaComponente), reutilizable después
+  // desde Elaboraciones → "Nueva elaboración" para producir más — pero acá
+  // NO se descuenta ningún insumo todavía (eso solo pasa cuando de verdad se
+  // elabora un lote, no al definir qué lleva la receta).
+  //
+  // Si lo crea un Administrador, la receta queda lista de una (CONVERTIDA,
+  // artículo activo) — no necesita aprobación. Cualquier otro rol la deja
+  // PENDIENTE_APROBACION, igual que el flujo con prueba; aprobar() detecta
+  // que no hay `elaboradoPayload` (esta receta nunca produjo un lote) y solo
+  // activa el artículo, sin tocar stock.
+  async crearDirecta(payload, actorId, user) {
+    const almacen = await resolveAlmacen(payload.almacenUuid);
+    if (!almacen) throw ApiError.badRequest('Indica el almacén de la receta');
+
+    const categoria = await ArticuloCategoria.findOne({ where: { uuid: payload.articuloCategoriaUuid } });
+    if (!categoria) throw ApiError.notFound('Categoría no encontrada');
+    if (categoria.tipo !== 'ELABORADO') {
+      throw ApiError.badRequest('La categoría del artículo elaborado debe ser de tipo Elaborado');
+    }
+
+    const rendimiento = Number(payload.rendimiento);
+    const componentes = payload.componentes || [];
+    if (!componentes.length) throw ApiError.badRequest('Agrega al menos un insumo a la receta');
+    const { costoTotal, costoUnitario, detalles } = await calcularCostos(componentes, rendimiento);
+
+    const esAdmin = (user?.roles || []).includes('Administrador');
+
+    // articuloService.create() maneja su propia transacción interna (mismo
+    // patrón ya usado en crearElaborado()) — se llama antes de abrir la de
+    // acá abajo.
+    const nuevoArticulo = await articuloService.create(
+      {
+        nombre: payload.articuloNombre,
+        codigo: payload.articuloCodigo || null,
+        categoriaUuid: payload.articuloCategoriaUuid,
+        unidadMedidaUuid: payload.articuloUnidadMedidaUuid || null,
+        costoCompra: 0,
+        precioVenta: 0,
+        // Administrador: activo de una. Cualquier otro rol: inactivo hasta
+        // que se apruebe (mismo criterio que crearElaborado()).
+        estado: esAdmin,
+      },
+      actorId,
+    );
+
+    return sequelize.transaction(async (t) => {
+      if (payload.articuloNombre) {
+        await assertSinDuplicado(Mezcla, { nombre: payload.articuloNombre }, t, 'Ya existe una mezcla con ese nombre');
+      }
+      const codigo = await generarCorrelativo(Mezcla, { prefijo: 'MEZ', columna: 'codigo', padding: 4, transaction: t });
+
+      const mezcla = await mezclaRepository.create(
+        {
+          codigo,
+          nombre: payload.articuloNombre,
+          articuloElaboradoId: nuevoArticulo.id,
+          unidadRendimientoId: nuevoArticulo.unidadMedidaId || null,
+          rendimiento,
+          dosisPorHectarea: payload.dosisPorHectarea ?? null,
+          estado: true,
+          createdBy: actorId,
+        },
+        { transaction: t },
+      );
+
+      const ahora = new Date();
+      const version = await MezclaVersion.create(
+        {
+          mezclaId: mezcla.id,
+          version: 1,
+          activa: true,
+          costoTotal,
+          costoUnitario,
+          estadoPrueba: esAdmin ? 'CONVERTIDA' : 'PENDIENTE_APROBACION',
+          almacenId: almacen.id,
+          finalizadaEn: ahora,
+          finalizadaPorId: actorId,
+          ...(esAdmin ? { aprobadaEn: ahora, aprobadaPorId: actorId } : {}),
+          createdBy: actorId,
+          esDirecta: true,
+        },
+        { transaction: t },
+      );
+
+      for (const det of detalles) {
+        await MezclaComponente.create(
+          {
+            mezclaVersionId: version.id,
+            articuloId: det.articuloId,
+            cantidad: det.cantidad,
+            unidadId: det.unidadId,
+            costoUnitarioSnapshot: det.costoUnitarioSnapshot,
+            costoTotalSnapshot: det.costoTotalSnapshot,
+          },
+          { transaction: t },
+        );
+      }
+
+      const versionFinal = await getVersionOrFail(version.uuid, { transaction: t });
+      return { version: versionFinal };
+    });
+  },
+
   // Cierra la prueba: toma pH/CE de la ÚLTIMA etapa como resultado final,
   // snapshotea los parámetros vigentes, determina válida/no válida, y
   // genera la salida de inventario real por cada componente (punto 15-19
@@ -525,6 +836,13 @@ export const mezclaService = {
     const version = await getVersionOrFail(versionUuid);
     assertVersionEditable(version);
 
+    // Quien inicia la prueba (createdBy) es quien debe finalizarla — evita
+    // que otro usuario cierre una prueba que no siguió de principio a fin
+    // (pedido explícito: iniciado y finalizado deben ser la misma persona).
+    if (version.createdBy && actorId && version.createdBy !== actorId) {
+      throw ApiError.forbidden('Solo el usuario que inició esta prueba puede finalizarla');
+    }
+
     if (!version.componentes?.length) throw ApiError.badRequest('La prueba no tiene componentes registrados');
     if (!version.etapas?.length) throw ApiError.badRequest('La prueba no tiene ninguna etapa de medición registrada');
     if (!version.almacenId) throw ApiError.badRequest('La prueba no tiene almacén de origen — no se puede descontar inventario');
@@ -542,105 +860,135 @@ export const mezclaService = {
 
     const motivo = await Motivo.findOne({ where: { codigo: MOTIVO_PRUEBA_MEZCLA_CODIGO } });
 
-    return sequelize.transaction(async (t) => {
-      // Re-chequeo dentro de la transacción — evita doble descuento si dos
-      // requests llegan casi al mismo tiempo (el mismo criterio que
-      // assertStockSuficiente usa lock de fila, acá el propio estado de la
-      // versión hace de guardia).
-      const fresh = await MezclaVersion.findByPk(version.id, { transaction: t, lock: t.LOCK.UPDATE });
-      if (!ESTADOS_EDITABLES.includes(fresh.estadoPrueba)) {
-        throw ApiError.conflict('Esta prueba ya fue finalizada');
-      }
-
-      const documento = await generarCorrelativo(MezclaVersion, { prefijo: 'MIX', columna: 'movimientoDocumento', padding: 4, transaction: t });
-
-      // Convierte cada componente a la unidad BASE del artículo antes de
-      // tocar inventario — el operador puede haber medido en una unidad
-      // distinta a la que el artículo lleva en Existencia (ver
-      // unidadConversion.js). `cantidad`/`unidadId` en el movimiento
-      // quedan como se registraron (trazabilidad de lo que realmente se
-      // midió); `cantidadBase` es la que de verdad descuenta el saldo.
-      const detalles = [];
-      for (const comp of version.componentes) {
-        const cantidadBase = await convertirACantidadBase(comp.articulo, comp.unidadId, comp.cantidad, { transaction: t });
-        detalles.push({ comp, cantidadBase });
-      }
-
-      const advertencias = [];
-      for (const { comp, cantidadBase } of detalles) {
-        // Lock de fila (igual que assertStockSuficiente) para que el check
-        // y el insert queden atómicos frente a otra transacción concurrente
-        // — pero acá, en vez de lanzar directo, se junta como advertencia
-        // cuando no viene forzarSaldoNegativo.
-        const saldo = await getExistencia(version.almacenId, comp.articuloId, { transaction: t, lock: true });
-        if (saldo < cantidadBase) {
-          if (!forzarSaldoNegativo) {
-            advertencias.push({
-              articulo: comp.articulo?.nombre,
-              disponible: saldo,
-              requerido: cantidadBase,
-              saldoResultante: saldo - cantidadBase,
-              mensaje: `Stock insuficiente para ${comp.articulo?.nombre} en almacén ${version.almacen?.nombre}. Disponible: ${saldo}, requerido: ${cantidadBase}. El saldo quedaría en ${saldo - cantidadBase}.`,
-            });
-          }
+    try {
+      return await sequelize.transaction(async (t) => {
+        // Re-chequeo dentro de la transacción — evita doble descuento si dos
+        // requests llegan casi al mismo tiempo (el mismo criterio que
+        // assertStockSuficiente usa lock de fila, acá el propio estado de la
+        // versión hace de guardia).
+        const fresh = await MezclaVersion.findByPk(version.id, { transaction: t, lock: t.LOCK.UPDATE });
+        if (!ESTADOS_EDITABLES.includes(fresh.estadoPrueba)) {
+          throw ApiError.conflict('Esta prueba ya fue finalizada');
         }
-      }
 
-      if (advertencias.length > 0 && !forzarSaldoNegativo) {
-        // No se escribió nada todavía — el commit de esta transacción no
-        // hace ningún daño, simplemente no insertó filas.
-        return { requiereConfirmacion: true, advertencias, version: null };
-      }
+        const documento = await generarCorrelativo(MezclaVersion, { prefijo: 'MIX', columna: 'movimientoDocumento', padding: 4, transaction: t });
 
-      for (const { comp, cantidadBase } of detalles) {
-        // costoUnitarioSnapshot ya es "costo por unidad BASE" (viene
-        // directo de articulo.costoCompra, ver calcularCostos() en
-        // setComponentes) — el total sí hay que recalcularlo contra
-        // cantidadBase, no contra comp.cantidad (que puede estar en otra
-        // unidad y dar un total equivocado).
-        const costoUnit = Number(comp.costoUnitarioSnapshot || 0);
-        await MovimientoInventario.create(
+        // Cada componente puede ser un insumo real o, a su vez, OTRO
+        // elaborado (pedido explícito: los elaborados nunca tienen saldo
+        // propio — al usarse se descuenta su receta, no una fila de stock
+        // propia). Se recorre con consumirStockConReceta, que resuelve eso
+        // recursivamente; acá solo se crea el MovimientoInventario 'SALIDA'
+        // por cada insumo real efectivamente descontado.
+        const advertencias = [];
+        for (const comp of version.componentes) {
+          const cantidadBase = await convertirACantidadBase(comp.articulo, comp.unidadId, comp.cantidad, { transaction: t });
+          await consumirStockConReceta(version.almacenId, comp.articulo, cantidadBase, {
+            transaction: t,
+            // Siempre se fuerza acá adentro — se junta TODA advertencia de
+            // la receta en una sola pasada; recién abajo se decide si hacía
+            // falta forzar de verdad.
+            forzarSaldoNegativo: true,
+            advertencias,
+            onLeafConsumido: async (leafArticulo, leafCantidadBase) => {
+              const costoUnit = Number(leafArticulo.costoCompra || 0);
+              await MovimientoInventario.create(
+                {
+                  documento,
+                  tipo: 'SALIDA',
+                  fecha: new Date().toISOString().slice(0, 10),
+                  almacenId: version.almacenId,
+                  articuloId: leafArticulo.id,
+                  // Se guarda en la unidad BASE del artículo — pedido
+                  // explícito: aunque se haya medido en otra unidad, el
+                  // listado de Movimientos debe reflejar la unidad por
+                  // defecto del artículo.
+                  cantidad: leafCantidadBase,
+                  cantidadBase: leafCantidadBase,
+                  unidadId: leafArticulo.unidadMedidaId || null,
+                  costoUnitario: costoUnit,
+                  costoTotal: costoUnit * leafCantidadBase,
+                  motivoId: motivo?.id || null,
+                  observaciones: `Prueba de mezcla ${version.mezcla?.nombre || ''} — ${documento}`,
+                  usuarioId: actorId,
+                },
+                { transaction: t },
+              );
+            },
+          });
+        }
+
+        // Correcciones de pH (ej. regulador de pH) registradas en las
+        // propias etapas — se descuentan una única vez acá, con el mismo
+        // documento MIX-xxxx, pero NUNCA se agregan a mezcla_componentes:
+        // no deben quedar en la receta permanente del elaborado (pedido
+        // explícito).
+        const etapasCorreccion = (version.etapas || []).filter((et) => et.tipoEtapa === 'CORRECCION_PH');
+        for (const et of etapasCorreccion) {
+          const cantidadBase = await convertirACantidadBase(
+            et.articuloCorreccion,
+            et.unidadCorreccionId,
+            et.cantidadCorreccion,
+            { transaction: t },
+          );
+          await consumirStockConReceta(version.almacenId, et.articuloCorreccion, cantidadBase, {
+            transaction: t,
+            forzarSaldoNegativo: true,
+            advertencias,
+            onLeafConsumido: async (leafArticulo, leafCantidadBase) => {
+              const costoUnit = Number(leafArticulo.costoCompra || 0);
+              await MovimientoInventario.create(
+                {
+                  documento,
+                  tipo: 'SALIDA',
+                  fecha: new Date().toISOString().slice(0, 10),
+                  almacenId: version.almacenId,
+                  articuloId: leafArticulo.id,
+                  cantidad: leafCantidadBase,
+                  cantidadBase: leafCantidadBase,
+                  unidadId: leafArticulo.unidadMedidaId || null,
+                  costoUnitario: costoUnit,
+                  costoTotal: costoUnit * leafCantidadBase,
+                  motivoId: motivo?.id || null,
+                  observaciones: `Corrección de pH — prueba ${version.mezcla?.nombre || ''} — ${documento}`,
+                  usuarioId: actorId,
+                },
+                { transaction: t },
+              );
+            },
+          });
+        }
+
+        if (advertencias.length > 0 && !forzarSaldoNegativo) {
+          // Se lanza para que la transacción haga ROLLBACK — no quedó nada
+          // escrito, ni los movimientos ni los deltas de existencia ya
+          // aplicados en esta misma pasada.
+          throw new RequiereConfirmacionStockError(advertencias);
+        }
+
+        await mezclaRepository.updateVersion(
+          fresh,
           {
-            documento,
-            tipo: 'SALIDA',
-            fecha: new Date().toISOString().slice(0, 10),
-            almacenId: version.almacenId,
-            articuloId: comp.articuloId,
-            // Se guarda en la unidad BASE del artículo — pedido explícito:
-            // aunque se haya medido en otra unidad, el listado de
-            // Movimientos debe reflejar la unidad por defecto del artículo.
-            cantidad: cantidadBase,
-            cantidadBase,
-            unidadId: comp.articulo?.unidadMedidaId || comp.unidadId || null,
-            costoUnitario: costoUnit,
-            costoTotal: costoUnit * cantidadBase,
-            motivoId: motivo?.id || null,
-            observaciones: `Prueba de mezcla ${version.mezcla?.nombre || ''} — ${documento}`,
-            usuarioId: actorId,
+            estadoPrueba,
+            phFinal: ultimaEtapa.ph,
+            ceFinal: ultimaEtapa.ce,
+            parametrosUsados: parametros,
+            movimientoDocumento: documento,
+            finalizadaEn: new Date(),
+            finalizadaPorId: actorId,
+            updatedBy: actorId,
           },
           { transaction: t },
         );
-        await registrarMovimientoEnCache(version.almacenId, comp.articuloId, 'SALIDA', cantidadBase, t);
+
+        const versionFinal = await getVersionOrFail(versionUuid, { transaction: t });
+        return { requiereConfirmacion: false, advertencias: [], version: versionFinal };
+      });
+    } catch (err) {
+      if (err instanceof RequiereConfirmacionStockError) {
+        return { requiereConfirmacion: true, advertencias: err.advertencias, version: null };
       }
-
-      await mezclaRepository.updateVersion(
-        fresh,
-        {
-          estadoPrueba,
-          phFinal: ultimaEtapa.ph,
-          ceFinal: ultimaEtapa.ce,
-          parametrosUsados: parametros,
-          movimientoDocumento: documento,
-          finalizadaEn: new Date(),
-          finalizadaPorId: actorId,
-          updatedBy: actorId,
-        },
-        { transaction: t },
-      );
-
-      const versionFinal = await getVersionOrFail(versionUuid, { transaction: t });
-      return { requiereConfirmacion: false, advertencias: [], version: versionFinal };
-    });
+      throw err;
+    }
   },
 
   // Solo disponible cuando la prueba quedó ÓPTIMA — reutiliza tal cual el
@@ -736,9 +1084,6 @@ export const mezclaService = {
     if (version.estadoPrueba !== 'PENDIENTE_APROBACION') {
       throw ApiError.badRequest('Esta prueba no está pendiente de aprobación');
     }
-    if (!version.elaboradoPayload) {
-      throw ApiError.badRequest('Faltan los datos del elaborado — vuelve a usar "Crear elaborado"');
-    }
 
     const esAdmin = (user?.roles || []).includes('Administrador');
     if (!esAdmin) {
@@ -750,22 +1095,36 @@ export const mezclaService = {
       }
     }
 
-    const pl = version.elaboradoPayload;
-    const resultado = await elaboracionService.create(
-      {
-        mezclaVersionUuid: version.uuid,
-        cantidadElaborada: pl.cantidadElaborada,
-        almacenUuid: pl.almacenUuid,
-        fecha: pl.fecha,
-        observaciones: pl.observaciones,
-      },
-      actorId,
-      // omitirSalidaComponentes: los insumos ya se descontaron al finalizar
-      // la prueba — esta conversión solo registra la ENTRADA del elaborado.
-      { forzarSaldoNegativo: forzarSaldoNegativo || pl.forzarSaldoNegativo === true, omitirSalidaComponentes: true },
-    );
-    if (resultado.requiereConfirmacion) {
-      return { requiereConfirmacion: true, advertencias: resultado.advertencias, version: null };
+    // Una receta creada directa (crearDirecta(), sin prueba de laboratorio)
+    // nunca guarda elaboradoPayload — nunca produjo un lote, así que
+    // aprobar acá solo activa el artículo, sin tocar stock (pedido
+    // explícito: crear/aprobar la receta no debe descontar insumos).
+    let elaboracionId = null;
+    if (version.elaboradoPayload) {
+      const pl = version.elaboradoPayload;
+      const resultado = await elaboracionService.create(
+        {
+          mezclaVersionUuid: version.uuid,
+          cantidadElaborada: pl.cantidadElaborada,
+          almacenUuid: pl.almacenUuid,
+          // La fecha del elaborado es la de APROBACIÓN, no la que se envió
+          // al usar "Crear elaborado" (ahí solo se guardan los datos en
+          // espera — el elaborado de verdad, con su entrada de inventario,
+          // nace acá).
+          fecha: new Date().toISOString().slice(0, 10),
+          observaciones: pl.observaciones,
+        },
+        actorId,
+        // omitirSalidaComponentes: los insumos ya se descontaron al
+        // finalizar la prueba — esta conversión solo deja el
+        // registro/costeo de la Elaboración (el elaborado en sí nunca
+        // tiene saldo propio, ver elaboracion.service.js#create).
+        { forzarSaldoNegativo: forzarSaldoNegativo || pl.forzarSaldoNegativo === true, omitirSalidaComponentes: true },
+      );
+      if (resultado.requiereConfirmacion) {
+        return { requiereConfirmacion: true, advertencias: resultado.advertencias, version: null };
+      }
+      elaboracionId = resultado.elaboracion.id;
     }
 
     await sequelize.transaction(async (t) => {
@@ -777,7 +1136,7 @@ export const mezclaService = {
         fresh,
         {
           estadoPrueba: 'CONVERTIDA',
-          elaboracionId: resultado.elaboracion.id,
+          ...(elaboracionId ? { elaboracionId } : {}),
           aprobadaEn: new Date(),
           aprobadaPorId: actorId,
           updatedBy: actorId,

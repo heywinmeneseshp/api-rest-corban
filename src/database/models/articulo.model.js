@@ -20,6 +20,12 @@ Articulo.init(
     manejaInventario: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true, field: 'maneja_inventario' },
     stockMinimo: { type: DataTypes.DECIMAL(12, 2), allowNull: true, defaultValue: 0, field: 'stock_minimo' },
     stockMaximo: { type: DataTypes.DECIMAL(12, 2), allowNull: true, field: 'stock_maximo' },
+    // Dosificación de referencia — solo tiene sentido para insumos que se
+    // aplican por hectárea (ej. "4 L/ha"); puramente informativo, no afecta
+    // el cálculo de stock ni de aspersiones (esa cantidad real la define la
+    // mezcla, ver mezcla.model.js#dosisPorHectarea).
+    dosisMaximaPorHectarea: { type: DataTypes.DECIMAL(12, 4), allowNull: true, field: 'dosis_maxima_por_hectarea' },
+    dosisMaximaUnidadId: { type: DataTypes.INTEGER, allowNull: true, field: 'dosis_maxima_unidad_id' },
     estado: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
     updatedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'updated_by' },

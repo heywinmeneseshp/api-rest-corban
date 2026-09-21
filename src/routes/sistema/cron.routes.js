@@ -26,4 +26,15 @@ router.get('/recalcular-produccion-semanal', requireCronSecret, cronController.r
  */
 router.get('/enviar-alertas-sanidad-vegetal', requireCronSecret, cronController.enviarAlertasSanidadVegetal);
 
+/**
+ * @openapi
+ * /cron/sincronizar-estacion-meteorologica:
+ *   get:
+ *     tags: [Cron]
+ *     summary: Sincroniza el resumen diario de la estación meteorológica WeatherLink (Vercel Cron) — requiere Authorization Bearer CRON_SECRET.
+ *     responses:
+ *       200: { description: OK }
+ */
+router.get('/sincronizar-estacion-meteorologica', requireCronSecret, cronController.sincronizarEstacionMeteorologica);
+
 export default router;

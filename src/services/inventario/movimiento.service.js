@@ -3,7 +3,15 @@ import { movimientoRepository } from '../../repositories/inventario/movimiento.r
 import { Almacen, Articulo, UnidadMedida, Motivo } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
-import { assertStockSuficiente, registrarMovimientoEnCache, TIPOS_SALIDA } from './stock.helper.js';
+import {
+  assertStockSuficiente,
+  registrarMovimientoEnCache,
+  resolverRecetaSiEsElaborado,
+  consumirStockConReceta,
+  RequiereConfirmacionStockError,
+  TIPOS_SALIDA,
+  TIPOS_ENTRADA,
+} from './stock.helper.js';
 import { convertirACantidadBase } from '../../utils/unidadConversion.js';
 
 // Convierte cantidad a unidad base del artículo — delega en
@@ -81,42 +89,104 @@ export const movimientoService = {
     // defecto del artículo, no la que se usó para digitar.
     const unidadIdGuardado = articulo.unidadMedidaId || unidadId;
 
-    return sequelize.transaction(async (t) => {
-      // Valida stock para salidas (bloqueo de fila dentro de la misma transacción
-      // en la que se inserta el movimiento, para que check e insert sean atómicos)
-      if (TIPOS_SALIDA.includes(payload.tipo)) {
-        await assertStockSuficiente(almacen.id, articulo.id, cantidadBase, {
-          transaction: t,
-          nombreArticulo: articulo.nombre,
-          nombreAlmacen: almacen.nombre,
-        });
-      }
-
-      const movimiento = await movimientoRepository.create(
-        {
-          documento: payload.documento,
-          tipo: payload.tipo,
-          fecha: payload.fecha,
-          almacenId: almacen.id,
-          articuloId: articulo.id,
-          cantidad: cantidadBase,
-          cantidadBase,
-          unidadId: unidadIdGuardado,
-          costoUnitario: costoUnitarioBase,
-          costoTotal,
-          lote: payload.lote || null,
-          fechaVencimiento: payload.fechaVencimiento || null,
-          motivoId,
-          observaciones: payload.observaciones || null,
-          usuarioId: actorId,
-        },
-        { transaction: t },
+    // Un artículo ELABORADO nunca tiene saldo propio (pedido explícito) — no
+    // se le puede registrar una entrada manual directa (rompería el
+    // invariante de que su saldo siempre es 0), y una salida suya no
+    // descuenta su propia Existencia sino la de los insumos de su receta.
+    const recetaElaborado = await resolverRecetaSiEsElaborado(articulo.id);
+    if (recetaElaborado && TIPOS_ENTRADA.includes(payload.tipo)) {
+      throw ApiError.badRequest(
+        `"${articulo.nombre}" es un artículo elaborado — nunca tiene saldo propio, no se le puede registrar una entrada directa.`,
       );
+    }
 
-      await registrarMovimientoEnCache(almacen.id, articulo.id, payload.tipo, cantidadBase, t);
+    try {
+      return await sequelize.transaction(async (t) => {
+        if (recetaElaborado) {
+          // Salida de un elaborado: se descuentan sus insumos, no su propia
+          // Existencia (que nunca se toca). Igual se guarda el movimiento
+          // tal cual se pidió, para trazabilidad de "esto salió", pero sin
+          // aplicarle ningún delta de stock a él mismo.
+          const advertencias = [];
+          await consumirStockConReceta(almacen.id, articulo, cantidadBase, {
+            transaction: t,
+            // Siempre se fuerza acá adentro — se junta TODA advertencia de
+            // la receta en una sola pasada; recién abajo se decide si hacía
+            // falta forzar de verdad, según lo que vino en el payload.
+            forzarSaldoNegativo: true,
+            advertencias,
+            onLeafConsumido: async (leafArticulo, leafCantidadBase) => {
+              const costoUnitLeaf = Number(leafArticulo.costoCompra || 0);
+              await movimientoRepository.create(
+                {
+                  documento: payload.documento,
+                  tipo: payload.tipo,
+                  fecha: payload.fecha,
+                  almacenId: almacen.id,
+                  articuloId: leafArticulo.id,
+                  cantidad: leafCantidadBase,
+                  cantidadBase: leafCantidadBase,
+                  unidadId: leafArticulo.unidadMedidaId || null,
+                  costoUnitario: costoUnitLeaf,
+                  costoTotal: costoUnitLeaf * leafCantidadBase,
+                  motivoId,
+                  observaciones: `Salida de "${articulo.nombre}" — insumo ${leafArticulo.nombre}${payload.observaciones ? `: ${payload.observaciones}` : ''}`,
+                  usuarioId: actorId,
+                },
+                { transaction: t },
+              );
+            },
+          });
+          if (advertencias.length > 0 && payload.forzarSaldoNegativo !== true) {
+            throw new RequiereConfirmacionStockError(advertencias);
+          }
+        } else if (TIPOS_SALIDA.includes(payload.tipo)) {
+          // Valida stock para salidas (bloqueo de fila dentro de la misma
+          // transacción en la que se inserta el movimiento, para que check
+          // e insert sean atómicos)
+          await assertStockSuficiente(almacen.id, articulo.id, cantidadBase, {
+            transaction: t,
+            nombreArticulo: articulo.nombre,
+            nombreAlmacen: almacen.nombre,
+          });
+        }
 
-      return movimiento;
-    });
+        const movimiento = await movimientoRepository.create(
+          {
+            documento: payload.documento,
+            tipo: payload.tipo,
+            fecha: payload.fecha,
+            almacenId: almacen.id,
+            articuloId: articulo.id,
+            cantidad: cantidadBase,
+            cantidadBase,
+            unidadId: unidadIdGuardado,
+            costoUnitario: costoUnitarioBase,
+            costoTotal,
+            lote: payload.lote || null,
+            fechaVencimiento: payload.fechaVencimiento || null,
+            motivoId,
+            observaciones: payload.observaciones || null,
+            usuarioId: actorId,
+          },
+          { transaction: t },
+        );
+
+        // El elaborado nunca acumula saldo propio — el delta real ya se
+        // aplicó arriba a sus insumos (o no se aplicó nada, si no es
+        // elaborado, es más habitual la salida).
+        if (!recetaElaborado) {
+          await registrarMovimientoEnCache(almacen.id, articulo.id, payload.tipo, cantidadBase, t);
+        }
+
+        return movimiento;
+      });
+    } catch (err) {
+      if (err instanceof RequiereConfirmacionStockError) {
+        return { requiereConfirmacion: true, advertencias: err.advertencias };
+      }
+      throw err;
+    }
   },
 
   async createTransferencia(payload, actorId) {
@@ -127,6 +197,12 @@ export const movimientoService = {
 
     const articulo = await Articulo.findOne({ where: { uuid: payload.articuloUuid } });
     if (!articulo) throw ApiError.notFound('Artículo no encontrado');
+
+    // Un elaborado nunca tiene saldo propio — no hay nada suyo que
+    // transferir entre almacenes (ver create()).
+    if (await resolverRecetaSiEsElaborado(articulo.id)) {
+      throw ApiError.badRequest(`"${articulo.nombre}" es un artículo elaborado — nunca tiene saldo propio, no se puede transferir.`);
+    }
 
     const cantidadBase = await toBaseCantidad(articulo, payload.unidadUuid, payload.cantidad);
 

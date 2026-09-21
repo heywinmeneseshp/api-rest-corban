@@ -20,6 +20,12 @@ export const createMezclaSchema = Joi.object({
     descripcion: Joi.string().allow(null, '').max(1000),
     unidadRendimientoUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
     rendimiento: Joi.number().positive().default(1),
+    // Dosis por hectárea (en la unidad de unidadRendimiento) — la usa
+    // Sanidad Vegetal → Programación de Aspersiones para calcular cuánto
+    // preparar según las hectáreas de la finca. Opcional: no toda mezcla se
+    // usa en aspersiones.
+    dosisPorHectarea: Joi.number().positive().allow(null),
+    dosisPorHectareaUnidadUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
     precioVenta: Joi.number().min(0).allow(null).default(0),
     estado: Joi.boolean().default(true),
     // Almacén de donde la prueba va a consumir al finalizar — opcional al
@@ -41,6 +47,12 @@ export const updateMezclaSchema = Joi.object({
     descripcion: Joi.string().allow(null, '').max(1000),
     unidadRendimientoUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
     rendimiento: Joi.number().positive(),
+    dosisPorHectarea: Joi.number().positive().allow(null),
+    // Unidad de dosisPorHectarea (ej. Galones) — puede ser distinta de
+    // unidadRendimiento. Solo tiene sentido junto con dosisPorHectarea, pero
+    // no se exige acá para no romper el "vaciar dosis" (mandar
+    // dosisPorHectarea:null sin tocar la unidad).
+    dosisPorHectareaUnidadUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
     precioVenta: Joi.number().min(0).allow(null),
     estado: Joi.boolean(),
     componentes: Joi.array().items(componenteSchema).min(1),
@@ -64,6 +76,10 @@ export const listMezclaSchema = Joi.object({
     search: Joi.string().allow('', null),
     estado: Joi.boolean(),
     articuloElaboradoUuid: Joi.string().guid({ version: 'uuidv4' }),
+    // false: excluye las recetas creadas con "Nueva mezcla" (sin prueba de
+    // laboratorio) — la usa la pantalla de Mezclas — Pruebas de laboratorio,
+    // que solo debe listar pruebas reales.
+    incluirDirectas: Joi.boolean().default(true),
   }),
 });
 
@@ -106,9 +122,43 @@ export const setComponentesSchema = Joi.object({
   query: Joi.object({}),
 });
 
+// Agrega UN insumo nuevo sin tocar los ya guardados (ver
+// mezcla.service.js#agregarComponente) — no rompe el componenteId que ya
+// pueda tener una etapa apuntando a una fila existente.
+export const agregarComponenteSchema = Joi.object({
+  body: componenteSchema,
+  params: versionParams,
+  query: Joi.object({}),
+});
+
+export const actualizarComponenteSchema = Joi.object({
+  body: Joi.object({
+    cantidad: Joi.number().positive().required(),
+    unidadUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
+  }),
+  params: Joi.object({ uuid: uuidParam, versionUuid: uuidParam, componenteUuid: uuidParam }),
+  query: Joi.object({}),
+});
+
 export const agregarEtapaSchema = Joi.object({
   body: Joi.object({
-    componenteUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
+    // CORRECCION_PH: se usó el Regulador de pH para ajustar el pH — va con
+    // su propia cantidad/unidad, nunca con componenteUuid (ese insumo no
+    // forma parte de la receta permanente, ver
+    // mezcla.service.js#finalizar). El artículo NO se elige acá: siempre es
+    // "Regulador de pH", que el service resuelve/crea solo (pedido
+    // explícito — no tiene sentido corregir pH con otra cosa).
+    tipoEtapa: Joi.string().valid('MEDICION', 'CORRECCION_PH').default('MEDICION'),
+    componenteUuid: Joi.string()
+      .guid({ version: 'uuidv4' })
+      .allow(null, '')
+      .when('tipoEtapa', { is: 'CORRECCION_PH', then: Joi.forbidden() }),
+    cantidadCorreccion: Joi.number()
+      .positive()
+      .when('tipoEtapa', { is: 'CORRECCION_PH', then: Joi.required(), otherwise: Joi.forbidden() }),
+    unidadCorreccionUuid: Joi.string()
+      .guid({ version: 'uuidv4' })
+      .when('tipoEtapa', { is: 'CORRECCION_PH', then: Joi.required(), otherwise: Joi.forbidden() }),
     ph: Joi.number().min(0).max(14).required(),
     ce: Joi.number().min(0).required(),
     observaciones: Joi.string().allow(null, '').max(1000),
@@ -156,9 +206,48 @@ export const crearElaboradoSchema = Joi.object({
   query: Joi.object({}),
 });
 
+// Crea un elaborado SIN pasar por la prueba de laboratorio (pH/CE) — para
+// productos que no la necesitan (pedido explícito). Igual crea una Mezcla
+// (la receta queda guardada, reutilizable para "Nueva elaboración" después)
+// y su artículo, pero sin etapas ni resultado. Si lo crea un Administrador
+// queda activo de una; cualquier otro rol la deja PENDIENTE_APROBACION (ver
+// mezcla.service.js#crearDirecta). Al crear NO se descuenta ningún insumo —
+// eso solo pasa cuando de verdad se "elabora" (Elaboraciones → Nueva
+// elaboración), no al definir la receta.
+export const crearDirectaSchema = Joi.object({
+  body: Joi.object({
+    articuloNombre: Joi.string().trim().max(150).required(),
+    articuloCodigo: Joi.string().trim().max(50).allow(null, ''),
+    articuloCategoriaUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
+    articuloUnidadMedidaUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
+    almacenUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
+    rendimiento: Joi.number().positive().required(),
+    dosisPorHectarea: Joi.number().positive().allow(null),
+    componentes: Joi.array().items(componenteSchema).min(1).required(),
+    observaciones: Joi.string().allow(null, '').max(1000),
+  }),
+  params: Joi.object({}),
+  query: Joi.object({}),
+});
+
 export const subirFotosSchema = Joi.object({
   body: Joi.object({
     etapaUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
+    homogeneidadUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
+  }),
+  params: versionParams,
+  query: Joi.object({}),
+});
+
+// Prueba de homogeneidad (15/30/60 min de mezclada): un registro por
+// punto de control, con foto adjunta a través de subirFotosSchema
+// (homogeneidadUuid) en un segundo paso — ver
+// mezcla.service.js#registrarHomogeneidad.
+export const registrarHomogeneidadSchema = Joi.object({
+  body: Joi.object({
+    intervalo: Joi.string().valid('15MIN', '30MIN', '60MIN').required(),
+    homogenea: Joi.boolean().required(),
+    observaciones: Joi.string().allow(null, '').max(1000),
   }),
   params: versionParams,
   query: Joi.object({}),
