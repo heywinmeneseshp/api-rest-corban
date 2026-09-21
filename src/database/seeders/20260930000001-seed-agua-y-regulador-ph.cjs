@@ -14,8 +14,12 @@ module.exports = {
   async up(queryInterface) {
     const now = new Date();
 
+    // Acepta las dos variantes que ya existen en distintos servidores
+    // ("Insumo Corbana" singular en dev, "Insumos Corbana" plural en
+    // producción) — reusarla evita crear una categoría duplicada (bug
+    // real: pasó en producción, tuvo que repararse a mano).
     const [categoriaExistente] = await queryInterface.sequelize.query(
-      "SELECT id FROM articulo_categorias WHERE nombre = 'Insumo Corbana' LIMIT 1",
+      "SELECT id FROM articulo_categorias WHERE nombre IN ('Insumo Corbana', 'Insumos Corbana') LIMIT 1",
       { type: queryInterface.sequelize.QueryTypes.SELECT },
     );
     let categoriaId = categoriaExistente?.id;
