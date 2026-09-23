@@ -95,8 +95,49 @@ router.get(
  *   get:
  *     tags: [Estimaciones de Fincas]
  *     summary: Vista pivote por finca en CSV, para Excel Power Query — sin login, protegido por `apiKey` en la query
+ *     description: |
+ *       Una fila por cada combinación finca + semana de registro, con sus propias 8 (o `semanas`)
+ *       semanas siguientes en columnas "Est 1".."Est N". Pensado para que Excel (Datos → Obtener datos
+ *       → Desde la Web) refresque siempre la misma URL, sin login.
+ *
+ *       Ejemplos:
+ *       - Solo la semana vigente, todas las fincas:
+ *         `/estimaciones/pivote/csv?apiKey=XXXX`
+ *       - Una finca, todo el año 2026:
+ *         `/estimaciones/pivote/csv?apiKey=XXXX&finca=503&anio=2026`
+ *       - Una finca, rango de semanas de registro por código:
+ *         `/estimaciones/pivote/csv?apiKey=XXXX&finca=503&semanaDesde=S37-2026&semanaHasta=S38-2026`
+ *     parameters:
+ *       - in: query
+ *         name: apiKey
+ *         required: true
+ *         schema: { type: string }
+ *         description: Clave de reporte (REPORTES_API_KEY del servidor) — trátala como una contraseña.
+ *       - in: query
+ *         name: finca
+ *         schema: { type: string, example: "503" }
+ *         description: Código de la finca. Sin este filtro trae todas las fincas.
+ *       - in: query
+ *         name: semanaDesde
+ *         schema: { type: string, example: "S37-2026" }
+ *         description: Semana de registro desde (código Sww-yyyy). Se combina con semanaHasta para un rango.
+ *       - in: query
+ *         name: semanaHasta
+ *         schema: { type: string, example: "S38-2026" }
+ *         description: Semana de registro hasta (código Sww-yyyy).
+ *       - in: query
+ *         name: anio
+ *         schema: { type: integer, example: 2026 }
+ *         description: Alternativa a semanaDesde/semanaHasta — todas las semanas de registro de ese año. Se ignora si ya diste semanaDesde o semanaHasta.
+ *       - in: query
+ *         name: semanas
+ *         schema: { type: integer, default: 8, minimum: 1, maximum: 53 }
+ *         description: Cuántas columnas "Est N" (semanas hacia adelante) mostrar por fila.
  *     responses:
- *       200: { description: Archivo .csv }
+ *       200:
+ *         description: Archivo CSV (text/csv)
+ *       401:
+ *         description: apiKey inválida o no configurada
  */
 router.get(
   '/pivote/csv',
