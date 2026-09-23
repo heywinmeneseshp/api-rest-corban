@@ -821,7 +821,11 @@ export const estimacionFincaService = {
     if (filasValidas.length === 0) {
       return { totalFilas: filas.length, creados: 0, actualizados: 0, errores };
     }
-    // Existentes del mismo usuario — clave única ahora incluye semana_registro_id
+    // La clave única es finca+semana+semana_registro, SIN importar quién la
+    // haya guardado (ver estimacionFinca.model.js) — así que "existente"
+    // acá es cualquier fila de ESE cruce, de cualquier usuario, no solo las
+    // del actor actual (si se filtrara por actorId, una fila ya cargada
+    // por otro usuario se contaría como "nueva" en vez de "actualizada").
     const semanaIds = [...new Set(filasValidas.map((f) => f.semanaId))];
     const fincaIds = [...new Set(filasValidas.map((f) => f.fincaId))];
     const semanaRegistroIds = [...new Set(filasValidas.map((f) => f.semanaRegistroId))];
@@ -829,7 +833,6 @@ export const estimacionFincaService = {
       semanaIds,
       fincaIds,
       semanaRegistroIds,
-      createdBy: actorId,
     });
     const existenteSet = new Set(existentes.map((e) => `${e.semanaId}-${e.fincaId}-${e.semanaRegistroId}`));
     // Deduplicar dentro del archivo (última gana) antes del upsert — el
@@ -876,11 +879,13 @@ export const estimacionFincaService = {
     const semanaIds = [...new Set(filasValidas.map((f) => f.semanaId))];
     const fincaIds = [...new Set(filasValidas.map((f) => f.fincaId))];
     const semanaRegistroIds = [...new Set(filasValidas.map((f) => f.semanaRegistroId))];
+    // Misma nota que en bulkCreateEstimaciones: "existente" es cualquier
+    // fila de ese cruce finca+semana+semana_registro, sin filtrar por
+    // usuario — la clave única ya no distingue por quién la guardó.
     const existentes = await estimacionFincaRepository.findAllBySemanaYFinca({
       semanaIds,
       fincaIds,
       semanaRegistroIds,
-      createdBy: actorId,
     });
     const existenteSet = new Set(existentes.map((e) => `${e.semanaId}-${e.fincaId}-${e.semanaRegistroId}`));
     const actualizados = filasValidas.filter((f) => existenteSet.has(`${f.semanaId}-${f.fincaId}-${f.semanaRegistroId}`)).length;

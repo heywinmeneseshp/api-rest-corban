@@ -35,7 +35,17 @@ EstimacionFinca.init(
     underscored: true,
     paranoid: true,
     indexes: [
-      { unique: true, fields: ['semana_id', 'finca_id', 'created_by', 'semana_registro_id'] },
+      // Única por finca+semana+semana de registro — SIN created_by (pedido
+      // explícito: si dos usuarios distintos guardan la misma finca+semana
+      // en la misma semana de registro, el segundo debe REEMPLAZAR al
+      // primero, no convivir como fila aparte. Antes sí incluía
+      // created_by, lo que hacía que las vistas agregadas (pivote,
+      // escalera, comparativo — todas SUMan por finca+semana sin filtrar
+      // por usuario) terminaran sumando las estimaciones de ambos usuarios
+      // en vez de quedarse con la más reciente. Ver migración
+      // 20261103000000 para la limpieza de duplicados previos a este
+      // cambio.
+      { unique: true, fields: ['semana_id', 'finca_id', 'semana_registro_id'] },
     ],
   },
 );
