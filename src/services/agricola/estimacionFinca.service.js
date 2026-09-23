@@ -222,19 +222,19 @@ async function getCintasPorEdad(fincaId, currentIdx, semanasAll, edades) {
   });
 }
 
-// Resuelve una semana por uuid (uso normal, desde el panel) o por
-// número+año (uso para el endpoint CSV de Excel — pedido explícito: nadie
-// arma esa URL a mano con un uuid, pero sí puede escribir "semana 37 del
-// 2026"). Si vienen los dos, el uuid gana. Si no viene ninguno, null.
-async function resolverSemanaPorUuidONumero(uuidField, numeroField, anioField, query, etiqueta) {
+// Resuelve una semana por uuid (uso normal, desde el panel) o por su
+// código "Sww-yyyy" (uso para el endpoint CSV de Excel — pedido explícito:
+// nadie arma esa URL a mano con un uuid, pero sí puede escribir
+// "S37-2026"). Si vienen los dos, el uuid gana. Si no viene ninguno, null.
+async function resolverSemanaPorUuidOCodigo(uuidField, codigoField, query, etiqueta) {
   if (query[uuidField]) {
     const semana = await Semana.findOne({ where: { uuid: query[uuidField] } });
     if (!semana) throw ApiError.badRequest(`${etiqueta} no encontrada`);
     return semana;
   }
-  if (query[numeroField] !== undefined && query[anioField] !== undefined) {
-    const semana = await Semana.findOne({ where: { numeroSemana: query[numeroField], anio: query[anioField] } });
-    if (!semana) throw ApiError.badRequest(`${etiqueta}: no existe la semana ${query[numeroField]} del ${query[anioField]}`);
+  if (query[codigoField]) {
+    const semana = await Semana.findOne({ where: { codigo: query[codigoField].toUpperCase() } });
+    if (!semana) throw ApiError.badRequest(`${etiqueta}: no existe la semana "${query[codigoField]}"`);
     return semana;
   }
   return null;
@@ -250,9 +250,14 @@ async function construirFilasPivoteParaExport(query, user) {
       Finca: `${fila.finca.codigo} — ${fila.finca.nombre}`,
       Sem: fila.semanaRegistro.codigo,
     };
+    // La columna "Est N" es siempre la misma clave para TODAS las filas —
+    // no puede incluir el código de semana en el nombre (bug real: cada
+    // fila tiene una semana de registro distinta, así que "Est 1" apunta a
+    // una semana de calendario distinta por fila; meter el código en el
+    // header generaba una columna nueva por cada semana de registro en vez
+    // de reusar las mismas 8).
     for (let i = 0; i < maxColumnas; i++) {
-      const c = fila.columnas[i];
-      registro[`Est ${i + 1}${c ? ` (${c.codigo})` : ''}`] = fila.valores[i] ?? '';
+      registro[`Est ${i + 1}`] = fila.valores[i] ?? '';
     }
     registro.Observaciones = fila.observaciones || '';
     return registro;
@@ -323,9 +328,14 @@ export const estimacionFincaService = {
 
     const { fincaIds, soloPropias } = resolverVisibilidad(user);
     let fincaIdsFiltro = fincaIds;
-    if (query.fincaUuid) {
-      const finca = await Finca.findOne({ where: { uuid: query.fincaUuid } });
-      if (!finca) throw ApiError.badRequest('Finca no encontrada');
+    // `fincaUuid` (uso normal, desde el panel) o `finca` — el código (ej.
+    // "503", pedido explícito para el endpoint CSV: nadie arma esa URL a
+    // mano con un uuid). Si vienen los dos, el uuid gana.
+    if (query.fincaUuid || query.finca) {
+      const finca = query.fincaUuid
+        ? await Finca.findOne({ where: { uuid: query.fincaUuid } })
+        : await Finca.findOne({ where: { codigo: String(query.finca).trim() } });
+      if (!finca) throw ApiError.badRequest(`Finca no encontrada${query.finca ? `: "${query.finca}"` : ''}`);
       assertFincaPermitida(user, finca.id);
       fincaIdsFiltro = await expandirFincaIds([finca.id]);
     }
@@ -342,9 +352,12 @@ export const estimacionFincaService = {
 
     // Semanas de REGISTRO a mostrar (una fila por finca por cada una) — si
     // el usuario eligió un rango explícito (desde/hasta, por uuid o por
-    // número+año), se usa ESE en vez del default "solo la semana vigente".
-    const semanaDesde = await resolverSemanaPorUuidONumero('semanaDesdeUuid', 'semanaDesde', 'anioDesde', query, 'Semana desde');
-    const semanaHasta = await resolverSemanaPorUuidONumero('semanaHastaUuid', 'semanaHasta', 'anioHasta', query, 'Semana hasta');
+    // código "Sww-yyyy"), se usa ESE. Si en cambio solo dio un año (`anio`,
+    // sin rango de semana — pedido explícito), se muestran todas las
+    // semanas de registro de ESE año. Sin nada de esto, el default es
+    // "solo la semana vigente".
+    const semanaDesde = await resolverSemanaPorUuidOCodigo('semanaDesdeUuid', 'semanaDesde', query, 'Semana desde');
+    const semanaHasta = await resolverSemanaPorUuidOCodigo('semanaHastaUuid', 'semanaHasta', query, 'Semana hasta');
     let semanasRegistro;
     if (semanaDesde || semanaHasta) {
       const fechaWhere = {};
@@ -354,6 +367,12 @@ export const estimacionFincaService = {
         where: { fechaInicio: fechaWhere },
         order: [['fecha_inicio', 'ASC']],
         limit: 53,
+        attributes: ['id', 'uuid', 'codigo', 'numeroSemana', 'anio'],
+      });
+    } else if (query.anio) {
+      semanasRegistro = await Semana.findAll({
+        where: { anio: query.anio },
+        order: [['fecha_inicio', 'ASC']],
         attributes: ['id', 'uuid', 'codigo', 'numeroSemana', 'anio'],
       });
     } else {
