@@ -29,6 +29,18 @@ export const estimacionFincaController = {
     ApiResponse.send(res, { message: 'Vista escalera obtenida correctamente', data });
   }),
 
+  pivote: asyncHandler(async (req, res) => {
+    const data = await estimacionFincaService.getPivotePorFinca(req.query, req.user);
+    ApiResponse.send(res, { message: 'Vista pivote por finca obtenida correctamente', data });
+  }),
+
+  exportarPivote: asyncHandler(async (req, res) => {
+    const buffer = await estimacionFincaService.exportPivoteToExcel(req.query, req.user);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="estimaciones-por-finca-${Date.now()}.xlsx"`);
+    res.send(buffer);
+  }),
+
   comparativo: asyncHandler(async (req, res) => {
     const data = await estimacionFincaService.getComparativo(req.query, req.user);
     ApiResponse.send(res, { message: 'Comparativo estimado vs. real obtenido correctamente', data });

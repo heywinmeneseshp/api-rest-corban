@@ -50,50 +50,58 @@ export const elaboracionService = {
   // más, desde el módulo de Elaboraciones) SÍ es una corrida de producción
   // física nueva y sigue consumiendo insumos normalmente — acá el flag va
   // en `false`.
-  async create(payload, actorId, { forzarSaldoNegativo = false, omitirSalidaComponentes = false } = {}) {
-    const almacen = await Almacen.findOne({ where: { uuid: payload.almacenUuid } });
-    if (!almacen) throw ApiError.notFound('Almacén no encontrado');
+  // `transaction`: cuando el caller ya abrió su propia transacción (ver
+  // mezcla.service.js#aprobar, que necesita el lock de la MezclaVersion Y
+  // la creación de la Elaboración en una sola operación atómica para evitar
+  // que dos aprobaciones casi simultáneas dupliquen la Elaboración), se
+  // reutiliza esa transacción en vez de abrir una propia — así todo el
+  // "aprobar" queda en un único commit/rollback. Si no se pasa, se abre una
+  // transacción propia como antes (uso normal desde "Nueva elaboración").
+  async create(payload, actorId, { forzarSaldoNegativo = false, omitirSalidaComponentes = false, transaction: externalTransaction = null } = {}) {
+    const runner = async (t) => {
+      const almacen = await Almacen.findOne({ where: { uuid: payload.almacenUuid }, transaction: t });
+      if (!almacen) throw ApiError.notFound('Almacén no encontrado');
 
-    const version = await MezclaVersion.findOne({
-      where: { uuid: payload.mezclaVersionUuid },
-      include: [
-        { model: Mezcla, as: 'mezcla' },
-        { model: MezclaComponente, as: 'componentes', include: [{ model: Articulo, as: 'articulo' }, { model: UnidadMedida, as: 'unidad' }] },
-      ],
-    });
-    if (!version) throw ApiError.notFound('Versión de mezcla no encontrada');
-    if (!version.activa) throw ApiError.badRequest('Solo se puede elaborar con una versión activa');
+      const version = await MezclaVersion.findOne({
+        where: { uuid: payload.mezclaVersionUuid },
+        include: [
+          { model: Mezcla, as: 'mezcla' },
+          { model: MezclaComponente, as: 'componentes', include: [{ model: Articulo, as: 'articulo' }, { model: UnidadMedida, as: 'unidad' }] },
+        ],
+        transaction: t,
+      });
+      if (!version) throw ApiError.notFound('Versión de mezcla no encontrada');
+      if (!version.activa) throw ApiError.badRequest('Solo se puede elaborar con una versión activa');
 
-    const mezcla = version.mezcla;
-    if (!mezcla) throw ApiError.notFound('Mezcla no encontrada');
+      const mezcla = version.mezcla;
+      if (!mezcla) throw ApiError.notFound('Mezcla no encontrada');
 
-    const cantidadElaborada = Number(payload.cantidadElaborada);
-    if (cantidadElaborada <= 0) throw ApiError.badRequest('cantidadElaborada debe ser positiva');
+      const cantidadElaborada = Number(payload.cantidadElaborada);
+      if (cantidadElaborada <= 0) throw ApiError.badRequest('cantidadElaborada debe ser positiva');
 
-    const rendimiento = Number(mezcla.rendimiento || 1);
-    const factor = cantidadElaborada / rendimiento;
+      const rendimiento = Number(mezcla.rendimiento || 1);
+      const factor = cantidadElaborada / rendimiento;
 
-    // cantidadRequerida: cantidad de receta ya escalada a la producción
-    // pedida, en la unidad del COMPONENTE (comp.unidadId) — la que se
-    // muestra en el movimiento, para trazabilidad de lo que realmente se
-    // recetó. cantidadRequeridaBase: esa misma cantidad convertida a la
-    // unidad BASE del artículo (articulo.unidadMedidaId) — la única que
-    // puede tocar Existencia/costoCompra, que están expresados en esa
-    // unidad base (ver unidadConversion.js). Si el componente se midió en
-    // otra unidad sin conversión registrada, esto bloquea con un error
-    // claro en vez de descontar/costear con el número equivocado.
-    async function calcularDetalle(comp) {
-      const cantidadRequerida = Number(comp.cantidad) * factor;
-      const cantidadRequeridaBase = await convertirACantidadBase(comp.articulo, comp.unidadId, cantidadRequerida);
-      return { comp, cantidadRequerida, cantidadRequeridaBase };
-    }
-    const detalles = await Promise.all(version.componentes.map(calcularDetalle));
+      // cantidadRequerida: cantidad de receta ya escalada a la producción
+      // pedida, en la unidad del COMPONENTE (comp.unidadId) — la que se
+      // muestra en el movimiento, para trazabilidad de lo que realmente se
+      // recetó. cantidadRequeridaBase: esa misma cantidad convertida a la
+      // unidad BASE del artículo (articulo.unidadMedidaId) — la única que
+      // puede tocar Existencia/costoCompra, que están expresados en esa
+      // unidad base (ver unidadConversion.js). Si el componente se midió en
+      // otra unidad sin conversión registrada, esto bloquea con un error
+      // claro en vez de descontar/costear con el número equivocado.
+      async function calcularDetalle(comp) {
+        const cantidadRequerida = Number(comp.cantidad) * factor;
+        const cantidadRequeridaBase = await convertirACantidadBase(comp.articulo, comp.unidadId, cantidadRequerida);
+        return { comp, cantidadRequerida, cantidadRequeridaBase };
+      }
+      const detalles = await Promise.all(version.componentes.map(calcularDetalle));
 
-    const fecha = payload.fecha;
-    const observaciones = payload.observaciones || null;
+      const fecha = payload.fecha;
+      const observaciones = payload.observaciones || null;
 
-    try {
-      return await sequelize.transaction(async (t) => {
+      {
         const documento = payload.documento || (await generarCorrelativo(Elaboracion, { prefijo: 'ELAB', columna: 'documento', transaction: t }));
 
         // Costo total real: se acumula sobre lo que efectivamente se
@@ -175,7 +183,19 @@ export const elaboracionService = {
 
         const elaboracionFinal = await elaboracionRepository.findByUuid(elaboracion.uuid, { transaction: t });
         return { requiereConfirmacion: false, advertencias: [], elaboracion: elaboracionFinal };
-      });
+      }
+    };
+
+    // Con transacción externa: se deja que RequiereConfirmacionStockError
+    // (y cualquier otro error) se propague tal cual — el caller (aprobar())
+    // es quien controla el commit/rollback de esa transacción compartida y
+    // decide cómo traducir ese error hacia afuera.
+    if (externalTransaction) {
+      return runner(externalTransaction);
+    }
+
+    try {
+      return await sequelize.transaction(runner);
     } catch (err) {
       if (err instanceof RequiereConfirmacionStockError) {
         return { requiereConfirmacion: true, advertencias: err.advertencias, elaboracion: null };

@@ -15,6 +15,7 @@ import {
   setComponentesSchema,
   agregarComponenteSchema,
   actualizarComponenteSchema,
+  marcarComponentePrincipalSchema,
   agregarEtapaSchema,
   finalizarVersionSchema,
   crearElaboradoSchema,
@@ -24,6 +25,7 @@ import {
   mezclaParametrosSchema,
   listHistorialSchema,
   registrarHomogeneidadSchema,
+  subirFotosSchema,
 } from '../../validators/inventario/mezcla.validator.js';
 
 const router = Router();
@@ -91,6 +93,13 @@ router.patch(
   mezclaController.actualizarComponente,
 );
 router.post(
+  '/:uuid/versiones/:versionUuid/componentes/:componenteUuid/principal',
+  auth,
+  permission(PERMISSIONS.INVENTARIO_MEZCLAS_CREAR),
+  validate(marcarComponentePrincipalSchema),
+  mezclaController.marcarComponentePrincipal,
+);
+router.post(
   '/:uuid/versiones/:versionUuid/etapas',
   auth,
   permission(PERMISSIONS.INVENTARIO_MEZCLAS_CREAR),
@@ -109,6 +118,7 @@ router.post(
   auth,
   permission(PERMISSIONS.INVENTARIO_MEZCLAS_CREAR),
   uploadFotosLabor,
+  validate(subirFotosSchema),
   mezclaController.subirFotos,
 );
 router.post(

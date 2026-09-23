@@ -140,6 +140,12 @@ export const actualizarComponenteSchema = Joi.object({
   query: Joi.object({}),
 });
 
+export const marcarComponentePrincipalSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({ uuid: uuidParam, versionUuid: uuidParam, componenteUuid: uuidParam }),
+  query: Joi.object({}),
+});
+
 export const agregarEtapaSchema = Joi.object({
   body: Joi.object({
     // CORRECCION_PH: se usó el Regulador de pH para ajustar el pH — va con

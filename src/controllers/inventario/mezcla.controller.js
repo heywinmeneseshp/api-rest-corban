@@ -57,6 +57,11 @@ export const mezclaController = {
     ApiResponse.send(res, { message: 'Insumo actualizado correctamente', data: version });
   }),
 
+  marcarComponentePrincipal: asyncHandler(async (req, res) => {
+    const version = await mezclaService.marcarComponentePrincipal(req.params.versionUuid, req.params.componenteUuid, req.user?.id);
+    ApiResponse.send(res, { message: 'Insumo principal actualizado correctamente', data: version });
+  }),
+
   agregarEtapa: asyncHandler(async (req, res) => {
     const version = await mezclaService.agregarEtapa(req.params.versionUuid, req.body, req.user?.id);
     ApiResponse.send(res, { statusCode: HTTP_STATUS.CREATED, message: 'Etapa registrada correctamente', data: version });

@@ -21,6 +21,9 @@ EstimacionFinca.init(
     // Cajas estimadas (unidad "caja de 20kg" equivalente según la tasa de
     // conversión configurada, igual que Producción Semanal).
     cajas20kg: { type: DataTypes.DECIMAL(10, 2), allowNull: false, field: 'cajas_20kg' },
+    // Nota puntual del operador para esta finca+semana — ej. "afectada por
+    // lluvias", "atraso de corte". Opcional, no afecta el cálculo.
+    observaciones: { type: DataTypes.TEXT, allowNull: true },
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
     updatedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'updated_by' },
     deletedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'deleted_by' },

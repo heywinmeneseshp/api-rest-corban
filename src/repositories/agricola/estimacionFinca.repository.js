@@ -36,7 +36,7 @@ export const estimacionFincaRepository = {
     return EstimacionFinca.bulkCreate(
       dataArray.map((d) => ({ ...d, deletedAt: null, deletedBy: null })),
       {
-        updateOnDuplicate: ['cajas20kg', 'updatedBy', 'deletedAt', 'deletedBy'],
+        updateOnDuplicate: ['cajas20kg', 'observaciones', 'updatedBy', 'deletedAt', 'deletedBy'],
         transaction,
       },
     );
@@ -81,22 +81,52 @@ export const estimacionFincaRepository = {
     });
   },
 
-  // Cajas estimadas agregadas por finca y semana, pudiendo filtrar por el
-  // usuario que cargó — para el consolidado / comparación con producción.
-  async getCajasPorFincaYSemana({ fincaIds, semanaIds, creadoPorUserId }) {
-    if (!semanaIds || semanaIds.length === 0) return new Map();
+  // Cajas estimadas agregadas por finca+semana+semana de registro, para
+  // VARIAS semanas de registro a la vez (ej. un rango 37→38, ver vista
+  // pivote/compacta): agrupa también por semanaRegistroId, porque una
+  // misma semana objetivo puede repetirse en las ventanas de más de una
+  // semana de registro (37 y 38 ambas proyectan la semana 39, por
+  // ejemplo) y no hay que sumarlas juntas.
+  async getCajasPorFincaSemanaYRegistro({ fincaIds, semanaIds, semanaRegistroIds, creadoPorUserId }) {
+    if (!semanaIds?.length || !semanaRegistroIds?.length) return new Map();
     const results = await EstimacionFinca.findAll({
       where: {
         semanaId: { [Op.in]: semanaIds },
+        semanaRegistroId: { [Op.in]: semanaRegistroIds },
         ...(fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
         ...(creadoPorUserId ? { createdBy: creadoPorUserId } : {}),
       },
-      attributes: ['fincaId', 'semanaId', [fn('SUM', col('cajas_20kg')), 'total']],
-      group: ['fincaId', 'semanaId'],
+      attributes: ['fincaId', 'semanaId', 'semanaRegistroId', [fn('SUM', col('cajas_20kg')), 'total']],
+      group: ['fincaId', 'semanaId', 'semanaRegistroId'],
       raw: true,
     });
     const map = new Map();
-    for (const r of results) map.set(`${r.fincaId}-${r.semanaId}`, Number(r.total));
+    for (const r of results) map.set(`${r.fincaId}-${r.semanaRegistroId}-${r.semanaId}`, Number(r.total));
+    return map;
+  },
+
+  // Observación (una por finca, no por semana) guardada en cada semana de
+  // registro dada — usada por la vista pivote/compacta para mostrar el
+  // detalle sin repetir la columna 8 veces. Si una finca tiene varias filas
+  // con observaciones distintas dentro de la MISMA semana de registro (no
+  // debería, el frontend siempre las guarda iguales), se queda con la
+  // primera no vacía que encuentre.
+  async getObservacionesPorFincaYRegistro({ fincaIds, semanaRegistroIds }) {
+    if (!semanaRegistroIds?.length) return new Map();
+    const results = await EstimacionFinca.findAll({
+      where: {
+        semanaRegistroId: { [Op.in]: semanaRegistroIds },
+        ...(fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
+        observaciones: { [Op.ne]: null },
+      },
+      attributes: ['fincaId', 'semanaRegistroId', 'observaciones'],
+      raw: true,
+    });
+    const map = new Map();
+    for (const r of results) {
+      const clave = `${r.fincaId}-${r.semanaRegistroId}`;
+      if (!map.has(clave)) map.set(clave, r.observaciones);
+    }
     return map;
   },
 

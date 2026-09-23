@@ -269,6 +269,152 @@ export const estimacionFincaService = {
     };
   },
 
+  // Vista pivote por finca: una fila por CADA combinación finca + semana de
+  // registro dentro del rango pedido (pedido explícito: al filtrar ej.
+  // semana 37 a 38, se debe ver por separado lo que se registró en la 37
+  // frente a sus 8 estimaciones, y lo mismo para la 38) — alternativa más
+  // compacta que la escalera, pero sin perder la separación por semana de
+  // registro que esa sí tiene. Sin filtro de rango, solo se muestra la
+  // semana de registro vigente (comportamiento por defecto: "qué se
+  // estimó esta semana para las próximas 8"). Cada fila trae sus PROPIAS 8
+  // columnas ("Est 1".."Est N"), calculadas hacia adelante desde SU propia
+  // semana de registro — no son las mismas semanas de calendario para
+  // todas las filas.
+  async getPivotePorFinca(query, user) {
+    const hoy = new Date().toISOString().slice(0, 10);
+    const semanaActual = await semanaRepository.findByFecha(hoy);
+
+    const { fincaIds, soloPropias } = resolverVisibilidad(user);
+    let fincaIdsFiltro = fincaIds;
+    if (query.fincaUuid) {
+      const finca = await Finca.findOne({ where: { uuid: query.fincaUuid } });
+      if (!finca) throw ApiError.badRequest('Finca no encontrada');
+      assertFincaPermitida(user, finca.id);
+      fincaIdsFiltro = await expandirFincaIds([finca.id]);
+    }
+    const fincaWhere = fincaIdsFiltro ? { id: { [Op.in]: fincaIdsFiltro } } : {};
+    const fincas = await Finca.findAll({
+      where: { ...fincaWhere, estado: true },
+      attributes: ['id', 'uuid', 'codigo', 'nombre'],
+      order: [['codigo', 'ASC']],
+    });
+
+    if (!semanaActual) {
+      return { semanasRegistro: [], filas: [], calendarioIncompleto: true };
+    }
+
+    // Semanas de REGISTRO a mostrar (una fila por finca por cada una) — si
+    // el usuario eligió un rango explícito (desde/hasta), se usa ESE en vez
+    // del default "solo la semana vigente".
+    let semanasRegistro;
+    if (query.semanaDesdeUuid || query.semanaHastaUuid) {
+      const semanaDesde = query.semanaDesdeUuid ? await Semana.findOne({ where: { uuid: query.semanaDesdeUuid } }) : null;
+      const semanaHasta = query.semanaHastaUuid ? await Semana.findOne({ where: { uuid: query.semanaHastaUuid } }) : null;
+      if (query.semanaDesdeUuid && !semanaDesde) throw ApiError.badRequest('Semana desde no encontrada');
+      if (query.semanaHastaUuid && !semanaHasta) throw ApiError.badRequest('Semana hasta no encontrada');
+      const fechaWhere = {};
+      if (semanaDesde) fechaWhere[Op.gte] = semanaDesde.fechaInicio;
+      if (semanaHasta) fechaWhere[Op.lte] = semanaHasta.fechaInicio;
+      semanasRegistro = await Semana.findAll({
+        where: { fechaInicio: fechaWhere },
+        order: [['fecha_inicio', 'ASC']],
+        limit: 53,
+        attributes: ['id', 'uuid', 'codigo', 'numeroSemana', 'anio'],
+      });
+    } else {
+      semanasRegistro = [semanaActual];
+    }
+
+    const n = Number(query.semanas) || SEMANAS_DEFAULT;
+
+    // Se trae de una sola vez el calendario completo (ordenado) para poder
+    // calcular, para CADA semana de registro, sus propias N semanas
+    // siguientes por posición — evita 1 query por fila de registro.
+    const todasSemanas = await Semana.findAll({
+      order: [['fecha_inicio', 'ASC']],
+      attributes: ['id', 'uuid', 'codigo', 'numeroSemana', 'anio', 'fechaInicio'],
+    });
+    const idxPorId = new Map(todasSemanas.map((s, i) => [s.id, i]));
+
+    const columnasPorRegistro = new Map(); // semanaRegistro.id -> [semana,...]
+    let calendarioIncompleto = false;
+    for (const registro of semanasRegistro) {
+      const idx = idxPorId.get(registro.id);
+      const cols = idx === undefined ? [] : todasSemanas.slice(idx + 1, idx + 1 + n);
+      columnasPorRegistro.set(registro.id, cols);
+      if (cols.length < n) calendarioIncompleto = true;
+    }
+
+    const semanaIdsUnicos = [...new Set([...columnasPorRegistro.values()].flat().map((s) => s.id))];
+    const semanaRegistroIds = semanasRegistro.map((r) => r.id);
+
+    let creadoPorUserId;
+    if (soloPropias) {
+      creadoPorUserId = user.id;
+    } else if (query.usuarioUuid) {
+      const usuario = await User.findOne({ where: { uuid: query.usuarioUuid } });
+      creadoPorUserId = usuario?.id || -1;
+    }
+
+    const [mapaValores, mapaObservaciones] = await Promise.all([
+      estimacionFincaRepository.getCajasPorFincaSemanaYRegistro({
+        fincaIds: fincas.map((f) => f.id),
+        semanaIds: semanaIdsUnicos,
+        semanaRegistroIds,
+        creadoPorUserId,
+      }),
+      estimacionFincaRepository.getObservacionesPorFincaYRegistro({
+        fincaIds: fincas.map((f) => f.id),
+        semanaRegistroIds,
+      }),
+    ]);
+
+    const filas = [];
+    for (const f of fincas) {
+      for (const registro of semanasRegistro) {
+        const cols = columnasPorRegistro.get(registro.id);
+        filas.push({
+          finca: { uuid: f.uuid, codigo: f.codigo, nombre: f.nombre },
+          semanaRegistro: { uuid: registro.uuid, codigo: registro.codigo },
+          observaciones: mapaObservaciones.get(`${f.id}-${registro.id}`) || null,
+          columnas: cols.map((c) => ({ uuid: c.uuid, codigo: c.codigo })),
+          valores: cols.map((c) => mapaValores.get(`${f.id}-${registro.id}-${c.id}`) ?? null),
+        });
+      }
+    }
+
+    return {
+      semanaActual: { uuid: semanaActual.uuid, codigo: semanaActual.codigo },
+      semanasRegistro: semanasRegistro.map((s) => ({ uuid: s.uuid, codigo: s.codigo })),
+      maxColumnas: n,
+      filas,
+      calendarioIncompleto,
+    };
+  },
+
+  async exportPivoteToExcel(query, user) {
+    const { default: XLSX } = await import('xlsx');
+    const { filas, maxColumnas } = await estimacionFincaService.getPivotePorFinca(query, user);
+
+    const datos = filas.map((fila) => {
+      const registro = {
+        Finca: `${fila.finca.codigo} — ${fila.finca.nombre}`,
+        Sem: fila.semanaRegistro.codigo,
+      };
+      for (let i = 0; i < maxColumnas; i++) {
+        const c = fila.columnas[i];
+        registro[`Est ${i + 1}${c ? ` (${c.codigo})` : ''}`] = fila.valores[i] ?? '';
+      }
+      registro.Observaciones = fila.observaciones || '';
+      return registro;
+    });
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(datos);
+    XLSX.utils.book_append_sheet(wb, ws, 'Estimaciones por finca');
+    return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  },
+
   // Guarda (upsert) las estimaciones de las fincas habilitadas para este
   // usuario. Se valida que todas las finca+semana pertenezcan al usuario y a
   // las semanas permitidas (posteriores a la actual).
@@ -341,7 +487,15 @@ export const estimacionFincaService = {
       }
       vistos.add(clave);
 
-      filas.push({ semanaId: semana.id, fincaId: finca.id, semanaRegistroId, cajas20kg: Math.round(Number(it.cajas20kg) * 100) / 100, createdBy: actorId, updatedBy: actorId });
+      filas.push({
+        semanaId: semana.id,
+        fincaId: finca.id,
+        semanaRegistroId,
+        cajas20kg: Math.round(Number(it.cajas20kg) * 100) / 100,
+        observaciones: it.observaciones?.trim() || null,
+        createdBy: actorId,
+        updatedBy: actorId,
+      });
     }
 
     if (filas.length > 0) {

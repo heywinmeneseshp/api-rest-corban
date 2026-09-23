@@ -11,6 +11,8 @@ import {
   obtenerSemanasSchema,
   eliminarEstimacionSchema,
   obtenerEscaleraSchema,
+  obtenerPivoteSchema,
+  exportarPivoteSchema,
   obtenerComparativoSchema,
   exportarComparativoSchema,
   obtenerResumenFincaSchema,
@@ -47,6 +49,42 @@ router.get(
   permission(PERMISSIONS.ESTIMACION_VER, PERMISSIONS.ESTIMACION_CREAR, PERMISSIONS.ESTIMACION_EDITAR_DISTRIBUCION),
   validate(obtenerEscaleraSchema),
   estimacionFincaController.escalera,
+);
+
+/**
+ * @openapi
+ * /estimaciones/pivote:
+ *   get:
+ *     tags: [Estimaciones de Fincas]
+ *     summary: Vista pivote por finca — una fila por finca con lo registrado en la semana vigente para las próximas N semanas
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.get(
+  '/pivote',
+  auth,
+  permission(PERMISSIONS.ESTIMACION_VER, PERMISSIONS.ESTIMACION_CREAR, PERMISSIONS.ESTIMACION_EDITAR_DISTRIBUCION),
+  validate(obtenerPivoteSchema),
+  estimacionFincaController.pivote,
+);
+
+/**
+ * @openapi
+ * /estimaciones/pivote/exportar:
+ *   get:
+ *     tags: [Estimaciones de Fincas]
+ *     summary: Exporta a Excel (.xlsx) la vista pivote por finca
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Archivo .xlsx }
+ */
+router.get(
+  '/pivote/exportar',
+  auth,
+  permission(PERMISSIONS.ESTIMACION_VER, PERMISSIONS.ESTIMACION_CREAR, PERMISSIONS.ESTIMACION_EDITAR_DISTRIBUCION),
+  validate(exportarPivoteSchema),
+  estimacionFincaController.exportarPivote,
 );
 
 /**

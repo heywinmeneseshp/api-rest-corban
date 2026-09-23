@@ -30,6 +30,11 @@ const MOTIVO_PRUEBA_MEZCLA_CODIGO = 'PRUEBA_MEZCLA';
 // retroactivamente un resultado ya cerrado y trazado.
 const ESTADOS_EDITABLES = ['BORRADOR', 'EN_PRUEBA'];
 
+// Los 3 puntos de control de la prueba de homogeneidad que finalizar()
+// exige tener registrados (y sin ninguno fallido) antes de cerrar la
+// prueba — mismo listado que INTERVALOS_HOMOGENEIDAD en el frontend.
+const INTERVALOS_HOMOGENEIDAD = ['15MIN', '30MIN', '60MIN'];
+
 async function resolveArticulo(uuid) {
   const p = await Articulo.findOne({ where: { uuid } });
   if (!p) throw ApiError.notFound('Artículo no encontrado');
@@ -527,6 +532,32 @@ export const mezclaService = {
     });
   },
 
+  // Marca este insumo como el "principal" de la receta — selección única:
+  // desmarca cualquier otro que ya lo tuviera. Por ahora es solo un dato
+  // guardado (radio de selección única en "Receta actual"); qué lógica lo
+  // use se define más adelante.
+  async marcarComponentePrincipal(versionUuid, componenteUuid, actorId) {
+    const version = await getVersionOrFail(versionUuid);
+    assertVersionEditable(version);
+
+    const componente = await mezclaRepository.findComponenteByUuid(componenteUuid);
+    if (!componente || componente.mezclaVersionId !== version.id) {
+      throw ApiError.notFound('Componente no encontrado en esta prueba');
+    }
+
+    return sequelize.transaction(async (t) => {
+      for (const c of version.componentes || []) {
+        const debeSerPrincipal = c.uuid === componenteUuid;
+        if (Boolean(c.esPrincipal) !== debeSerPrincipal) {
+          const fila = c.uuid === componenteUuid ? componente : await mezclaRepository.findComponenteByUuid(c.uuid, { transaction: t });
+          await mezclaRepository.updateComponente(fila, { esPrincipal: debeSerPrincipal }, { transaction: t });
+        }
+      }
+      await mezclaRepository.updateVersion(version, { updatedBy: actorId }, { transaction: t });
+      return getVersionOrFail(versionUuid, { transaction: t });
+    });
+  },
+
   // Agrega una etapa de medición ACUMULATIVA: qué componente se acaba de
   // incorporar (opcional) + pH + CE medidos en ese punto. El resultado de
   // la etapa se calcula y persiste con los parámetros VIGENTES en este
@@ -853,11 +884,7 @@ export const mezclaService = {
     // prueba ya finalizada y ÓPTIMA.
     if (!version.mezcla?.nombre) throw ApiError.badRequest('Asigna un nombre a la prueba antes de finalizarla');
 
-    const ultimaEtapa = version.etapas[version.etapas.length - 1];
     const parametros = await configuracionService.getMezclaParametros();
-    const resultadoFinal = evaluarResultado(ultimaEtapa.ph, ultimaEtapa.ce, parametros);
-    const estadoPrueba = resultadoFinal === 'CUMPLE' ? 'OPTIMA' : 'NO_VALIDA';
-
     const motivo = await Motivo.findOne({ where: { codigo: MOTIVO_PRUEBA_MEZCLA_CODIGO } });
 
     try {
@@ -871,6 +898,40 @@ export const mezclaService = {
           throw ApiError.conflict('Esta prueba ya fue finalizada');
         }
 
+        // Se relee la versión completa (componentes/etapas) YA bajo el lock
+        // recién adquirido — la copia `version` de arriba (leída antes de
+        // la transacción) pudo quedar desactualizada si alguien editó la
+        // receta entre el GET inicial y este momento; finalizar() siempre
+        // debe descontar stock según el último estado confirmado.
+        const versionLock = await getVersionOrFail(versionUuid, { transaction: t });
+
+        // Si algún punto de control YA falló, la prueba se da por terminada
+        // ahí mismo — no hace falta (ni tiene sentido) seguir registrando
+        // los checkpoints restantes (pedido explícito: "si falló en una de
+        // sus etapas debería dejarla finalizar", coherente con el bloqueo
+        // que ya existe en el frontend impidiendo continuar tras un fallo).
+        // Solo si NINGUNO falló se exigen los 3 (15/30/60 min) registrados
+        // — recién ahí queda garantizado que se completó el seguimiento
+        // completo antes de dar la prueba por ÓPTIMA.
+        const yaFallo = versionLock.homogeneidad?.some((h) => h.homogenea === false);
+        if (!yaFallo) {
+          const checkpointsFaltantes = INTERVALOS_HOMOGENEIDAD.filter(
+            (codigo) => !versionLock.homogeneidad?.some((h) => h.intervalo === codigo),
+          );
+          if (checkpointsFaltantes.length > 0) {
+            throw ApiError.badRequest('Registra los 3 puntos de control de la prueba de homogeneidad (15, 30 y 60 minutos) antes de finalizar');
+          }
+        }
+
+        const ultimaEtapa = versionLock.etapas[versionLock.etapas.length - 1];
+        const resultadoFinal = evaluarResultado(ultimaEtapa.ph, ultimaEtapa.ce, parametros);
+        // Aunque el pH/CE final haya dado dentro de rango, un punto de
+        // control de homogeneidad fallido invalida la prueba igual (pedido
+        // explícito: "no puede quedar como ÓPTIMA porque falló en la etapa
+        // de homogeneidad") — la mezcla se separó, así que no sirve aunque
+        // el químico final haya cumplido.
+        const estadoPrueba = resultadoFinal === 'CUMPLE' && !yaFallo ? 'OPTIMA' : 'NO_VALIDA';
+
         const documento = await generarCorrelativo(MezclaVersion, { prefijo: 'MIX', columna: 'movimientoDocumento', padding: 4, transaction: t });
 
         // Cada componente puede ser un insumo real o, a su vez, OTRO
@@ -880,9 +941,9 @@ export const mezclaService = {
         // recursivamente; acá solo se crea el MovimientoInventario 'SALIDA'
         // por cada insumo real efectivamente descontado.
         const advertencias = [];
-        for (const comp of version.componentes) {
+        for (const comp of versionLock.componentes) {
           const cantidadBase = await convertirACantidadBase(comp.articulo, comp.unidadId, comp.cantidad, { transaction: t });
-          await consumirStockConReceta(version.almacenId, comp.articulo, cantidadBase, {
+          await consumirStockConReceta(versionLock.almacenId, comp.articulo, cantidadBase, {
             transaction: t,
             // Siempre se fuerza acá adentro — se junta TODA advertencia de
             // la receta en una sola pasada; recién abajo se decide si hacía
@@ -896,7 +957,7 @@ export const mezclaService = {
                   documento,
                   tipo: 'SALIDA',
                   fecha: new Date().toISOString().slice(0, 10),
-                  almacenId: version.almacenId,
+                  almacenId: versionLock.almacenId,
                   articuloId: leafArticulo.id,
                   // Se guarda en la unidad BASE del artículo — pedido
                   // explícito: aunque se haya medido en otra unidad, el
@@ -908,7 +969,7 @@ export const mezclaService = {
                   costoUnitario: costoUnit,
                   costoTotal: costoUnit * leafCantidadBase,
                   motivoId: motivo?.id || null,
-                  observaciones: `Prueba de mezcla ${version.mezcla?.nombre || ''} — ${documento}`,
+                  observaciones: `Prueba de mezcla ${versionLock.mezcla?.nombre || ''} — ${documento}`,
                   usuarioId: actorId,
                 },
                 { transaction: t },
@@ -922,7 +983,7 @@ export const mezclaService = {
         // documento MIX-xxxx, pero NUNCA se agregan a mezcla_componentes:
         // no deben quedar en la receta permanente del elaborado (pedido
         // explícito).
-        const etapasCorreccion = (version.etapas || []).filter((et) => et.tipoEtapa === 'CORRECCION_PH');
+        const etapasCorreccion = (versionLock.etapas || []).filter((et) => et.tipoEtapa === 'CORRECCION_PH');
         for (const et of etapasCorreccion) {
           const cantidadBase = await convertirACantidadBase(
             et.articuloCorreccion,
@@ -930,7 +991,7 @@ export const mezclaService = {
             et.cantidadCorreccion,
             { transaction: t },
           );
-          await consumirStockConReceta(version.almacenId, et.articuloCorreccion, cantidadBase, {
+          await consumirStockConReceta(versionLock.almacenId, et.articuloCorreccion, cantidadBase, {
             transaction: t,
             forzarSaldoNegativo: true,
             advertencias,
@@ -941,7 +1002,7 @@ export const mezclaService = {
                   documento,
                   tipo: 'SALIDA',
                   fecha: new Date().toISOString().slice(0, 10),
-                  almacenId: version.almacenId,
+                  almacenId: versionLock.almacenId,
                   articuloId: leafArticulo.id,
                   cantidad: leafCantidadBase,
                   cantidadBase: leafCantidadBase,
@@ -949,7 +1010,7 @@ export const mezclaService = {
                   costoUnitario: costoUnit,
                   costoTotal: costoUnit * leafCantidadBase,
                   motivoId: motivo?.id || null,
-                  observaciones: `Corrección de pH — prueba ${version.mezcla?.nombre || ''} — ${documento}`,
+                  observaciones: `Corrección de pH — prueba ${versionLock.mezcla?.nombre || ''} — ${documento}`,
                   usuarioId: actorId,
                 },
                 { transaction: t },
@@ -1095,61 +1156,82 @@ export const mezclaService = {
       }
     }
 
-    // Una receta creada directa (crearDirecta(), sin prueba de laboratorio)
-    // nunca guarda elaboradoPayload — nunca produjo un lote, así que
-    // aprobar acá solo activa el artículo, sin tocar stock (pedido
-    // explícito: crear/aprobar la receta no debe descontar insumos).
-    let elaboracionId = null;
-    if (version.elaboradoPayload) {
-      const pl = version.elaboradoPayload;
-      const resultado = await elaboracionService.create(
-        {
-          mezclaVersionUuid: version.uuid,
-          cantidadElaborada: pl.cantidadElaborada,
-          almacenUuid: pl.almacenUuid,
-          // La fecha del elaborado es la de APROBACIÓN, no la que se envió
-          // al usar "Crear elaborado" (ahí solo se guardan los datos en
-          // espera — el elaborado de verdad, con su entrada de inventario,
-          // nace acá).
-          fecha: new Date().toISOString().slice(0, 10),
-          observaciones: pl.observaciones,
-        },
-        actorId,
-        // omitirSalidaComponentes: los insumos ya se descontaron al
-        // finalizar la prueba — esta conversión solo deja el
-        // registro/costeo de la Elaboración (el elaborado en sí nunca
-        // tiene saldo propio, ver elaboracion.service.js#create).
-        { forzarSaldoNegativo: forzarSaldoNegativo || pl.forzarSaldoNegativo === true, omitirSalidaComponentes: true },
-      );
-      if (resultado.requiereConfirmacion) {
-        return { requiereConfirmacion: true, advertencias: resultado.advertencias, version: null };
+    // Todo el aprobar queda en UNA sola transacción con lock — el lock se
+    // toma primero (antes de crear la Elaboración), así dos aprobaciones
+    // casi simultáneas de la misma prueba nunca pueden crear dos
+    // Elaboraciones/movimientos duplicados: la segunda espera el lock, lo
+    // obtiene después de que la primera ya cambió el estado a CONVERTIDA, y
+    // falla en el chequeo de estado sin haber tocado inventario.
+    try {
+      return await sequelize.transaction(async (t) => {
+        const fresh = await MezclaVersion.findByPk(version.id, { transaction: t, lock: t.LOCK.UPDATE });
+        if (fresh.estadoPrueba !== 'PENDIENTE_APROBACION') {
+          throw ApiError.conflict('Esta prueba ya fue aprobada');
+        }
+
+        // Una receta creada directa (crearDirecta(), sin prueba de
+        // laboratorio) nunca guarda elaboradoPayload — nunca produjo un
+        // lote, así que aprobar acá solo activa el artículo, sin tocar
+        // stock (pedido explícito: crear/aprobar la receta no debe
+        // descontar insumos).
+        let elaboracionId = null;
+        if (version.elaboradoPayload) {
+          const pl = version.elaboradoPayload;
+          const resultado = await elaboracionService.create(
+            {
+              mezclaVersionUuid: version.uuid,
+              cantidadElaborada: pl.cantidadElaborada,
+              almacenUuid: pl.almacenUuid,
+              // La fecha del elaborado es la de APROBACIÓN, no la que se
+              // envió al usar "Crear elaborado" (ahí solo se guardan los
+              // datos en espera — el elaborado de verdad, con su entrada de
+              // inventario, nace acá).
+              fecha: new Date().toISOString().slice(0, 10),
+              observaciones: pl.observaciones,
+            },
+            actorId,
+            // omitirSalidaComponentes: los insumos ya se descontaron al
+            // finalizar la prueba — esta conversión solo deja el
+            // registro/costeo de la Elaboración (el elaborado en sí nunca
+            // tiene saldo propio, ver elaboracion.service.js#create).
+            // transaction: t — comparte el lock ya tomado arriba, todo
+            // queda en un único commit/rollback.
+            { forzarSaldoNegativo: forzarSaldoNegativo || pl.forzarSaldoNegativo === true, omitirSalidaComponentes: true, transaction: t },
+          );
+          if (resultado.requiereConfirmacion) {
+            // No se puede "return" un requiereConfirmacion normal acá: el
+            // callback de sequelize.transaction espera que devolver == commit.
+            // Se lanza un marcador para forzar el ROLLBACK y se traduce
+            // afuera del try/catch, igual que finalizar()/crearElaborado().
+            throw new RequiereConfirmacionStockError(resultado.advertencias);
+          }
+          elaboracionId = resultado.elaboracion.id;
+        }
+
+        await mezclaRepository.updateVersion(
+          fresh,
+          {
+            estadoPrueba: 'CONVERTIDA',
+            ...(elaboracionId ? { elaboracionId } : {}),
+            aprobadaEn: new Date(),
+            aprobadaPorId: actorId,
+            updatedBy: actorId,
+          },
+          { transaction: t },
+        );
+        const articuloElaboradoId = version.mezcla?.articuloElaboradoId;
+        if (articuloElaboradoId) {
+          await Articulo.update({ estado: true, updatedBy: actorId }, { where: { id: articuloElaboradoId }, transaction: t });
+        }
+
+        return { requiereConfirmacion: false, advertencias: [], version: await getVersionOrFail(versionUuid, { transaction: t }) };
+      });
+    } catch (err) {
+      if (err instanceof RequiereConfirmacionStockError) {
+        return { requiereConfirmacion: true, advertencias: err.advertencias, version: null };
       }
-      elaboracionId = resultado.elaboracion.id;
+      throw err;
     }
-
-    await sequelize.transaction(async (t) => {
-      const fresh = await MezclaVersion.findByPk(version.id, { transaction: t, lock: t.LOCK.UPDATE });
-      if (fresh.estadoPrueba !== 'PENDIENTE_APROBACION') {
-        throw ApiError.conflict('Esta prueba ya fue aprobada');
-      }
-      await mezclaRepository.updateVersion(
-        fresh,
-        {
-          estadoPrueba: 'CONVERTIDA',
-          ...(elaboracionId ? { elaboracionId } : {}),
-          aprobadaEn: new Date(),
-          aprobadaPorId: actorId,
-          updatedBy: actorId,
-        },
-        { transaction: t },
-      );
-      const articuloElaboradoId = version.mezcla?.articuloElaboradoId;
-      if (articuloElaboradoId) {
-        await Articulo.update({ estado: true, updatedBy: actorId }, { where: { id: articuloElaboradoId }, transaction: t });
-      }
-    });
-
-    return { requiereConfirmacion: false, advertencias: [], version: await getVersionOrFail(versionUuid) };
   },
 };
 

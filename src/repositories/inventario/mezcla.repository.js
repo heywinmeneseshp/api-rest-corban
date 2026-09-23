@@ -221,15 +221,6 @@ export const mezclaRepository = {
     return Mezcla.findOne({ where: { uuid }, include: DETAIL_INCLUDE, transaction });
   },
 
-  findByNombre(nombre) {
-    return Mezcla.findOne({ where: { nombre } });
-  },
-
-  findByCodigo(codigo) {
-    if (!codigo) return null;
-    return Mezcla.findOne({ where: { codigo } });
-  },
-
   create(data, { transaction } = {}) {
     return Mezcla.create(data, { transaction });
   },
@@ -341,10 +332,6 @@ export const mezclaRepository = {
   // ─── Componentes de una versión (en edición libre mientras la prueba
   // está en BORRADOR/EN_PRUEBA — ver mezcla.service.js#setComponentes) ───
 
-  findComponentesByVersionId(mezclaVersionId, { transaction } = {}) {
-    return MezclaComponente.findAll({ where: { mezclaVersionId }, transaction });
-  },
-
   destroyComponentesByVersionId(mezclaVersionId, { transaction } = {}) {
     return MezclaComponente.destroy({ where: { mezclaVersionId }, transaction });
   },
@@ -373,10 +360,6 @@ export const mezclaRepository = {
 
   createEtapa(data, { transaction } = {}) {
     return MezclaEtapa.create(data, { transaction });
-  },
-
-  findUltimaEtapa(mezclaVersionId, { transaction } = {}) {
-    return MezclaEtapa.findOne({ where: { mezclaVersionId }, order: [['numero', 'DESC']], transaction });
   },
 
   findEtapaByUuid(uuid) {
@@ -413,10 +396,6 @@ export const mezclaRepository = {
 
   findHomogeneidadByVersionEIntervalo(mezclaVersionId, intervalo, { transaction } = {}) {
     return MezclaHomogeneidad.findOne({ where: { mezclaVersionId, intervalo }, transaction });
-  },
-
-  findHomogeneidadByUuid(uuid, { transaction } = {}) {
-    return MezclaHomogeneidad.findOne({ where: { uuid }, transaction });
   },
 
   createHomogeneidad(data, { transaction } = {}) {
