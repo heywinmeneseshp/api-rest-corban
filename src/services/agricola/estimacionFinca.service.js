@@ -222,6 +222,25 @@ async function getCintasPorEdad(fincaId, currentIdx, semanasAll, edades) {
   });
 }
 
+// Filas "planas" (una fila = un objeto {columna: valor}) del pivote por
+// finca, listas para volcar a Excel/CSV — comparte la lógica entre
+// exportPivoteToExcel y exportPivoteToCsv para no duplicarla.
+async function construirFilasPivoteParaExport(query, user) {
+  const { filas, maxColumnas } = await estimacionFincaService.getPivotePorFinca(query, user);
+  return filas.map((fila) => {
+    const registro = {
+      Finca: `${fila.finca.codigo} — ${fila.finca.nombre}`,
+      Sem: fila.semanaRegistro.codigo,
+    };
+    for (let i = 0; i < maxColumnas; i++) {
+      const c = fila.columnas[i];
+      registro[`Est ${i + 1}${c ? ` (${c.codigo})` : ''}`] = fila.valores[i] ?? '';
+    }
+    registro.Observaciones = fila.observaciones || '';
+    return registro;
+  });
+}
+
 export const estimacionFincaService = {
   // Lista las próximas semanas a estimar (empezando la semana DESPUÉS de la
   // actual) junto con la tasa de conversión de cajas que se aplica.
@@ -394,25 +413,25 @@ export const estimacionFincaService = {
 
   async exportPivoteToExcel(query, user) {
     const { default: XLSX } = await import('xlsx');
-    const { filas, maxColumnas } = await estimacionFincaService.getPivotePorFinca(query, user);
-
-    const datos = filas.map((fila) => {
-      const registro = {
-        Finca: `${fila.finca.codigo} — ${fila.finca.nombre}`,
-        Sem: fila.semanaRegistro.codigo,
-      };
-      for (let i = 0; i < maxColumnas; i++) {
-        const c = fila.columnas[i];
-        registro[`Est ${i + 1}${c ? ` (${c.codigo})` : ''}`] = fila.valores[i] ?? '';
-      }
-      registro.Observaciones = fila.observaciones || '';
-      return registro;
-    });
+    const datos = await construirFilasPivoteParaExport(query, user);
 
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(datos);
     XLSX.utils.book_append_sheet(wb, ws, 'Estimaciones por finca');
     return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  },
+
+  // Mismo dato que exportPivoteToExcel pero como texto CSV — para el
+  // endpoint público de solo lectura que consume Excel Power Query (ver
+  // requireReportApiKey.middleware.js): una URL simple que Excel puede
+  // refrescar sola, sin tener que abrir un .xlsx generado.
+  async exportPivoteToCsv(query, user) {
+    const { default: XLSX } = await import('xlsx');
+    const datos = await construirFilasPivoteParaExport(query, user);
+    const ws = XLSX.utils.json_to_sheet(datos);
+    // BOM al inicio — sin esto Excel abre los acentos/ñ mal en un CSV UTF-8
+    // (los interpreta como Latin-1 por defecto en Windows).
+    return String.fromCharCode(0xfeff) + XLSX.utils.sheet_to_csv(ws);
   },
 
   // Guarda (upsert) las estimaciones de las fincas habilitadas para este

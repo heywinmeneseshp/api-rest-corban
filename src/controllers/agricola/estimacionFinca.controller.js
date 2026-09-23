@@ -41,6 +41,18 @@ export const estimacionFincaController = {
     res.send(buffer);
   }),
 
+  // Endpoint público (sin login, protegido por apiKey en la query — ver
+  // requireReportApiKey.middleware.js) para que Excel Power Query pueda
+  // refrescar el reporte solo, apuntando siempre a la misma URL. Ve TODAS
+  // las fincas (no hay `req.user` acá) — es intencional, es un reporte
+  // gerencial, no una vista con el scoping por finca de un usuario puntual.
+  exportarPivoteCsv: asyncHandler(async (req, res) => {
+    const csv = await estimacionFincaService.exportPivoteToCsv(req.query, {});
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `inline; filename="estimaciones-por-finca-${Date.now()}.csv"`);
+    res.send(csv);
+  }),
+
   comparativo: asyncHandler(async (req, res) => {
     const data = await estimacionFincaService.getComparativo(req.query, req.user);
     ApiResponse.send(res, { message: 'Comparativo estimado vs. real obtenido correctamente', data });

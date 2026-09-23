@@ -4,6 +4,7 @@ import { auth } from '../../middlewares/auth.middleware.js';
 import { permission } from '../../middlewares/permission.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
 import { uploadBulkFile } from '../../middlewares/upload.middleware.js';
+import { requireReportApiKey } from '../../middlewares/requireReportApiKey.middleware.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import {
   listarEstimacionesSchema,
@@ -13,6 +14,7 @@ import {
   obtenerEscaleraSchema,
   obtenerPivoteSchema,
   exportarPivoteSchema,
+  exportarPivoteCsvSchema,
   obtenerComparativoSchema,
   exportarComparativoSchema,
   obtenerResumenFincaSchema,
@@ -85,6 +87,25 @@ router.get(
   permission(PERMISSIONS.ESTIMACION_VER, PERMISSIONS.ESTIMACION_CREAR, PERMISSIONS.ESTIMACION_EDITAR_DISTRIBUCION),
   validate(exportarPivoteSchema),
   estimacionFincaController.exportarPivote,
+);
+
+/**
+ * @openapi
+ * /estimaciones/pivote/csv:
+ *   get:
+ *     tags: [Estimaciones de Fincas]
+ *     summary: Vista pivote por finca en CSV, para Excel Power Query — sin login, protegido por `apiKey` en la query
+ *     responses:
+ *       200: { description: Archivo .csv }
+ */
+router.get(
+  '/pivote/csv',
+  // Sin `auth`/`permission` a propósito — este endpoint es para
+  // herramientas externas (Excel) que no manejan login/JWT, se protege con
+  // requireReportApiKey en su lugar (clave en la query, no un header).
+  requireReportApiKey,
+  validate(exportarPivoteCsvSchema),
+  estimacionFincaController.exportarPivoteCsv,
 );
 
 /**

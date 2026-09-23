@@ -50,6 +50,14 @@ export const env = {
     // revés no hace falta (Corbana llama a Banarica con banaricaApiKey de
     // arriba).
     corbanaApiKey: process.env.CORBANA_API_KEY || '',
+    // Clave separada (NO la de Banarica) para reportes de solo lectura
+    // consumidos por herramientas externas que no manejan login/JWT, como
+    // Excel Power Query — va en la query string de la URL en vez de un
+    // header, porque esas herramientas arman la URL una sola vez y la
+    // reusan para refrescar (ver requireReportApiKey.middleware.js). Si no
+    // se configura, esos endpoints quedan deshabilitados (ver el
+    // middleware — nunca deja pasar con clave vacía).
+    reportesApiKey: process.env.REPORTES_API_KEY || '',
   },
 
   rateLimit: {

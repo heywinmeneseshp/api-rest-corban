@@ -92,6 +92,17 @@ export const exportarPivoteSchema = Joi.object({
   query: pivoteQuerySchema,
 });
 
+// Endpoint público de solo lectura (sin login, ver
+// requireReportApiKey.middleware.js) para Excel Power Query — mismos
+// filtros del pivote + `apiKey` obligatoria en la query string.
+export const exportarPivoteCsvSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({}),
+  query: pivoteQuerySchema.keys({
+    apiKey: Joi.string().required(),
+  }),
+});
+
 // Mismos filtros que la escalera (finca puntual, usuario si sos admin, año).
 const comparativoQuerySchema = Joi.object({
   fincaUuid: Joi.string().uuid(),
@@ -176,6 +187,7 @@ export default {
   obtenerEscaleraSchema,
   obtenerPivoteSchema,
   exportarPivoteSchema,
+  exportarPivoteCsvSchema,
   obtenerComparativoSchema,
   exportarComparativoSchema,
   obtenerResumenFincaSchema,
