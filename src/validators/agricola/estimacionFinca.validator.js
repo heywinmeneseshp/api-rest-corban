@@ -69,16 +69,27 @@ export const obtenerEscaleraSchema = Joi.object({
 });
 
 // Vista pivote por finca: mismos filtros que la escalera + o bien un rango
-// explícito de semanas (semanaDesdeUuid/semanaHastaUuid, pedido explícito
-// de filtro) o, sin rango, cuántas semanas hacia adelante mostrar (por
-// defecto 8, igual que "Cargar estimaciones").
+// explícito de semanas (semanaDesdeUuid/semanaHastaUuid desde el panel, o
+// semanaDesde+anioDesde / semanaHasta+anioHasta por código — pedido
+// explícito para el endpoint CSV: nadie arma esa URL a mano con un uuid,
+// pero sí puede escribir "semana 37 del 2026") o, sin rango, cuántas
+// semanas hacia adelante mostrar (por defecto 8, igual que "Cargar
+// estimaciones").
 const pivoteQuerySchema = Joi.object({
   fincaUuid: Joi.string().uuid(),
   usuarioUuid: Joi.string().uuid(),
   semanas: Joi.number().integer().min(1).max(53).default(8),
   semanaDesdeUuid: Joi.string().uuid(),
   semanaHastaUuid: Joi.string().uuid(),
-});
+  semanaDesde: Joi.number().integer().min(1).max(53),
+  anioDesde: Joi.number().integer().min(2000).max(2100),
+  semanaHasta: Joi.number().integer().min(1).max(53),
+  anioHasta: Joi.number().integer().min(2000).max(2100),
+})
+  .with('semanaDesde', 'anioDesde')
+  .with('anioDesde', 'semanaDesde')
+  .with('semanaHasta', 'anioHasta')
+  .with('anioHasta', 'semanaHasta');
 
 export const obtenerPivoteSchema = Joi.object({
   body: Joi.object({}),

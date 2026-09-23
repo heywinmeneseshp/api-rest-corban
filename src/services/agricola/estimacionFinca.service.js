@@ -222,6 +222,24 @@ async function getCintasPorEdad(fincaId, currentIdx, semanasAll, edades) {
   });
 }
 
+// Resuelve una semana por uuid (uso normal, desde el panel) o por
+// número+año (uso para el endpoint CSV de Excel — pedido explícito: nadie
+// arma esa URL a mano con un uuid, pero sí puede escribir "semana 37 del
+// 2026"). Si vienen los dos, el uuid gana. Si no viene ninguno, null.
+async function resolverSemanaPorUuidONumero(uuidField, numeroField, anioField, query, etiqueta) {
+  if (query[uuidField]) {
+    const semana = await Semana.findOne({ where: { uuid: query[uuidField] } });
+    if (!semana) throw ApiError.badRequest(`${etiqueta} no encontrada`);
+    return semana;
+  }
+  if (query[numeroField] !== undefined && query[anioField] !== undefined) {
+    const semana = await Semana.findOne({ where: { numeroSemana: query[numeroField], anio: query[anioField] } });
+    if (!semana) throw ApiError.badRequest(`${etiqueta}: no existe la semana ${query[numeroField]} del ${query[anioField]}`);
+    return semana;
+  }
+  return null;
+}
+
 // Filas "planas" (una fila = un objeto {columna: valor}) del pivote por
 // finca, listas para volcar a Excel/CSV — comparte la lógica entre
 // exportPivoteToExcel y exportPivoteToCsv para no duplicarla.
@@ -323,14 +341,12 @@ export const estimacionFincaService = {
     }
 
     // Semanas de REGISTRO a mostrar (una fila por finca por cada una) — si
-    // el usuario eligió un rango explícito (desde/hasta), se usa ESE en vez
-    // del default "solo la semana vigente".
+    // el usuario eligió un rango explícito (desde/hasta, por uuid o por
+    // número+año), se usa ESE en vez del default "solo la semana vigente".
+    const semanaDesde = await resolverSemanaPorUuidONumero('semanaDesdeUuid', 'semanaDesde', 'anioDesde', query, 'Semana desde');
+    const semanaHasta = await resolverSemanaPorUuidONumero('semanaHastaUuid', 'semanaHasta', 'anioHasta', query, 'Semana hasta');
     let semanasRegistro;
-    if (query.semanaDesdeUuid || query.semanaHastaUuid) {
-      const semanaDesde = query.semanaDesdeUuid ? await Semana.findOne({ where: { uuid: query.semanaDesdeUuid } }) : null;
-      const semanaHasta = query.semanaHastaUuid ? await Semana.findOne({ where: { uuid: query.semanaHastaUuid } }) : null;
-      if (query.semanaDesdeUuid && !semanaDesde) throw ApiError.badRequest('Semana desde no encontrada');
-      if (query.semanaHastaUuid && !semanaHasta) throw ApiError.badRequest('Semana hasta no encontrada');
+    if (semanaDesde || semanaHasta) {
       const fechaWhere = {};
       if (semanaDesde) fechaWhere[Op.gte] = semanaDesde.fechaInicio;
       if (semanaHasta) fechaWhere[Op.lte] = semanaHasta.fechaInicio;
