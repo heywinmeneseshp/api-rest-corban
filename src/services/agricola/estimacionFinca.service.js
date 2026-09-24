@@ -248,7 +248,7 @@ async function construirFilasPivoteParaExport(query, user) {
   return filas.map((fila) => {
     const registro = {
       Finca: `${fila.finca.codigo} — ${fila.finca.nombre}`,
-      Sem: fila.semanaRegistro.codigo,
+      'Semana de registro': fila.semanaRegistro.codigo,
     };
     // La columna "Est N" es siempre la misma clave para TODAS las filas —
     // no puede incluir el código de semana en el nombre (bug real: cada
