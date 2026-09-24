@@ -19,7 +19,7 @@ import { configuracionService } from '../sistema/configuracion.service.js';
 import { elaboracionService } from './elaboracion.service.js';
 import { articuloService } from './articulo.service.js';
 import { consumirStockConReceta, RequiereConfirmacionStockError } from './stock.helper.js';
-import { convertirACantidadBase } from '../../utils/unidadConversion.js';
+import { convertirACantidadBase, resolverFactorConversion } from '../../utils/unidadConversion.js';
 import { generarCorrelativo } from '../../utils/correlativo.js';
 import { cargarFotosMezclaPrueba, eliminarFotoDeDrive, descargarArchivoDeDrive } from '../googleDrive/cargueFotosLabor.js';
 
@@ -34,6 +34,13 @@ const ESTADOS_EDITABLES = ['BORRADOR', 'EN_PRUEBA'];
 // exige tener registrados (y sin ninguno fallido) antes de cerrar la
 // prueba — mismo listado que INTERVALOS_HOMOGENEIDAD en el frontend.
 const INTERVALOS_HOMOGENEIDAD = ['15MIN', '30MIN', '60MIN'];
+
+// Valor por defecto de "Volumen por hectárea" (ver elaboraciones/page.js)
+// para un elaborado recién aprobado que todavía no tiene ninguno cargado a
+// mano — pedido explícito: 6 galones/ha, pero SIEMPRE convertido y
+// guardado en Litros (no en Galones), para que quede en la misma unidad
+// sin importar qué haya elegido el operador para otras mezclas.
+const DOSIS_POR_HECTAREA_DEFAULT_GALONES = 6;
 
 async function resolveArticulo(uuid) {
   const p = await Articulo.findOne({ where: { uuid } });
@@ -1222,6 +1229,30 @@ export const mezclaService = {
         const articuloElaboradoId = version.mezcla?.articuloElaboradoId;
         if (articuloElaboradoId) {
           await Articulo.update({ estado: true, updatedBy: actorId }, { where: { id: articuloElaboradoId }, transaction: t });
+
+          // Si el operador nunca cargó un "Volumen por hectárea" a mano
+          // para esta mezcla, se le pone un default acá (pedido explícito)
+          // — 6 galones/ha convertidos a Litros, nunca en Galones. Si ya
+          // tiene uno cargado, no se pisa.
+          if (version.mezcla && (version.mezcla.dosisPorHectarea === null || version.mezcla.dosisPorHectarea === undefined)) {
+            const [galon, litro] = await Promise.all([
+              UnidadMedida.findOne({ where: { nombre: 'Galón' }, transaction: t }),
+              UnidadMedida.findOne({ where: { nombre: 'Litro' }, transaction: t }),
+            ]);
+            if (galon && litro) {
+              const factor = await resolverFactorConversion(galon.id, litro.id, { transaction: t });
+              if (factor !== null) {
+                await Mezcla.update(
+                  {
+                    dosisPorHectarea: DOSIS_POR_HECTAREA_DEFAULT_GALONES * factor,
+                    dosisPorHectareaUnidadId: litro.id,
+                    updatedBy: actorId,
+                  },
+                  { where: { id: version.mezcla.id }, transaction: t },
+                );
+              }
+            }
+          }
         }
 
         return { requiereConfirmacion: false, advertencias: [], version: await getVersionOrFail(versionUuid, { transaction: t }) };
