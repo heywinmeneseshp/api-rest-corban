@@ -3,6 +3,12 @@ import Joi from 'joi';
 const uuidParam = Joi.string().guid({ version: 'uuidv4' }).required();
 
 const componenteSchema = Joi.object({
+  // Opcional: si el cliente lo manda (app móvil, creado offline antes de
+  // sincronizar), se usa ESE uuid en vez de generar uno nuevo — permite
+  // encadenar acciones offline (ej. "agregar etapa" referenciando un
+  // componente que todavía no confirmó el servidor). Si no viene, se
+  // genera como siempre (no rompe la web, que nunca lo manda).
+  uuid: Joi.string().guid({ version: 'uuidv4' }),
   articuloUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
   cantidad: Joi.number().positive().required(),
   unidadUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
@@ -10,6 +16,14 @@ const componenteSchema = Joi.object({
 
 export const createMezclaSchema = Joi.object({
   body: Joi.object({
+    // Opcional: uuid propio de la Mezcla Y de su primera MezclaVersion —
+    // mismo criterio que componenteSchema.uuid más arriba, para que la app
+    // móvil pueda crear una prueba offline y referenciarla (agregar
+    // componentes/etapas) antes de que el servidor confirme la creación.
+    // Ambos (Mezcla y MezclaVersion) reciben el MISMO uuid enviado, no
+    // porque compartan identidad sino para que el cliente solo tenga que
+    // generar y recordar un uuid por prueba en vez de dos.
+    uuid: Joi.string().guid({ version: 'uuidv4' }),
     // Sin `codigo`: lo genera el sistema (correlativo MEZ-0001) — ver
     // mezcla.service.js#create. `nombre` tampoco es obligatorio acá: se
     // asigna más adelante, antes de finalizar la prueba (finalizar() sí lo
@@ -148,6 +162,9 @@ export const marcarComponentePrincipalSchema = Joi.object({
 
 export const agregarEtapaSchema = Joi.object({
   body: Joi.object({
+    // Opcional: uuid propio de la etapa — mismo criterio que
+    // componenteSchema.uuid (app móvil offline).
+    uuid: Joi.string().guid({ version: 'uuidv4' }),
     // CORRECCION_PH: se usó el Regulador de pH para ajustar el pH — va con
     // su propia cantidad/unidad, nunca con componenteUuid (ese insumo no
     // forma parte de la receta permanente, ver
@@ -251,6 +268,9 @@ export const subirFotosSchema = Joi.object({
 // mezcla.service.js#registrarHomogeneidad.
 export const registrarHomogeneidadSchema = Joi.object({
   body: Joi.object({
+    // Opcional: uuid propio del punto de control — mismo criterio que
+    // componenteSchema.uuid (app móvil offline).
+    uuid: Joi.string().guid({ version: 'uuidv4' }),
     intervalo: Joi.string().valid('15MIN', '30MIN', '60MIN').required(),
     homogenea: Joi.boolean().required(),
     observaciones: Joi.string().allow(null, '').max(1000),

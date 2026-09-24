@@ -220,6 +220,10 @@ export const mezclaService = {
 
       const mezcla = await mezclaRepository.create(
         {
+          // Si el cliente mandó un uuid propio (app móvil offline, ver
+          // mezcla.validator.js#createMezclaSchema), se usa ese — si no,
+          // Sequelize genera uno (defaultValue: UUIDV4) como siempre.
+          uuid: payload.uuid,
           codigo,
           nombre: payload.nombre || null,
           descripcion: payload.descripcion || null,
@@ -236,6 +240,10 @@ export const mezclaService = {
 
       const version = await MezclaVersion.create(
         {
+          // Mismo uuid que la Mezcla (no por compartir identidad, sino
+          // para que el cliente offline solo tenga que generar/recordar
+          // un uuid por prueba en vez de dos) — ver createMezclaSchema.
+          uuid: payload.uuid,
           mezclaId: mezcla.id,
           version: 1,
           activa: true,
@@ -485,6 +493,7 @@ export const mezclaService = {
     return sequelize.transaction(async (t) => {
       const componenteCreado = await mezclaRepository.createComponente(
         {
+          uuid: payload.uuid,
           mezclaVersionId: version.id,
           articuloId: nuevo.articuloId,
           cantidad: nuevo.cantidad,
@@ -602,6 +611,7 @@ export const mezclaService = {
     return sequelize.transaction(async (t) => {
       await mezclaRepository.createEtapa(
         {
+          uuid: payload.uuid,
           mezclaVersionId: version.id,
           numero,
           componenteId,
@@ -707,7 +717,7 @@ export const mezclaService = {
   // subirFotos con homogeneidadUuid), mismo patrón de dos pasos que ya usa
   // el frontend para etapas. Un solo registro por (versión, intervalo):
   // volver a registrar el mismo intervalo actualiza el resultado anterior.
-  async registrarHomogeneidad(versionUuid, { intervalo, homogenea, observaciones }, actorId) {
+  async registrarHomogeneidad(versionUuid, { uuid, intervalo, homogenea, observaciones }, actorId) {
     const version = await getVersionOrFail(versionUuid);
     assertVersionEditable(version);
 
@@ -721,6 +731,7 @@ export const mezclaService = {
       });
     } else {
       await mezclaRepository.createHomogeneidad({
+        uuid,
         mezclaVersionId: version.id,
         intervalo,
         homogenea,
