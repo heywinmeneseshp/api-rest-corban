@@ -1,7 +1,7 @@
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { sequelize } from '../../database/connection.js';
-import { User, Role, Finca } from '../../database/associations.js';
+import { User, Role, Finca, Almacen } from '../../database/associations.js';
 import { userRepository } from '../../repositories/seguridad/user.repository.js';
 import { mailService } from '../sistema/mail.service.js';
 import { ApiError } from '../../utils/ApiError.js';
@@ -32,6 +32,12 @@ const findFincaByUuidOrFail = async (fincaUuid) => {
   const finca = await Finca.findOne({ where: { uuid: fincaUuid } });
   if (!finca) throw ApiError.notFound('Finca no encontrada');
   return finca;
+};
+
+const findAlmacenByUuidOrFail = async (almacenUuid) => {
+  const almacen = await Almacen.findOne({ where: { uuid: almacenUuid } });
+  if (!almacen) throw ApiError.notFound('Almacén no encontrado');
+  return almacen;
 };
 
 export const userService = {
@@ -171,6 +177,26 @@ export const userService = {
     if (!user) throw ApiError.notFound('Usuario no encontrado');
     const finca = await findFincaByUuidOrFail(fincaUuid);
     await userRepository.removeFinca(user.id, finca.id);
+  },
+
+  async listUserAlmacenes(uuid) {
+    const user = await userRepository.findByUuid(uuid, { includeRoles: false, includeAlmacenes: true });
+    if (!user) throw ApiError.notFound('Usuario no encontrado');
+    return user.almacenes || [];
+  },
+
+  async assignAlmacen(uuid, almacenUuid, actorId) {
+    const user = await userRepository.findByUuid(uuid, { includeRoles: false });
+    if (!user) throw ApiError.notFound('Usuario no encontrado');
+    const almacen = await findAlmacenByUuidOrFail(almacenUuid);
+    await userRepository.assignAlmacen(user.id, almacen.id, actorId);
+  },
+
+  async removeAlmacen(uuid, almacenUuid) {
+    const user = await userRepository.findByUuid(uuid, { includeRoles: false });
+    if (!user) throw ApiError.notFound('Usuario no encontrado');
+    const almacen = await findAlmacenByUuidOrFail(almacenUuid);
+    await userRepository.removeAlmacen(user.id, almacen.id);
   },
 
   // Cargue masivo desde .csv/.xlsx, para crear y actualizar usuarios a la

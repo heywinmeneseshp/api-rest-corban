@@ -50,6 +50,12 @@ const buildTokenPair = async (user, { impersonatedBy } = {}) => {
   const fincaIdsAsignados = esAdmin ? null : await userRepository.findFincaIdsByUserId(user.id);
   const fincaIds = fincaIdsAsignados === null ? null : await expandirFincaIds(fincaIdsAsignados);
 
+  // Almacenes asignados al usuario (para restringir qué almacenes/artículos
+  // puede ver/seleccionar) — mismo criterio que fincaIds arriba, sin
+  // expansión por grupo (Almacén no tiene ese concepto).
+  const almacenIdsAsignados = esAdmin ? null : await userRepository.findAlmacenIdsByUserId(user.id);
+  const almacenIds = almacenIdsAsignados;
+
   const accessToken = signAccessToken({
     id: user.id,
     uuid: user.uuid,
@@ -57,6 +63,7 @@ const buildTokenPair = async (user, { impersonatedBy } = {}) => {
     roles: roleNames,
     permissions,
     fincaIds,
+    almacenIds,
     // Presente solo en tokens de suplantación (ver authService.impersonate)
     // — queda en el JWT para poder rastrear, si hace falta, qué admin
     // suplantó a quién durante una sesión puntual.
@@ -74,7 +81,7 @@ const buildTokenPair = async (user, { impersonatedBy } = {}) => {
   return {
     accessToken,
     refreshToken: refreshTokenPlain,
-    user: { ...user.toSafeJSON(), roles: roleNames, permissions, fincaIds },
+    user: { ...user.toSafeJSON(), roles: roleNames, permissions, fincaIds, almacenIds },
   };
 };
 
@@ -177,8 +184,9 @@ export const authService = {
       : await roleRepository.findPermissionCodesByRoleIds(roleIds);
     const fincaIdsAsignados = esAdmin ? null : await userRepository.findFincaIdsByUserId(fullUser.id);
     const fincaIds = fincaIdsAsignados === null ? null : await expandirFincaIds(fincaIdsAsignados);
+    const almacenIds = esAdmin ? null : await userRepository.findAlmacenIdsByUserId(fullUser.id);
 
-    return { ...fullUser.toSafeJSON(), roles: roleNames, permissions, fincaIds };
+    return { ...fullUser.toSafeJSON(), roles: roleNames, permissions, fincaIds, almacenIds };
   },
 
   async updateProfile(userId, payload) {

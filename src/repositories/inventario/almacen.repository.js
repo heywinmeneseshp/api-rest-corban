@@ -8,11 +8,14 @@ const INCLUDE = [
 ];
 
 export const almacenRepository = {
-  async findAndCountAll({ limit, offset, search, tipo, parentUuid, estado }) {
+  async findAndCountAll({ limit, offset, search, tipo, parentUuid, estado, almacenIdsPermitidos }) {
     const where = {
       ...(search ? { nombre: { [Op.like]: `%${search}%` } } : {}),
       ...(tipo ? { tipo } : {}),
       ...(estado !== undefined ? { estado } : {}),
+      ...(almacenIdsPermitidos !== null && almacenIdsPermitidos !== undefined
+        ? { id: { [Op.in]: almacenIdsPermitidos } }
+        : {}),
     };
 
     if (parentUuid) {
@@ -23,8 +26,14 @@ export const almacenRepository = {
     return Almacen.findAndCountAll({ where, limit, offset, order: [['nombre', 'ASC']], include: INCLUDE });
   },
 
-  async findAllTree() {
-    return Almacen.findAll({ where: { estado: true }, order: [['nombre', 'ASC']], include: INCLUDE });
+  async findAllTree(almacenIdsPermitidos) {
+    const where = {
+      estado: true,
+      ...(almacenIdsPermitidos !== null && almacenIdsPermitidos !== undefined
+        ? { id: { [Op.in]: almacenIdsPermitidos } }
+        : {}),
+    };
+    return Almacen.findAll({ where, order: [['nombre', 'ASC']], include: INCLUDE });
   },
 
   findByUuid(uuid) {

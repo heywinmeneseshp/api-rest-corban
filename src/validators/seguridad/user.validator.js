@@ -72,6 +72,23 @@ export const assignFincaSchema = Joi.object({
   query: Joi.object({}),
 });
 
+export const assignAlmacenSchema = Joi.object({
+  body: Joi.object({
+    almacenUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
+  }),
+  params: Joi.object({ uuid: uuidParam }),
+  query: Joi.object({}),
+});
+
+export const removeAlmacenSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({
+    uuid: uuidParam,
+    almacenUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
+  }),
+  query: Joi.object({}),
+});
+
 export const removeFincaSchema = Joi.object({
   body: Joi.object({}),
   params: Joi.object({

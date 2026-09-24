@@ -71,6 +71,41 @@ UsuarioFinca.init(
   },
 );
 
+export class UsuarioAlmacen extends Model {}
+
+UsuarioAlmacen.init(
+  {
+    id: {
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
+      primaryKey: true,
+    },
+    userId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      field: 'user_id',
+    },
+    almacenId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      field: 'almacen_id',
+    },
+    createdBy: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: 'created_by',
+    },
+  },
+  {
+    sequelize,
+    modelName: 'UsuarioAlmacen',
+    tableName: 'usuario_almacenes',
+    underscored: true,
+    timestamps: true,
+    updatedAt: false,
+  },
+);
+
 export class ZonaFinca extends Model {}
 
 ZonaFinca.init(
@@ -141,4 +176,4 @@ RolPermiso.init(
   },
 );
 
-export default { UsuarioRol, RolPermiso, UsuarioFinca };
+export default { UsuarioRol, RolPermiso, UsuarioFinca, UsuarioAlmacen };

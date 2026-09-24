@@ -4,9 +4,10 @@ import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { assertSinDuplicado } from '../../utils/duplicadoGuard.js';
 import { sequelize } from '../../database/connection.js';
+import { getAlmacenIdsPermitidas, assertAlmacenPermitido } from '../../utils/almacenScope.js';
 
 export const almacenService = {
-  async list(query) {
+  async list(query, user) {
     const { page, limit, offset } = getPagination(query);
     const { rows, count } = await almacenRepository.findAndCountAll({
       limit,
@@ -15,12 +16,13 @@ export const almacenService = {
       tipo: query.tipo,
       parentUuid: query.parentUuid,
       estado: query.estado,
+      almacenIdsPermitidos: getAlmacenIdsPermitidas(user),
     });
     return { items: rows, meta: buildPaginationMeta({ page, limit, total: count }) };
   },
 
-  async listTree() {
-    const all = await almacenRepository.findAllTree();
+  async listTree(user) {
+    const all = await almacenRepository.findAllTree(getAlmacenIdsPermitidas(user));
     // Construye árbol jerárquico
     const map = new Map(all.map((a) => [a.id, { ...a.toJSON(), hijos: [] }]));
     const roots = [];
@@ -34,9 +36,16 @@ export const almacenService = {
     return roots;
   },
 
-  async getByUuid(uuid) {
+  // `user` opcional: si se da y el usuario tiene restricción de almacenes,
+  // un almacén fuera de su alcance se trata como si no existiera (404) —
+  // mismo criterio que finca.service.js#getFincaByUuid.
+  async getByUuid(uuid, user) {
     const alm = await almacenRepository.findByUuid(uuid);
     if (!alm) throw ApiError.notFound('Almacén no encontrado');
+    const permitidos = getAlmacenIdsPermitidas(user);
+    if (permitidos !== null && !permitidos.includes(alm.id)) {
+      throw ApiError.notFound('Almacén no encontrado');
+    }
     return alm;
   },
 
@@ -80,8 +89,9 @@ export const almacenService = {
     });
   },
 
-  async update(uuid, payload, actorId) {
-    const alm = await this.getByUuid(uuid);
+  async update(uuid, payload, actorId, user) {
+    const alm = await this.getByUuid(uuid, user);
+    assertAlmacenPermitido(user, alm.id);
     const data = { ...payload, updatedBy: actorId };
 
     if (payload.parentUuid !== undefined) {
@@ -121,8 +131,9 @@ export const almacenService = {
     });
   },
 
-  async delete(uuid, actorId) {
-    const alm = await this.getByUuid(uuid);
+  async delete(uuid, actorId, user) {
+    const alm = await this.getByUuid(uuid, user);
+    assertAlmacenPermitido(user, alm.id);
     // No permitir borrar si tiene hijos
     const hijos = await Almacen.count({ where: { parentId: alm.id } });
     if (hijos > 0) throw ApiError.badRequest('No se puede eliminar un almacén con subalmacenes');

@@ -73,6 +73,21 @@ export const userController = {
     ApiResponse.send(res, { message: 'Finca removida correctamente', data: null });
   }),
 
+  listAlmacenes: asyncHandler(async (req, res) => {
+    const almacenes = await userService.listUserAlmacenes(req.params.uuid);
+    ApiResponse.send(res, { message: 'Almacenes del usuario obtenidos correctamente', data: almacenes });
+  }),
+
+  assignAlmacen: asyncHandler(async (req, res) => {
+    await userService.assignAlmacen(req.params.uuid, req.body.almacenUuid, req.user?.id);
+    ApiResponse.send(res, { message: 'Almacén asignado correctamente', data: null });
+  }),
+
+  removeAlmacen: asyncHandler(async (req, res) => {
+    await userService.removeAlmacen(req.params.uuid, req.params.almacenUuid);
+    ApiResponse.send(res, { message: 'Almacén removido correctamente', data: null });
+  }),
+
   bulkUpload: asyncHandler(async (req, res) => {
     const dryRun = req.body?.dryRun === 'true';
     const resultado = await userService.bulkCreateUsuarios(req.file, req.user?.id, { dryRun });

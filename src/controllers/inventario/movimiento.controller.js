@@ -15,7 +15,7 @@ export const movimientoController = {
   }),
 
   create: asyncHandler(async (req, res) => {
-    const resultado = await movimientoService.create(req.body, req.user?.id);
+    const resultado = await movimientoService.create(req.body, req.user?.id, req.user);
     // Salida de un artículo ELABORADO con algún insumo insuficiente: el
     // servicio no escribió nada y devuelve el mismo patrón de confirmación
     // que ya usa el resto de la app (mezcla/elaboracion/racimo) en vez del

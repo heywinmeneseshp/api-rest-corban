@@ -1,11 +1,23 @@
 import { articuloRepository } from '../../repositories/inventario/articulo.repository.js';
-import { ArticuloCategoria, UnidadMedida, Articulo } from '../../database/associations.js';
+import { ArticuloCategoria, UnidadMedida, Articulo, Almacen } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { assertSinDuplicado } from '../../utils/duplicadoGuard.js';
 import { evaluarMargen } from '../../utils/margenComercial.js';
 import { sequelize } from '../../database/connection.js';
 import { parseBulkFile } from '../../utils/bulkFileParser.js';
+import { getAlmacenIdsPermitidas } from '../../utils/almacenScope.js';
+
+// Resuelve `almacenUuids` a ids, fallando si alguno no existe — mismo
+// criterio que el resto de resolvers de este archivo (categoría/unidad).
+async function resolverAlmacenIds(almacenUuids) {
+  if (!almacenUuids || almacenUuids.length === 0) return [];
+  const almacenes = await Almacen.findAll({ where: { uuid: almacenUuids } });
+  if (almacenes.length !== almacenUuids.length) {
+    throw ApiError.notFound('Uno o más almacenes indicados no existen');
+  }
+  return almacenes.map((a) => a.id);
+}
 
 function parseEstado(valor) {
   if (valor === undefined || valor === '') return true;
@@ -20,7 +32,7 @@ function parseBooleano(valor, porDefecto) {
 }
 
 export const articuloService = {
-  async list(query) {
+  async list(query, user) {
     const { page, limit, offset } = getPagination(query);
     const { rows, count } = await articuloRepository.findAndCountAll({
       limit,
@@ -31,13 +43,26 @@ export const articuloService = {
       unidadMedidaUuid: query.unidadMedidaUuid,
       estado: query.estado,
       manejaInventario: query.manejaInventario,
+      almacenUuid: query.almacenUuid,
+      almacenIdsPermitidos: getAlmacenIdsPermitidas(user),
     });
     return { items: rows, meta: buildPaginationMeta({ page, limit, total: count }) };
   },
 
-  async getByUuid(uuid) {
+  // `user` opcional: si se da y el artículo tiene almacenes asignados fuera
+  // del alcance del usuario, se trata como si no existiera (404) — mismo
+  // criterio que almacen.service.js#getByUuid. Un artículo SIN ningún
+  // almacén asignado sigue siendo visible para todos.
+  async getByUuid(uuid, user) {
     const art = await articuloRepository.findByUuid(uuid);
     if (!art) throw ApiError.notFound('Artículo no encontrado');
+    const permitidos = getAlmacenIdsPermitidas(user);
+    if (permitidos !== null) {
+      const asignados = await articuloRepository.findAlmacenIdsByArticuloId(art.id);
+      if (asignados.length && !asignados.some((id) => permitidos.includes(id))) {
+        throw ApiError.notFound('Artículo no encontrado');
+      }
+    }
     return art;
   },
 
@@ -82,9 +107,11 @@ export const articuloService = {
       dosisMaximaUnidadId = uniDosis.id;
     }
 
+    const almacenIds = await resolverAlmacenIds(payload.almacenUuids);
+
     const articulo = await sequelize.transaction(async (t) => {
       await assertSinDuplicado(Articulo, { nombre: payload.nombre }, t, 'Ya existe un artículo con ese nombre');
-      return articuloRepository.create(
+      const creado = await articuloRepository.create(
         {
           codigo: payload.codigo || null,
           nombre: payload.nombre,
@@ -103,14 +130,23 @@ export const articuloService = {
         },
         { transaction: t },
       );
+      if (almacenIds.length) {
+        await articuloRepository.setAlmacenes(creado, almacenIds, actorId, { transaction: t });
+      }
+      return creado;
     });
-    return { ...articulo.toJSON(), advertencias: evaluarMargen(payload.precioVenta, payload.costoCompra) };
+    return { ...(await articuloRepository.findByUuid(articulo.uuid)).toJSON(), advertencias: evaluarMargen(payload.precioVenta, payload.costoCompra) };
   },
 
-  async update(uuid, payload, actorId) {
-    const art = await this.getByUuid(uuid);
+  async update(uuid, payload, actorId, user) {
+    const art = await this.getByUuid(uuid, user);
 
     const data = { ...payload, updatedBy: actorId };
+    let almacenIds;
+    if (payload.almacenUuids !== undefined) {
+      almacenIds = await resolverAlmacenIds(payload.almacenUuids);
+      delete data.almacenUuids;
+    }
     if (payload.categoriaUuid !== undefined) {
       if (payload.categoriaUuid === null) data.categoriaId = null;
       else {
@@ -139,12 +175,16 @@ export const articuloService = {
       delete data.dosisMaximaUnidadUuid;
     }
 
-    const actualizado = await sequelize.transaction(async (t) => {
+    await sequelize.transaction(async (t) => {
       if (payload.nombre) {
         await assertSinDuplicado(Articulo, { nombre: payload.nombre }, t, 'Ya existe un artículo con ese nombre', art.id);
       }
-      return articuloRepository.update(art, data, { transaction: t });
+      await articuloRepository.update(art, data, { transaction: t });
+      if (almacenIds !== undefined) {
+        await articuloRepository.setAlmacenes(art, almacenIds, actorId, { transaction: t });
+      }
     });
+    const actualizado = await articuloRepository.findByUuid(uuid);
     const costoCompraFinal = payload.costoCompra !== undefined ? payload.costoCompra : art.costoCompra;
     const precioVentaFinal = payload.precioVenta !== undefined ? payload.precioVenta : art.precioVenta;
     return { ...actualizado.toJSON(), advertencias: evaluarMargen(precioVentaFinal, costoCompraFinal) };

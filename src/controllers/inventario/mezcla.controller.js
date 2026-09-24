@@ -16,7 +16,7 @@ export const mezclaController = {
   }),
 
   create: asyncHandler(async (req, res) => {
-    const mezcla = await mezclaService.create(req.body, req.user?.id);
+    const mezcla = await mezclaService.create(req.body, req.user?.id, req.user);
     ApiResponse.send(res, { statusCode: HTTP_STATUS.CREATED, message: 'Mezcla creada correctamente', data: mezcla });
   }),
 

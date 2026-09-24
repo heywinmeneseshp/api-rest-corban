@@ -21,6 +21,7 @@ import { articuloService } from './articulo.service.js';
 import { consumirStockConReceta, RequiereConfirmacionStockError } from './stock.helper.js';
 import { convertirACantidadBase, resolverFactorConversion } from '../../utils/unidadConversion.js';
 import { generarCorrelativo } from '../../utils/correlativo.js';
+import { assertAlmacenPermitido } from '../../utils/almacenScope.js';
 import { cargarFotosMezclaPrueba, eliminarFotoDeDrive, descargarArchivoDeDrive } from '../googleDrive/cargueFotosLabor.js';
 
 const MOTIVO_PRUEBA_MEZCLA_CODIGO = 'PRUEBA_MEZCLA';
@@ -193,9 +194,10 @@ export const mezclaService = {
   // exige. El artículo elaborado (producto) NO se asigna nunca acá — no
   // existe todavía: se CREA a partir de la prueba exitosa, en
   // crearElaborado() (pedido explícito del usuario).
-  async create(payload, actorId) {
+  async create(payload, actorId, user) {
     const unidad = await resolveUnidad(payload.unidadRendimientoUuid);
     const almacen = await resolveAlmacen(payload.almacenUuid);
+    assertAlmacenPermitido(user, almacen.id);
 
     const rendimiento = Number(payload.rendimiento || 1);
     const componentes = payload.componentes || [];

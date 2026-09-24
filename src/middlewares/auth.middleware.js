@@ -23,6 +23,11 @@ export const auth = asyncHandler(async (req, _res, next) => {
       // null = sin restricción (Administrador); arreglo (incl. vacío) =
       // solo esas fincas. Ver src/utils/fincaScope.js para cómo se usa.
       fincaIds: payload.fincaIds === null ? null : payload.fincaIds || [],
+      // Mismo criterio, para almacenes — ver src/utils/almacenScope.js.
+      // `payload.almacenIds === undefined` cubre tokens emitidos antes de
+      // esta feature (sin este claim), que quedan sin restricción hasta que
+      // el usuario vuelva a iniciar sesión.
+      almacenIds: payload.almacenIds === null || payload.almacenIds === undefined ? null : payload.almacenIds,
     };
 
     // La app móvil (Corbana) NO aplica la restricción de "fincas que puede

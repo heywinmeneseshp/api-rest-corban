@@ -15,6 +15,8 @@ import {
   removeRoleSchema,
   assignFincaSchema,
   removeFincaSchema,
+  assignAlmacenSchema,
+  removeAlmacenSchema,
   bulkResetPasswordSchema,
 } from '../../validators/seguridad/user.validator.js';
 
@@ -241,6 +243,55 @@ router.delete(
   permission(PERMISSIONS.MENU_MAESTROS_USUARIOS),
   validate(removeFincaSchema),
   userController.removeFinca,
+);
+
+/**
+ * @openapi
+ * /users/{uuid}/almacenes:
+ *   get:
+ *     tags: [Usuarios]
+ *     summary: Listar almacenes asignados al usuario
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ *   post:
+ *     tags: [Usuarios]
+ *     summary: Asignar almacén al usuario
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.get(
+  '/:uuid/almacenes',
+  auth,
+  permission(PERMISSIONS.MENU_MAESTROS_USUARIOS),
+  validate(getUserSchema),
+  userController.listAlmacenes,
+);
+router.post(
+  '/:uuid/almacenes',
+  auth,
+  permission(PERMISSIONS.MENU_MAESTROS_USUARIOS),
+  validate(assignAlmacenSchema),
+  userController.assignAlmacen,
+);
+
+/**
+ * @openapi
+ * /users/{uuid}/almacenes/{almacenUuid}:
+ *   delete:
+ *     tags: [Usuarios]
+ *     summary: Remover almacén del usuario
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.delete(
+  '/:uuid/almacenes/:almacenUuid',
+  auth,
+  permission(PERMISSIONS.MENU_MAESTROS_USUARIOS),
+  validate(removeAlmacenSchema),
+  userController.removeAlmacen,
 );
 
 export default router;

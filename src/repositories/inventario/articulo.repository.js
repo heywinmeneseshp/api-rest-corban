@@ -1,14 +1,26 @@
 import { Op } from 'sequelize';
-import { Articulo, ArticuloCategoria, UnidadMedida } from '../../database/associations.js';
+import { Articulo, ArticuloCategoria, UnidadMedida, Almacen, ArticuloAlmacen } from '../../database/associations.js';
 
 const INCLUDE = [
   { model: ArticuloCategoria, as: 'categoria', attributes: ['uuid', 'nombre', 'tipo'] },
   { model: UnidadMedida, as: 'unidadMedida', attributes: ['uuid', 'nombre', 'simbolo', 'codigo'] },
   { model: UnidadMedida, as: 'dosisMaximaUnidad', attributes: ['uuid', 'nombre', 'simbolo'] },
+  { model: Almacen, as: 'almacenes', attributes: ['uuid', 'nombre', 'codigo'], through: { attributes: [] } },
 ];
 
 export const articuloRepository = {
-  async findAndCountAll({ limit, offset, search, tipo, categoriaUuid, unidadMedidaUuid, estado, manejaInventario }) {
+  async findAndCountAll({
+    limit,
+    offset,
+    search,
+    tipo,
+    categoriaUuid,
+    unidadMedidaUuid,
+    estado,
+    manejaInventario,
+    almacenUuid,
+    almacenIdsPermitidos,
+  }) {
     const where = {
       ...(search ? { [Op.or]: [{ codigo: { [Op.like]: `%${search}%` } }, { nombre: { [Op.like]: `%${search}%` } }] } : {}),
       ...(estado !== undefined ? { estado } : {}),
@@ -29,7 +41,45 @@ export const articuloRepository = {
       where.unidadMedidaId = uni ? uni.id : -1;
     }
 
-    return Articulo.findAndCountAll({ where, limit, offset, order: [['nombre', 'ASC']], include: INCLUDE, subQuery: false });
+    // Visibilidad por almacén (ver utils/almacenScope.js): un artículo SIN
+    // ningún almacén asignado es visible en todos — así que el filtro es
+    // "no tiene ninguno" OR "tiene alguno de los permitidos". Se resuelve
+    // con una subquery (en vez de un LEFT JOIN + distinct) para no alterar
+    // el INCLUDE de `almacenes` que ya se usa para mostrar la lista.
+    const almacenesAPermitir = await resolverAlmacenesFiltro(almacenUuid, almacenIdsPermitidos);
+    if (almacenesAPermitir) {
+      where[Op.and] = [
+        ...(where[Op.and] || []),
+        {
+          [Op.or]: [
+            { '$almacenes.id$': null },
+            { '$almacenes.id$': { [Op.in]: almacenesAPermitir } },
+          ],
+        },
+      ];
+    }
+
+    return Articulo.findAndCountAll({
+      where,
+      limit,
+      offset,
+      order: [['nombre', 'ASC']],
+      include: INCLUDE,
+      subQuery: false,
+      distinct: true,
+    });
+  },
+
+  setAlmacenes(articulo, almacenIds, createdBy, { transaction } = {}) {
+    return articulo.setAlmacenes(almacenIds, { through: { createdBy }, transaction });
+  },
+
+  // Ids (no uuids) de los almacenes asignados a un artículo — consulta
+  // liviana para el chequeo de visibilidad (ver
+  // articulo.service.js#getByUuid), sin traer el modelo Almacen completo.
+  async findAlmacenIdsByArticuloId(articuloId) {
+    const filas = await ArticuloAlmacen.findAll({ where: { articuloId }, attributes: ['almacenId'], raw: true });
+    return filas.map((f) => f.almacenId);
   },
 
   findByUuid(uuid) {
@@ -113,5 +163,24 @@ export const articuloRepository = {
     return articulo;
   },
 };
+
+// Combina el filtro explícito `?almacenUuid=X` (selectores que ya tienen un
+// almacén elegido) con los almacenes permitidos del usuario (scope), y
+// devuelve la lista final de ids a permitir, o `null` si no hay que filtrar
+// en absoluto (ningún almacén puntual pedido y usuario sin restricción).
+async function resolverAlmacenesFiltro(almacenUuid, almacenIdsPermitidos) {
+  let almacenIdPedido;
+  if (almacenUuid) {
+    const alm = await Almacen.findOne({ where: { uuid: almacenUuid } });
+    almacenIdPedido = alm ? alm.id : -1;
+  }
+
+  if (almacenIdPedido !== undefined && almacenIdsPermitidos !== null && almacenIdsPermitidos !== undefined) {
+    return almacenIdsPermitidos.includes(almacenIdPedido) ? [almacenIdPedido] : [-1];
+  }
+  if (almacenIdPedido !== undefined) return [almacenIdPedido];
+  if (almacenIdsPermitidos !== null && almacenIdsPermitidos !== undefined) return almacenIdsPermitidos;
+  return null;
+}
 
 export default articuloRepository;

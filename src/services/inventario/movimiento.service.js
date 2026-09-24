@@ -13,6 +13,7 @@ import {
   TIPOS_ENTRADA,
 } from './stock.helper.js';
 import { convertirACantidadBase } from '../../utils/unidadConversion.js';
+import { assertAlmacenPermitido } from '../../utils/almacenScope.js';
 
 // Convierte cantidad a unidad base del artículo — delega en
 // unidadConversion.js#convertirACantidadBase, que resuelve la conversión
@@ -47,9 +48,10 @@ export const movimientoService = {
     return mov;
   },
 
-  async create(payload, actorId) {
+  async create(payload, actorId, user) {
     const almacen = await Almacen.findOne({ where: { uuid: payload.almacenUuid } });
     if (!almacen) throw ApiError.notFound('Almacén no encontrado');
+    assertAlmacenPermitido(user, almacen.id);
     const articulo = await Articulo.findOne({ where: { uuid: payload.articuloUuid } });
     if (!articulo) throw ApiError.notFound('Artículo no encontrado');
 

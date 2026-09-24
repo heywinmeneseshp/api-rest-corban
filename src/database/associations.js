@@ -3,7 +3,7 @@ import { Role } from './models/role.model.js';
 import { Permiso } from './models/permiso.model.js';
 import { MenuItem } from './models/menuItem.model.js';
 import { RefreshToken } from './models/refreshToken.model.js';
-import { UsuarioRol, RolPermiso, UsuarioFinca, ZonaFinca } from './models/pivotModels.js';
+import { UsuarioRol, RolPermiso, UsuarioFinca, UsuarioAlmacen, ZonaFinca } from './models/pivotModels.js';
 
 import { Finca } from './models/finca.model.js';
 import { GrupoFinca } from './models/grupoFinca.model.js';
@@ -77,6 +77,7 @@ import { AspersionProgramacion } from './models/aspersionProgramacion.model.js';
 import { AspersionProgramacionComponente } from './models/aspersionProgramacionComponente.model.js';
 import { Precalibracion } from './models/precalibracion.model.js';
 import { IngredienteActivo } from './models/ingredienteActivo.model.js';
+import { ArticuloAlmacen } from './models/articuloAlmacen.model.js';
 
 const withAuditAssociations = (TargetModel) => {
   TargetModel.belongsTo(User, { as: 'creadoPor', foreignKey: 'createdBy' });
@@ -130,6 +131,25 @@ export const setupAssociations = () => {
   });
   UsuarioFinca.belongsTo(User, { foreignKey: 'userId', as: 'usuario' });
   UsuarioFinca.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+
+  // Usuarios <-> Almacenes (N:M) — qué almacenes puede ver/seleccionar cada
+  // usuario (y, por extensión, qué artículos asignados a esos almacenes).
+  // Mismo criterio "abierto por defecto" que Fincas — ver
+  // utils/almacenScope.js. Administrador se salta esta restricción.
+  User.belongsToMany(Almacen, {
+    through: UsuarioAlmacen,
+    foreignKey: 'userId',
+    otherKey: 'almacenId',
+    as: 'almacenes',
+  });
+  Almacen.belongsToMany(User, {
+    through: UsuarioAlmacen,
+    foreignKey: 'almacenId',
+    otherKey: 'userId',
+    as: 'usuariosAsignados',
+  });
+  UsuarioAlmacen.belongsTo(User, { foreignKey: 'userId', as: 'usuario' });
+  UsuarioAlmacen.belongsTo(Almacen, { foreignKey: 'almacenId', as: 'almacen' });
 
   // Zonas <-> Fincas (N:M real) — una finca puede pertenecer a varias
   // zonas, a diferencia de GrupoFinca (1:N, "misma finca operativa
@@ -428,6 +448,24 @@ export const setupAssociations = () => {
   Almacen.belongsTo(Finca, { foreignKey: 'ubicacionFincaId', as: 'finca' });
   Finca.hasMany(Almacen, { foreignKey: 'ubicacionFincaId', as: 'almacenes' });
   Almacen.belongsTo(User, { foreignKey: 'responsableId', as: 'responsable' });
+
+  // Articulos <-> Almacenes (N:M) — a qué almacenes está asignado un
+  // artículo. Sin ninguna fila acá, el artículo es visible en todos los
+  // almacenes (ver utils/almacenScope.js).
+  Articulo.belongsToMany(Almacen, {
+    through: ArticuloAlmacen,
+    foreignKey: 'articuloId',
+    otherKey: 'almacenId',
+    as: 'almacenes',
+  });
+  Almacen.belongsToMany(Articulo, {
+    through: ArticuloAlmacen,
+    foreignKey: 'almacenId',
+    otherKey: 'articuloId',
+    as: 'articulos',
+  });
+  ArticuloAlmacen.belongsTo(Articulo, { foreignKey: 'articuloId', as: 'articulo' });
+  ArticuloAlmacen.belongsTo(Almacen, { foreignKey: 'almacenId', as: 'almacen' });
 
   withAuditAssociations(ArticuloCategoria);
   withAuditAssociations(Articulo);
@@ -735,6 +773,8 @@ export {
   AspersionProgramacionComponente,
   Precalibracion,
   IngredienteActivo,
+  UsuarioAlmacen,
+  ArticuloAlmacen,
 };
 
 export default setupAssociations;

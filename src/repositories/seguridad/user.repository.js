@@ -1,6 +1,6 @@
 import { Op } from 'sequelize';
-import { User, Role, Finca } from '../../database/associations.js';
-import { UsuarioRol, UsuarioFinca } from '../../database/models/pivotModels.js';
+import { User, Role, Finca, Almacen } from '../../database/associations.js';
+import { UsuarioRol, UsuarioFinca, UsuarioAlmacen } from '../../database/models/pivotModels.js';
 
 export const userRepository = {
   async findAndCountAll({ limit, offset, search }) {
@@ -23,15 +23,17 @@ export const userRepository = {
       include: [
         { model: Role, as: 'roles', through: { attributes: [] } },
         { model: Finca, as: 'fincas', through: { attributes: [] }, attributes: ['id', 'uuid', 'codigo', 'nombre'] },
+        { model: Almacen, as: 'almacenes', through: { attributes: [] }, attributes: ['id', 'uuid', 'codigo', 'nombre'] },
       ],
       distinct: true,
     });
   },
 
-  findByUuid(uuid, { includeRoles = true, includeFincas = false } = {}) {
+  findByUuid(uuid, { includeRoles = true, includeFincas = false, includeAlmacenes = false } = {}) {
     const include = [];
     if (includeRoles) include.push({ model: Role, as: 'roles', through: { attributes: [] } });
     if (includeFincas) include.push({ model: Finca, as: 'fincas', through: { attributes: [] } });
+    if (includeAlmacenes) include.push({ model: Almacen, as: 'almacenes', through: { attributes: [] } });
     return User.findOne({ where: { uuid }, include });
   },
 
@@ -40,6 +42,12 @@ export const userRepository = {
   async findFincaIdsByUserId(userId) {
     const filas = await UsuarioFinca.findAll({ where: { userId }, attributes: ['fincaId'], raw: true });
     return filas.map((f) => f.fincaId);
+  },
+
+  // Mismo propósito, para almacenes (ver utils/almacenScope.js).
+  async findAlmacenIdsByUserId(userId) {
+    const filas = await UsuarioAlmacen.findAll({ where: { userId }, attributes: ['almacenId'], raw: true });
+    return filas.map((f) => f.almacenId);
   },
 
   findById(id) {
@@ -111,6 +119,18 @@ export const userRepository = {
 
   removeFinca(userId, fincaId, { transaction } = {}) {
     return UsuarioFinca.destroy({ where: { userId, fincaId }, transaction });
+  },
+
+  async assignAlmacen(userId, almacenId, createdBy, { transaction } = {}) {
+    return UsuarioAlmacen.findOrCreate({
+      where: { userId, almacenId },
+      defaults: { userId, almacenId, createdBy },
+      transaction,
+    });
+  },
+
+  removeAlmacen(userId, almacenId, { transaction } = {}) {
+    return UsuarioAlmacen.destroy({ where: { userId, almacenId }, transaction });
   },
 
   // Reemplaza el conjunto COMPLETO de roles de un usuario por `roleIds`

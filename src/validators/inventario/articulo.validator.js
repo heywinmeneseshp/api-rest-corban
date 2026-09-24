@@ -18,6 +18,11 @@ export const createArticuloSchema = Joi.object({
     dosisMaximaPorHectarea: Joi.number().min(0).allow(null),
     dosisMaximaUnidadUuid: Joi.string().uuid().allow(null),
     estado: Joi.boolean().default(true),
+    // Almacenes a los que queda asignado el artículo — sin ninguno, es
+    // visible/seleccionable en TODOS los almacenes (ver
+    // utils/almacenScope.js). Reemplaza el conjunto completo, igual criterio
+    // que setComponentes en Mezclas.
+    almacenUuids: Joi.array().items(Joi.string().uuid()).default([]),
   }),
   params: Joi.object({}),
   query: Joi.object({}),
@@ -38,6 +43,7 @@ export const updateArticuloSchema = Joi.object({
     dosisMaximaPorHectarea: Joi.number().min(0).allow(null),
     dosisMaximaUnidadUuid: Joi.string().uuid().allow(null),
     estado: Joi.boolean(),
+    almacenUuids: Joi.array().items(Joi.string().uuid()),
   }).min(1),
   params: Joi.object({ uuid: Joi.string().uuid().required() }),
   query: Joi.object({}),
@@ -63,5 +69,10 @@ export const listArticuloSchema = Joi.object({
     unidadMedidaUuid: Joi.string().uuid(),
     estado: Joi.boolean(),
     manejaInventario: Joi.boolean(),
+    // Filtra a los artículos asignados a este almacén (más los que no tienen
+    // ningún almacén asignado, que son visibles en todos) — para los
+    // selectores de artículo que ya tienen un almacén elegido (Movimientos,
+    // Mezclas, Aspersiones...).
+    almacenUuid: Joi.string().uuid(),
   }),
 });
