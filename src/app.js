@@ -56,6 +56,8 @@ import colaboradorRoutes from './routes/agricola/colaborador.routes.js';
 import programacionCorteRoutes from './routes/agricola/programacionCorte.routes.js';
 import rechazoCorteRoutes from './routes/agricola/rechazoCorte.routes.js';
 import aspersionProgramacionRoutes from './routes/agricola/aspersionProgramacion.routes.js';
+import precalibracionRoutes from './routes/agricola/precalibracion.routes.js';
+import ingredienteActivoRoutes from './routes/agricola/ingredienteActivo.routes.js';
 
 import configuracionRoutes from './routes/sistema/configuracion.routes.js';
 import resetDatosRoutes from './routes/sistema/resetDatos.routes.js';
@@ -157,6 +159,8 @@ router.use('/colaboradores', colaboradorRoutes);
 router.use('/programacion-corte', programacionCorteRoutes);
 router.use('/rechazos-corte', rechazoCorteRoutes);
 router.use('/aspersiones', aspersionProgramacionRoutes);
+router.use('/precalibraciones', precalibracionRoutes);
+router.use('/ingredientes-activos', ingredienteActivoRoutes);
 
 router.use('/configuraciones', configuracionRoutes);
 router.use('/comunicados', comunicadoRoutes);

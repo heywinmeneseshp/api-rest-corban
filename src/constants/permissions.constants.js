@@ -214,6 +214,20 @@ export const PERMISSIONS = {
   PROGRAMACION_CORTE_CREAR: 'programacion_corte.crear',
   PROGRAMACION_CORTE_ELIMINAR: 'programacion_corte.eliminar',
 
+  // Precalibración de racimos en báscula (empacadora), antes de la
+  // calibración final — registro simple, sin módulo móvil.
+  PRECALIBRACION_VER: 'precalibracion.ver',
+  PRECALIBRACION_CREAR: 'precalibracion.crear',
+  PRECALIBRACION_EDITAR: 'precalibracion.editar',
+  PRECALIBRACION_ELIMINAR: 'precalibracion.eliminar',
+
+  // Maestro de Ingredientes Activos (Sanidad Vegetal) — catálogo simple de
+  // referencia (ej. Mancozeb, Propiconazol).
+  INGREDIENTE_ACTIVO_VER: 'ingrediente_activo.ver',
+  INGREDIENTE_ACTIVO_CREAR: 'ingrediente_activo.crear',
+  INGREDIENTE_ACTIVO_EDITAR: 'ingrediente_activo.editar',
+  INGREDIENTE_ACTIVO_ELIMINAR: 'ingrediente_activo.eliminar',
+
   SISTEMA_RESET_DATOS: 'sistema.reset_datos',
 
   // ─── Menú / navegación ───
@@ -266,6 +280,7 @@ export const PERMISSIONS = {
   MENU_SANIDAD_VEGETAL_ALERTAS: 'menu.sanidad_vegetal.alertas',
   MENU_SANIDAD_VEGETAL_OBJETIVOS: 'menu.sanidad_vegetal.objetivos',
   MENU_SANIDAD_VEGETAL_ASPERSIONES: 'menu.sanidad_vegetal.aspersiones',
+  MENU_SANIDAD_VEGETAL_INGREDIENTES_ACTIVOS: 'menu.sanidad_vegetal.ingredientes_activos',
 
   // Ítems planos del menú (hoy sin submenú propio, un solo código cada uno).
   MENU_PRECIPITACION_DIARIA: 'menu.precipitacion_diaria',
@@ -274,6 +289,7 @@ export const PERMISSIONS = {
   MENU_PRONOSTICO: 'menu.pronostico',
   MENU_CARGUE_MASIVO: 'menu.cargue_masivo',
   MENU_PROGRAMACION_CORTE: 'menu.programacion_corte',
+  MENU_PRECALIBRACION: 'menu.precalibracion',
   MENU_REPORTES: 'menu.reportes',
 
   // Inventarios - FASE 1: Catálogo
@@ -511,6 +527,16 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.PROGRAMACION_CORTE_CREAR, nombre: 'Cargar programación de corte' },
   { codigo: PERMISSIONS.PROGRAMACION_CORTE_ELIMINAR, nombre: 'Eliminar programación de corte' },
 
+  { codigo: PERMISSIONS.PRECALIBRACION_VER, nombre: 'Ver precalibraciones' },
+  { codigo: PERMISSIONS.PRECALIBRACION_CREAR, nombre: 'Registrar precalibraciones' },
+  { codigo: PERMISSIONS.PRECALIBRACION_EDITAR, nombre: 'Editar precalibraciones' },
+  { codigo: PERMISSIONS.PRECALIBRACION_ELIMINAR, nombre: 'Eliminar precalibraciones' },
+
+  { codigo: PERMISSIONS.INGREDIENTE_ACTIVO_VER, nombre: 'Ver ingredientes activos' },
+  { codigo: PERMISSIONS.INGREDIENTE_ACTIVO_CREAR, nombre: 'Crear ingredientes activos' },
+  { codigo: PERMISSIONS.INGREDIENTE_ACTIVO_EDITAR, nombre: 'Editar ingredientes activos' },
+  { codigo: PERMISSIONS.INGREDIENTE_ACTIVO_ELIMINAR, nombre: 'Eliminar ingredientes activos' },
+
   { codigo: PERMISSIONS.SISTEMA_RESET_DATOS, nombre: 'Borrar todos los datos que no vienen de los seeders' },
 
   { codigo: PERMISSIONS.MENU_MAESTROS, nombre: 'Ver sección Maestros en el menú' },
@@ -551,6 +577,7 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.MENU_SANIDAD_VEGETAL_ALERTAS, nombre: 'Ver submenú Alertas' },
   { codigo: PERMISSIONS.MENU_SANIDAD_VEGETAL_OBJETIVOS, nombre: 'Ver submenú Objetivos' },
   { codigo: PERMISSIONS.MENU_SANIDAD_VEGETAL_ASPERSIONES, nombre: 'Ver submenú Programación de Aspersiones' },
+  { codigo: PERMISSIONS.MENU_SANIDAD_VEGETAL_INGREDIENTES_ACTIVOS, nombre: 'Ver submenú Ingredientes Activos' },
 
   { codigo: PERMISSIONS.MENU_PRECIPITACION_DIARIA, nombre: 'Ver ítem de menú Precipitación Diaria' },
   { codigo: PERMISSIONS.MENU_ESTACION_METEOROLOGICA, nombre: 'Ver ítem de menú Estación Meteorológica' },
@@ -558,6 +585,7 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.MENU_PRONOSTICO, nombre: 'Ver ítem de menú Pronóstico de Cajas' },
   { codigo: PERMISSIONS.MENU_CARGUE_MASIVO, nombre: 'Ver ítem de menú Cargue Masivo' },
   { codigo: PERMISSIONS.MENU_PROGRAMACION_CORTE, nombre: 'Ver ítem de menú Programación de Corte' },
+  { codigo: PERMISSIONS.MENU_PRECALIBRACION, nombre: 'Ver ítem de menú Precalibración' },
   { codigo: PERMISSIONS.MENU_REPORTES, nombre: 'Ver ítem de menú Reportes' },
 
   { codigo: PERMISSIONS.INVENTARIO_DASHBOARD_VER, nombre: 'Ver dashboard de Inventarios' },
