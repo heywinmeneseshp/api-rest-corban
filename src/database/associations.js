@@ -75,7 +75,6 @@ import { Factura } from './models/factura.model.js';
 import { FacturaDetalle } from './models/facturaDetalle.model.js';
 import { AspersionProgramacion } from './models/aspersionProgramacion.model.js';
 import { AspersionProgramacionComponente } from './models/aspersionProgramacionComponente.model.js';
-import { Precalibracion } from './models/precalibracion.model.js';
 import { IngredienteActivo } from './models/ingredienteActivo.model.js';
 import { ArticuloAlmacen } from './models/articuloAlmacen.model.js';
 
@@ -669,25 +668,6 @@ export const setupAssociations = () => {
   AspersionProgramacionComponente.belongsTo(Articulo, { foreignKey: 'articuloId', as: 'articulo' });
   AspersionProgramacionComponente.belongsTo(UnidadMedida, { foreignKey: 'unidadId', as: 'unidad' });
 
-  // Precalibración de racimos en báscula (empacadora) — finca obligatoria,
-  // lote/producto/semana opcionales (la semana se resuelve desde la fecha).
-  Finca.hasMany(Precalibracion, { foreignKey: 'fincaId', as: 'precalibraciones' });
-  Precalibracion.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
-
-  Lote.hasMany(Precalibracion, { foreignKey: 'loteId', as: 'precalibraciones' });
-  Precalibracion.belongsTo(Lote, { foreignKey: 'loteId', as: 'lote' });
-
-  Semana.hasMany(Precalibracion, { foreignKey: 'semanaId', as: 'precalibraciones' });
-  Precalibracion.belongsTo(Semana, { foreignKey: 'semanaId', as: 'semana' });
-
-  Producto.hasMany(Precalibracion, { foreignKey: 'productoId', as: 'precalibraciones' });
-  Precalibracion.belongsTo(Producto, { foreignKey: 'productoId', as: 'producto' });
-
-  User.hasMany(Precalibracion, { foreignKey: 'usuarioId', as: 'precalibraciones' });
-  Precalibracion.belongsTo(User, { foreignKey: 'usuarioId', as: 'usuario' });
-
-  withAuditAssociations(Precalibracion);
-
   withAuditAssociations(IngredienteActivo);
 };
 
@@ -771,7 +751,6 @@ export {
   FacturaDetalle,
   AspersionProgramacion,
   AspersionProgramacionComponente,
-  Precalibracion,
   IngredienteActivo,
   UsuarioAlmacen,
   ArticuloAlmacen,
