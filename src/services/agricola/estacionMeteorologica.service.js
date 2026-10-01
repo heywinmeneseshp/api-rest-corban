@@ -26,6 +26,26 @@ function rangoDiaBogota(fechaIso) {
   return { start: Math.floor(inicio.getTime() / 1000), end: Math.floor(fin.getTime() / 1000) };
 }
 
+// Todas las fechas entre desde/hasta (inclusive), como AAAA-MM-DD — mismo
+// patron que rangoFechas() en precipitacionDiaria.service.js.
+function rangoFechas(desdeIso, hastaIso) {
+  const fechas = [];
+  const cursor = new Date(`${desdeIso}T00:00:00Z`);
+  const fin = new Date(`${hastaIso}T00:00:00Z`);
+  while (cursor <= fin) {
+    fechas.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return fechas;
+}
+
+const dormir = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// Pausa entre llamadas sucesivas a WeatherLink al sincronizar varios dias
+// seguidos (rango manual o relleno de faltantes) — la API no documenta un
+// limite de requests/minuto, pero nada protege contra un burst si no se
+// espacian, asi que se espacian igual por las dudas.
+const PAUSA_ENTRE_DIAS_MS = 400;
+
 export const estacionMeteorologicaService = {
   // Condiciones actuales — mapea el sensor exterior a campos simples, en
   // unidades métricas (la API ya entrega lluvia en mm; temperatura llega
@@ -96,6 +116,65 @@ export const estacionMeteorologicaService = {
     const fecha = fechaAyerBogota();
     const fila = await this.sincronizarFecha(fecha);
     return { fecha, registrado: Boolean(fila) };
+  },
+
+  // Sincroniza cada día entre fechaDesde y fechaHasta (inclusive), uno por
+  // uno (la API de WeatherLink no admite pedir varios días en un solo
+  // request — ver rangoDiaBogota). No corta el rango si un día falla —
+  // sigue con los demás y reporta cuáles fallaron.
+  async sincronizarRango(fechaDesde, fechaHasta) {
+    const dias = rangoFechas(fechaDesde, fechaHasta);
+    const sincronizados = [];
+    const errores = [];
+    for (const fecha of dias) {
+      try {
+        await this.sincronizarFecha(fecha);
+        sincronizados.push(fecha);
+      } catch (error) {
+        errores.push({ fecha, error: error.message });
+      }
+      if (fecha !== dias[dias.length - 1]) await dormir(PAUSA_ENTRE_DIAS_MS);
+    }
+    return { sincronizados, errores };
+  },
+
+  // Días del último mes (desde hoy-1mes hasta ayer, sin incluir hoy —
+  // todavía no cierra) que NO tienen fila en estacion_clima_diaria.
+  async diasFaltantesUltimoMes() {
+    const ayer = fechaAyerBogota();
+    const hoy = new Date().toISOString().slice(0, 10);
+    const desde = new Date(`${hoy}T00:00:00Z`);
+    desde.setUTCMonth(desde.getUTCMonth() - 1);
+    const fechaDesde = desde.toISOString().slice(0, 10);
+
+    const registrados = await EstacionClimaDiaria.findAll({
+      where: { fecha: { [Op.between]: [fechaDesde, ayer] } },
+      attributes: ['fecha'],
+    });
+    const registradosSet = new Set(registrados.map((r) => (r.fecha instanceof Date ? r.fecha.toISOString().slice(0, 10) : String(r.fecha))));
+
+    return rangoFechas(fechaDesde, ayer).filter((f) => !registradosSet.has(f));
+  },
+
+  // Rellena, uno por uno y espaciados, los días del último mes que todavía
+  // no tienen dato — pensado para llamarse al abrir el módulo (ver
+  // estacionMeteorologica.controller.js#sincronizarFaltantes), no por cron.
+  async sincronizarFaltantes() {
+    const faltantes = await this.diasFaltantesUltimoMes();
+    if (!faltantes.length) return { sincronizados: [], errores: [] };
+
+    const sincronizados = [];
+    const errores = [];
+    for (const fecha of faltantes) {
+      try {
+        await this.sincronizarFecha(fecha);
+        sincronizados.push(fecha);
+      } catch (error) {
+        errores.push({ fecha, error: error.message });
+      }
+      if (fecha !== faltantes[faltantes.length - 1]) await dormir(PAUSA_ENTRE_DIAS_MS);
+    }
+    return { sincronizados, errores };
   },
 
   async listarHistorico({ fechaDesde, fechaHasta } = {}) {

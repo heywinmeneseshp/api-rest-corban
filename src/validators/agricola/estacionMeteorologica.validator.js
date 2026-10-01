@@ -12,7 +12,15 @@ export const historicoSchema = Joi.object({
 export const sincronizarSchema = Joi.object({
   body: Joi.object({
     fecha: Joi.date().iso(),
+    fechaDesde: Joi.date().iso(),
+    fechaHasta: Joi.date().iso().min(Joi.ref('fechaDesde')),
   }),
+  params: Joi.object({}),
+  query: Joi.object({}),
+});
+
+export const sincronizarFaltantesSchema = Joi.object({
+  body: Joi.object({}),
   params: Joi.object({}),
   query: Joi.object({}),
 });
