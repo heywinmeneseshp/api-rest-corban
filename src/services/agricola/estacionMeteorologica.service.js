@@ -70,9 +70,11 @@ export const estacionMeteorologicaService = {
   },
 
   // Trae el archivo (registros cada `recording_interval` min) de UN día
-  // completo y lo resume: mm = suma de lluvia del día; temperatura/humedad
-  // = promedio de los registros del día. Guarda (o actualiza) la fila de
-  // `estacion_clima_diaria` para esa fecha.
+  // completo y lo resume: mm = suma de lluvia del día; temperatura/humedad/
+  // viento = promedio de los registros del día; temperatura y viento
+  // máximos/mínimos = el mayor/menor hi/lo reportado en cualquier registro
+  // del día (cada registro ya trae su propio hi/lo del intervalo). Guarda
+  // (o actualiza) la fila de `estacion_clima_diaria` para esa fecha.
   async sincronizarFecha(fechaIso) {
     const { start, end } = rangoDiaBogota(fechaIso);
     const data = await weatherlinkClient.historic(start, end);
@@ -84,22 +86,47 @@ export const estacionMeteorologicaService = {
     let countTemp = 0;
     let sumaHum = 0;
     let countHum = 0;
+    let tempMax = null;
+    let tempMin = null;
+    let sumaViento = 0;
+    let countViento = 0;
+    let vientoMax = null;
     for (const r of registros) {
       if (r.rainfall_mm !== null && r.rainfall_mm !== undefined) sumaMm += Number(r.rainfall_mm);
       if (r.temp_avg !== null && r.temp_avg !== undefined) {
         sumaTemp += aCelsius(r.temp_avg);
         countTemp += 1;
       }
+      if (r.temp_hi !== null && r.temp_hi !== undefined) {
+        const c = aCelsius(r.temp_hi);
+        if (tempMax === null || c > tempMax) tempMax = c;
+      }
+      if (r.temp_lo !== null && r.temp_lo !== undefined) {
+        const c = aCelsius(r.temp_lo);
+        if (tempMin === null || c < tempMin) tempMin = c;
+      }
       if (r.hum_hi !== null && r.hum_hi !== undefined && r.hum_lo !== null && r.hum_lo !== undefined) {
         sumaHum += (Number(r.hum_hi) + Number(r.hum_lo)) / 2;
         countHum += 1;
+      }
+      if (r.wind_speed_avg !== null && r.wind_speed_avg !== undefined) {
+        sumaViento += Number(r.wind_speed_avg) * 1.60934;
+        countViento += 1;
+      }
+      if (r.wind_speed_hi !== null && r.wind_speed_hi !== undefined) {
+        const kmh = Number(r.wind_speed_hi) * 1.60934;
+        if (vientoMax === null || kmh > vientoMax) vientoMax = kmh;
       }
     }
 
     const valores = {
       mm: registros.length ? round2(sumaMm) : null,
       temperatura: countTemp > 0 ? round2(sumaTemp / countTemp) : null,
+      temperaturaMaxima: round2(tempMax),
+      temperaturaMinima: round2(tempMin),
       humedadRelativa: countHum > 0 ? round2(sumaHum / countHum) : null,
+      vientoVelocidad: countViento > 0 ? round2(sumaViento / countViento) : null,
+      vientoMax: round2(vientoMax),
     };
 
     const existente = await EstacionClimaDiaria.findOne({ where: { fecha: fechaIso } });

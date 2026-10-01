@@ -13,7 +13,12 @@ EstacionClimaDiaria.init(
     fecha: { type: DataTypes.DATEONLY, allowNull: false, unique: true },
     mm: { type: DataTypes.DECIMAL(8, 2), allowNull: true },
     temperatura: { type: DataTypes.DECIMAL(5, 2), allowNull: true },
+    temperaturaMaxima: { type: DataTypes.DECIMAL(5, 2), allowNull: true, field: 'temperatura_maxima' },
+    temperaturaMinima: { type: DataTypes.DECIMAL(5, 2), allowNull: true, field: 'temperatura_minima' },
     humedadRelativa: { type: DataTypes.DECIMAL(5, 2), allowNull: true, field: 'humedad_relativa' },
+    // Promedio y máximo del día, ya en km/h (la API entrega mph).
+    vientoVelocidad: { type: DataTypes.DECIMAL(6, 2), allowNull: true, field: 'viento_velocidad' },
+    vientoMax: { type: DataTypes.DECIMAL(6, 2), allowNull: true, field: 'viento_max' },
   },
   {
     sequelize,
