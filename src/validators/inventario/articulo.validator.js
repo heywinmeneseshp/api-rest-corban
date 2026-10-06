@@ -14,15 +14,30 @@ export const createArticuloSchema = Joi.object({
     stockMaximo: Joi.number().min(0).allow(null),
     // Dosificación de referencia — solo aplica a insumos (categoría
     // INSUMO), ver articulo.model.js. Opcional para cualquier artículo, el
-    // frontend solo la muestra cuando corresponde.
-    dosisMaximaPorHectarea: Joi.number().min(0).allow(null),
-    dosisMaximaUnidadUuid: Joi.string().uuid().allow(null),
+    // frontend solo la muestra cuando corresponde. Si se registra la
+    // dosis, la unidad pasa a ser obligatoria — pedido explícito: un
+    // número de dosis sin unidad no sirve para nada (Mezclas no puede
+    // calcular "Dosis real"/"% sobre dosis" sin ella, ver
+    // mezcla.repository.js/aspersionProgramacion.service.js).
+    dosisPorHectarea: Joi.number().min(0).allow(null),
+    dosisUnidadUuid: Joi.string()
+      .uuid()
+      .allow(null)
+      .when('dosisPorHectarea', {
+        is: Joi.number().required(),
+        then: Joi.required().messages({
+          'any.required': 'Si registras la Dosis por hectárea, también debes indicar su unidad.',
+        }),
+      }),
     estado: Joi.boolean().default(true),
     // Almacenes a los que queda asignado el artículo — sin ninguno, es
     // visible/seleccionable en TODOS los almacenes (ver
     // utils/almacenScope.js). Reemplaza el conjunto completo, igual criterio
     // que setComponentes en Mezclas.
     almacenUuids: Joi.array().items(Joi.string().uuid()).default([]),
+    // Ingredientes activos que componen este artículo (N:M, opcional) —
+    // reemplaza el conjunto completo, igual criterio que almacenUuids.
+    ingredientesActivoUuids: Joi.array().items(Joi.string().uuid()).default([]),
   }),
   params: Joi.object({}),
   query: Joi.object({}),
@@ -40,10 +55,22 @@ export const updateArticuloSchema = Joi.object({
     manejaInventario: Joi.boolean(),
     stockMinimo: Joi.number().min(0).allow(null),
     stockMaximo: Joi.number().min(0).allow(null),
-    dosisMaximaPorHectarea: Joi.number().min(0).allow(null),
-    dosisMaximaUnidadUuid: Joi.string().uuid().allow(null),
+    // Misma exigencia que en crear (dosis sin unidad no sirve) — solo se
+    // dispara si ESTA petición trae dosisPorHectarea como número; si no la
+    // toca (edición parcial de otro campo), no exige nada de dosis.
+    dosisPorHectarea: Joi.number().min(0).allow(null),
+    dosisUnidadUuid: Joi.string()
+      .uuid()
+      .allow(null)
+      .when('dosisPorHectarea', {
+        is: Joi.number().required(),
+        then: Joi.required().messages({
+          'any.required': 'Si registras la Dosis por hectárea, también debes indicar su unidad.',
+        }),
+      }),
     estado: Joi.boolean(),
     almacenUuids: Joi.array().items(Joi.string().uuid()),
+    ingredientesActivoUuids: Joi.array().items(Joi.string().uuid()),
   }).min(1),
   params: Joi.object({ uuid: Joi.string().uuid().required() }),
   query: Joi.object({}),

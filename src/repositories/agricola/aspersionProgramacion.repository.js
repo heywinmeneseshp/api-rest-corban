@@ -91,9 +91,12 @@ const DETAIL_INCLUDE = [
 ];
 
 export const aspersionProgramacionRepository = {
-  async findAndCountAll({ limit, offset, fincaUuid, semanaUuid, mezclaUuid, estado, tipo, fechaDesde, fechaHasta, search }) {
+  async findAndCountAll({ limit, offset, fincaUuid, semanaUuid, mezclaUuid, estado, tipo, fechaDesde, fechaHasta, search, almacenIdsPermitidos }) {
     const where = {};
     if (estado) where.estado = estado;
+    if (almacenIdsPermitidos !== null && almacenIdsPermitidos !== undefined) {
+      where.almacenId = { [Op.in]: almacenIdsPermitidos };
+    }
     if (fechaDesde || fechaHasta) {
       where.fecha = {};
       if (fechaDesde) where.fecha[Op.gte] = fechaDesde;

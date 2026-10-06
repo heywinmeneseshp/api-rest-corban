@@ -35,6 +35,22 @@ export const ingredienteActivoController = {
     await ingredienteActivoService.deleteIngredienteActivo(req.params.uuid, req.user?.id);
     ApiResponse.send(res, { message: 'Ingrediente activo eliminado correctamente' });
   }),
+
+  listDeleted: asyncHandler(async (req, res) => {
+    const { items, meta } = await ingredienteActivoService.listDeleted(req.query);
+    ApiResponse.send(res, { message: 'Ingredientes activos eliminados obtenidos correctamente', data: { items, meta } });
+  }),
+
+  restore: asyncHandler(async (req, res) => {
+    const ingrediente = await ingredienteActivoService.restore(req.params.uuid);
+    ApiResponse.send(res, { message: 'Ingrediente activo restaurado correctamente', data: ingrediente });
+  }),
+
+  bulkUpload: asyncHandler(async (req, res) => {
+    const dryRun = req.body?.dryRun === 'true';
+    const resultado = await ingredienteActivoService.bulkCreateIngredientesActivos(req.file, req.user?.id, { dryRun });
+    ApiResponse.send(res, { message: 'Cargue masivo de ingredientes activos procesado', data: resultado });
+  }),
 };
 
 export default ingredienteActivoController;

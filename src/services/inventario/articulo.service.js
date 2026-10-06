@@ -1,5 +1,5 @@
 import { articuloRepository } from '../../repositories/inventario/articulo.repository.js';
-import { ArticuloCategoria, UnidadMedida, Articulo, Almacen } from '../../database/associations.js';
+import { ArticuloCategoria, UnidadMedida, Articulo, Almacen, IngredienteActivo } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { assertSinDuplicado } from '../../utils/duplicadoGuard.js';
@@ -17,6 +17,18 @@ async function resolverAlmacenIds(almacenUuids) {
     throw ApiError.notFound('Uno o más almacenes indicados no existen');
   }
   return almacenes.map((a) => a.id);
+}
+
+// Resuelve `ingredientesActivoUuids` a ids — relación N:M opcional entre
+// Articulo e IngredienteActivo (ver associations.js), mismo criterio que
+// resolverAlmacenIds.
+async function resolverIngredientesActivoIds(ingredientesActivoUuids) {
+  if (!ingredientesActivoUuids || ingredientesActivoUuids.length === 0) return [];
+  const ingredientes = await IngredienteActivo.findAll({ where: { uuid: ingredientesActivoUuids } });
+  if (ingredientes.length !== ingredientesActivoUuids.length) {
+    throw ApiError.notFound('Uno o más ingredientes activos indicados no existen');
+  }
+  return ingredientes.map((i) => i.id);
 }
 
 function parseEstado(valor) {
@@ -70,10 +82,16 @@ export const articuloService = {
   // rol Administrador desde la ruta (requireAdmin).
   async listDeleted(query) {
     const { page, limit, offset } = getPagination(query);
+    let categoriaId;
+    if (query.categoriaUuid) {
+      const cat = await ArticuloCategoria.findOne({ where: { uuid: query.categoriaUuid } });
+      categoriaId = cat ? cat.id : -1;
+    }
     const { rows, count } = await articuloRepository.findAndCountAllDeleted({
       limit,
       offset,
       search: query.search,
+      categoriaId,
     });
     return { items: rows, meta: buildPaginationMeta({ page, limit, total: count }) };
   },
@@ -100,14 +118,15 @@ export const articuloService = {
       if (!uni) throw ApiError.notFound('Unidad de medida no encontrada');
       unidadMedidaId = uni.id;
     }
-    let dosisMaximaUnidadId = null;
-    if (payload.dosisMaximaUnidadUuid) {
-      const uniDosis = await UnidadMedida.findOne({ where: { uuid: payload.dosisMaximaUnidadUuid } });
+    let dosisUnidadId = null;
+    if (payload.dosisUnidadUuid) {
+      const uniDosis = await UnidadMedida.findOne({ where: { uuid: payload.dosisUnidadUuid } });
       if (!uniDosis) throw ApiError.notFound('Unidad de dosificación no encontrada');
-      dosisMaximaUnidadId = uniDosis.id;
+      dosisUnidadId = uniDosis.id;
     }
 
     const almacenIds = await resolverAlmacenIds(payload.almacenUuids);
+    const ingredientesActivoIds = await resolverIngredientesActivoIds(payload.ingredientesActivoUuids);
 
     const articulo = await sequelize.transaction(async (t) => {
       await assertSinDuplicado(Articulo, { nombre: payload.nombre }, t, 'Ya existe un artículo con ese nombre');
@@ -123,8 +142,8 @@ export const articuloService = {
           manejaInventario: payload.manejaInventario ?? true,
           stockMinimo: payload.stockMinimo ?? 0,
           stockMaximo: payload.stockMaximo ?? null,
-          dosisMaximaPorHectarea: payload.dosisMaximaPorHectarea ?? null,
-          dosisMaximaUnidadId,
+          dosisPorHectarea: payload.dosisPorHectarea ?? null,
+          dosisUnidadId,
           estado: payload.estado ?? true,
           createdBy: actorId,
         },
@@ -132,6 +151,9 @@ export const articuloService = {
       );
       if (almacenIds.length) {
         await articuloRepository.setAlmacenes(creado, almacenIds, actorId, { transaction: t });
+      }
+      if (ingredientesActivoIds.length) {
+        await articuloRepository.setIngredientesActivos(creado, ingredientesActivoIds, actorId, { transaction: t });
       }
       return creado;
     });
@@ -146,6 +168,11 @@ export const articuloService = {
     if (payload.almacenUuids !== undefined) {
       almacenIds = await resolverAlmacenIds(payload.almacenUuids);
       delete data.almacenUuids;
+    }
+    let ingredientesActivoIds;
+    if (payload.ingredientesActivoUuids !== undefined) {
+      ingredientesActivoIds = await resolverIngredientesActivoIds(payload.ingredientesActivoUuids);
+      delete data.ingredientesActivoUuids;
     }
     if (payload.categoriaUuid !== undefined) {
       if (payload.categoriaUuid === null) data.categoriaId = null;
@@ -165,14 +192,14 @@ export const articuloService = {
       }
       delete data.unidadMedidaUuid;
     }
-    if (payload.dosisMaximaUnidadUuid !== undefined) {
-      if (payload.dosisMaximaUnidadUuid === null) data.dosisMaximaUnidadId = null;
+    if (payload.dosisUnidadUuid !== undefined) {
+      if (payload.dosisUnidadUuid === null) data.dosisUnidadId = null;
       else {
-        const uniDosis = await UnidadMedida.findOne({ where: { uuid: payload.dosisMaximaUnidadUuid } });
+        const uniDosis = await UnidadMedida.findOne({ where: { uuid: payload.dosisUnidadUuid } });
         if (!uniDosis) throw ApiError.notFound('Unidad de dosificación no encontrada');
-        data.dosisMaximaUnidadId = uniDosis.id;
+        data.dosisUnidadId = uniDosis.id;
       }
-      delete data.dosisMaximaUnidadUuid;
+      delete data.dosisUnidadUuid;
     }
 
     await sequelize.transaction(async (t) => {
@@ -182,6 +209,9 @@ export const articuloService = {
       await articuloRepository.update(art, data, { transaction: t });
       if (almacenIds !== undefined) {
         await articuloRepository.setAlmacenes(art, almacenIds, actorId, { transaction: t });
+      }
+      if (ingredientesActivoIds !== undefined) {
+        await articuloRepository.setIngredientesActivos(art, ingredientesActivoIds, actorId, { transaction: t });
       }
     });
     const actualizado = await articuloRepository.findByUuid(uuid);

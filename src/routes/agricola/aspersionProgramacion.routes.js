@@ -4,7 +4,7 @@ import { auth } from '../../middlewares/auth.middleware.js';
 import { requireAdmin } from '../../middlewares/requireAdmin.middleware.js';
 import { permission } from '../../middlewares/permission.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
-import { uploadPdfAspersion, uploadExcelAspersion } from '../../middlewares/upload.middleware.js';
+import { uploadPdfAspersion, uploadExcelAspersion, uploadBulkFile } from '../../middlewares/upload.middleware.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import {
   createAspersionSchema,
@@ -47,7 +47,14 @@ router.get(
   validate(listUsuariosFincaSchema),
   aspersionProgramacionController.listUsuariosFinca,
 );
+// Lista de insumos para la hoja "Insumos" de la plantilla de cargue
+// masivo — gated por el mismo permiso que ver aspersiones (no
+// inventario.articulos.ver, que solo tiene Administrador).
+router.get('/mezclas-referencia', auth, permission(PERMISSIONS.SANIDAD_ASPERSIONES_VER), aspersionProgramacionController.listMezclasReferencia);
 router.post('/', auth, permission(PERMISSIONS.SANIDAD_ASPERSIONES_CREAR), validate(createAspersionSchema), aspersionProgramacionController.create);
+// Cargue masivo desde Excel/CSV — antes de /:uuid por el mismo motivo que
+// /destinatarios y /fincas/:fincaUuid/usuarios arriba.
+router.post('/bulk-upload', auth, permission(PERMISSIONS.SANIDAD_ASPERSIONES_CREAR), uploadBulkFile, aspersionProgramacionController.bulkCrear);
 router.get('/:uuid', auth, permission(PERMISSIONS.SANIDAD_ASPERSIONES_VER), validate(getAspersionSchema), aspersionProgramacionController.getByUuid);
 router.put('/:uuid', auth, permission(PERMISSIONS.SANIDAD_ASPERSIONES_EDITAR), validate(updateAspersionSchema), aspersionProgramacionController.update);
 router.patch(

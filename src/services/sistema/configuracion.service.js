@@ -75,7 +75,11 @@ const SB_HOJA_UMBRALES_DEFAULT = { advertencia: 450, alerta: 650 };
 // Parámetros de validación de pruebas de Mezclas (Inventarios → Mezclas —
 // ver mezcla.service.js#finalizarPrueba). Una prueba es válida cuando
 // phMinimo <= phFinal <= phMaximo Y ceFinal < ceMaxima.
-const MEZCLA_PARAMETROS_DEFAULT = { phMinimo: 4, phMaximo: 6, ceMaxima: 4, aprobadoresRolesUuids: [] };
+// `reguladorPhDosisGL`: gramos de ACONDICIONADOR sugeridos por litro de
+// agua al registrar una etapa de Corrección de pH (ver
+// mezcla.service.js#resolveOrCrearReguladorPh y el formulario web) — solo
+// sugiere el campo "Cantidad", que sigue siendo editable a mano.
+const MEZCLA_PARAMETROS_DEFAULT = { phMinimo: 4, phMaximo: 6, ceMaxima: 4, aprobadoresRolesUuids: [], reguladorPhDosisGL: 0.8 };
 
 export const configuracionService = {
   async getBanaricaApiUrl() {
@@ -320,11 +324,16 @@ export const configuracionService = {
     const aprobadoresRolesUuids = Array.isArray(parametros?.aprobadoresRolesUuids)
       ? parametros.aprobadoresRolesUuids.filter((u) => typeof u === 'string' && u.length > 0)
       : [];
+    const reguladorPhDosisGL = Number(parametros?.reguladorPhDosisGL);
+    if (Number.isFinite(reguladorPhDosisGL) && reguladorPhDosisGL <= 0) {
+      throw ApiError.badRequest('La dosis del regulador de pH debe ser mayor a 0');
+    }
     const valor = JSON.stringify({
       phMinimo: Number.isFinite(phMinimo) ? phMinimo : MEZCLA_PARAMETROS_DEFAULT.phMinimo,
       phMaximo: Number.isFinite(phMaximo) ? phMaximo : MEZCLA_PARAMETROS_DEFAULT.phMaximo,
       ceMaxima: Number.isFinite(ceMaxima) ? ceMaxima : MEZCLA_PARAMETROS_DEFAULT.ceMaxima,
       aprobadoresRolesUuids,
+      reguladorPhDosisGL: Number.isFinite(reguladorPhDosisGL) && reguladorPhDosisGL > 0 ? reguladorPhDosisGL : MEZCLA_PARAMETROS_DEFAULT.reguladorPhDosisGL,
     });
     const config = await configuracionRepository.upsert(CLAVE_MEZCLA_PARAMETROS, valor, actorId);
     return JSON.parse(config.valor);

@@ -1,3 +1,4 @@
+import { Op } from 'sequelize';
 import { sequelize } from '../../database/connection.js';
 import { mezclaRepository } from '../../repositories/inventario/mezcla.repository.js';
 import {
@@ -20,9 +21,16 @@ import { elaboracionService } from './elaboracion.service.js';
 import { articuloService } from './articulo.service.js';
 import { consumirStockConReceta, RequiereConfirmacionStockError } from './stock.helper.js';
 import { convertirACantidadBase, resolverFactorConversion } from '../../utils/unidadConversion.js';
+import {
+  normalizarReglaDosisRelativa,
+  validarReglasDosisRelativa,
+  resolverCantidadesRelativas,
+  propagarDosisRelativas,
+} from '../../utils/dosisRelativa.js';
 import { generarCorrelativo } from '../../utils/correlativo.js';
 import { assertAlmacenPermitido } from '../../utils/almacenScope.js';
 import { cargarFotosMezclaPrueba, eliminarFotoDeDrive, descargarArchivoDeDrive } from '../googleDrive/cargueFotosLabor.js';
+import { parseBulkFile } from '../../utils/bulkFileParser.js';
 
 const MOTIVO_PRUEBA_MEZCLA_CODIGO = 'PRUEBA_MEZCLA';
 // Estados de la prueba en los que todavía se puede editar libremente
@@ -63,11 +71,11 @@ async function resolveAlmacen(uuid) {
   return a;
 }
 
-const REGULADOR_PH_NOMBRE = 'Regulador de pH';
+const REGULADOR_PH_NOMBRE = 'ACONDICIONADOR';
 const REGULADOR_PH_CATEGORIA = 'Insumo Corbana';
 const REGULADOR_PH_UNIDAD_CODIGO = 'Kg';
 
-// El insumo de corrección de pH es siempre "Regulador de pH" (pedido
+// El insumo de corrección de pH es siempre "ACONDICIONADOR" (pedido
 // explícito: no se elige otro) — si todavía no existe en el catálogo (ej.
 // primera vez que se usa en un servidor nuevo, antes de que corra el
 // seeder), se crea acá solo, sin pedirle al operador que lo haga a mano
@@ -101,10 +109,48 @@ async function resolveOrCrearReguladorPh(actorId) {
   }
 }
 
-async function calcularCostos(componentesPayload, rendimiento) {
+// Total de referencia para estimar renglones POR_VOLUMEN al guardar la
+// receta ({ cantidad, unidadId } — ej. rendimiento con su unidad). Null si
+// no hay con qué (se conserva la cantidad del payload). Acepta uuid o id
+// de unidad.
+async function totalRefReceta(rendimiento, { unidadUuid = null, unidadId = null } = {}, { transaction } = {}) {
+  const rend = Number(rendimiento);
+  if (!(rend > 0)) return null;
+  let id = unidadId;
+  if (!id && unidadUuid) {
+    const u = await UnidadMedida.findOne({ where: { uuid: unidadUuid }, transaction });
+    id = u?.id || null;
+  }
+  if (!id) return null;
+  return { cantidad: rend, unidadId: id };
+}
+
+async function calcularCostos(componentesPayload, rendimiento, { totalRef = null } = {}) {
+  // Dosis relativa primero: los seguidores se costean con su cantidad ya
+  // resuelta (X% de la referencia o tasa × total de referencia), no con
+  // lo que traiga el payload.
+  const conRegla = componentesPayload.map((comp) => ({ ...comp, ...normalizarReglaDosisRelativa(comp) }));
+  const { filas: validadas, refDe } = await validarReglasDosisRelativa(conRegla);
+  const resueltas = await resolverCantidadesRelativas({ filas: validadas, refDe }, { totalRef });
+  // Dosis de referencia por renglón (manda sobre la del artículo): ambas o
+  // ninguna; se resuelve la unidad a id acá para persistirla abajo.
+  for (const comp of resueltas) {
+    const d = comp.dosisPorHectarea ?? null;
+    const u = comp.dosisUnidadUuid || null;
+    const hayDosis = d !== null && d !== '' && Number(d) > 0;
+    if (hayDosis !== Boolean(u)) {
+      throw ApiError.badRequest('La dosis del renglón exige valor Y unidad juntos');
+    }
+    comp.dosisPorHectarea = hayDosis ? Number(d) : null;
+    comp.dosisUnidadId = null;
+    if (hayDosis) {
+      const unidad = await resolveUnidad(u);
+      comp.dosisUnidadId = unidad.id;
+    }
+  }
   let costoTotal = 0;
   const detalles = [];
-  for (const comp of componentesPayload) {
+  for (const comp of resueltas) {
     const articulo = await resolveArticulo(comp.articuloUuid);
     let unidadId = null;
     if (comp.unidadUuid) {
@@ -129,6 +175,14 @@ async function calcularCostos(componentesPayload, rendimiento) {
       costoUnitarioSnapshot,
       costoTotalSnapshot,
       articulo,
+      esPrincipal: Boolean(comp.esPrincipal),
+      tipoDosis: comp.tipoDosis || 'FIJA',
+      referenciaArticuloId: comp.referenciaArticuloId ?? null,
+      porcentajeReferencia: comp.porcentajeReferencia ?? null,
+      tasa: comp.tasa ?? null,
+      tasaUnidadId: comp.tasaUnidadId ?? null,
+      dosisPorHectarea: comp.dosisPorHectarea ?? null,
+      dosisUnidadId: comp.dosisUnidadId ?? null,
     });
   }
   const costoUnitario = rendimiento ? costoTotal / Number(rendimiento) : costoTotal;
@@ -138,7 +192,7 @@ async function calcularCostos(componentesPayload, rendimiento) {
 // pH mínimo <= pH <= pH máximo, y CE < CE máxima — nunca hardcodeado, ver
 // configuracion.service.js#getMezclaParametros.
 // Devuelve el resultado global MÁS el detalle de qué condición falló — el
-// pH se puede corregir con el Regulador de pH, la CE no tiene forma de
+// pH se puede corregir con el ACONDICIONADOR, la CE no tiene forma de
 // corregirse en esta prueba, así que el llamador necesita distinguir cuál
 // de las dos fue la que no cumplió.
 function evaluarResultadoDetalle(ph, ce, parametros) {
@@ -165,6 +219,40 @@ function assertVersionEditable(version) {
   }
 }
 
+// Traduce una fila guardada a forma de payload (para validar/costear junto
+// a filas nuevas) — incluye la regla de dosis si la tiene, para que
+// validarReglasDosisRelativa vea la receta completa (ciclos incluidos).
+async function filaGuardadaAEdicion(c, transaction) {
+  let referenciaArticuloUuid = null;
+  if (c.referenciaArticuloId) {
+    const refArt = await Articulo.findByPk(c.referenciaArticuloId, { transaction });
+    referenciaArticuloUuid = refArt?.uuid || null;
+  }
+  let tasaUnidadUuid = null;
+  if (c.tasaUnidadId) {
+    const tasaUnidad = await UnidadMedida.findByPk(c.tasaUnidadId, { transaction });
+    tasaUnidadUuid = tasaUnidad?.uuid || null;
+  }
+  let dosisUnidadUuid = null;
+  if (c.dosisUnidadId) {
+    const dosisUnidad = await UnidadMedida.findByPk(c.dosisUnidadId, { transaction });
+    dosisUnidadUuid = dosisUnidad?.uuid || null;
+  }
+  return {
+    uuid: c.uuid,
+    articuloUuid: c.articulo?.uuid,
+    cantidad: c.cantidad,
+    unidadUuid: c.unidad?.uuid || null,
+    tipoDosis: c.tipoDosis || (c.referenciaArticuloId ? 'PORCENTAJE' : 'FIJA'),
+    referenciaArticuloUuid,
+    porcentajeReferencia: c.porcentajeReferencia === null || c.porcentajeReferencia === undefined ? null : Number(c.porcentajeReferencia),
+    tasa: c.tasa === null || c.tasa === undefined ? null : Number(c.tasa),
+    tasaUnidadUuid,
+    dosisPorHectarea: c.dosisPorHectarea === null || c.dosisPorHectarea === undefined ? null : Number(c.dosisPorHectarea),
+    dosisUnidadUuid,
+  };
+}
+
 export const mezclaService = {
   async list(query) {
     const { page, limit, offset } = getPagination(query);
@@ -175,6 +263,8 @@ export const mezclaService = {
       estado: query.estado,
       articuloElaboradoUuid: query.articuloElaboradoUuid,
       incluirDirectas: query.incluirDirectas,
+      insumoUuid: query.insumoUuid,
+      ingredienteActivoUuid: query.ingredienteActivoUuid,
     });
     return { items: rows, meta: buildPaginationMeta({ page, limit, total: count }) };
   },
@@ -201,7 +291,8 @@ export const mezclaService = {
 
     const rendimiento = Number(payload.rendimiento || 1);
     const componentes = payload.componentes || [];
-    const { costoTotal, costoUnitario, detalles } = await calcularCostos(componentes, rendimiento);
+    const totalRef = await totalRefReceta(rendimiento, { unidadUuid: payload.unidadRendimientoUuid });
+    const { costoTotal, costoUnitario, detalles } = await calcularCostos(componentes, rendimiento, { totalRef });
 
     return sequelize.transaction(async (t) => {
       // Chequeo de duplicado CON lock, dentro de la misma transacción del
@@ -267,6 +358,14 @@ export const mezclaService = {
             unidadId: det.unidadId,
             costoUnitarioSnapshot: det.costoUnitarioSnapshot,
             costoTotalSnapshot: det.costoTotalSnapshot,
+            esPrincipal: det.esPrincipal,
+            tipoDosis: det.tipoDosis || 'FIJA',
+            referenciaArticuloId: det.referenciaArticuloId ?? null,
+            porcentajeReferencia: det.porcentajeReferencia ?? null,
+            tasa: det.tasa ?? null,
+            tasaUnidadId: det.tasaUnidadId ?? null,
+            dosisPorHectarea: det.dosisPorHectarea ?? null,
+            dosisUnidadId: det.dosisUnidadId ?? null,
           },
           { transaction: t },
         );
@@ -357,7 +456,38 @@ export const mezclaService = {
               const uni = await UnidadMedida.findByPk(c.unidadId, { transaction: t });
               unidadUuid = uni?.uuid || null;
             }
-            return { articuloUuid: prod.uuid, cantidad: Number(c.cantidad), unidadUuid };
+            // La regla de dosis relativa sobrevive a la clonación (si no,
+            // cambiar solo el rendimiento la borraría en silencio).
+            let referenciaArticuloUuid = null;
+            if (c.referenciaArticuloId) {
+              const refArt = await Articulo.findByPk(c.referenciaArticuloId, { transaction: t });
+              referenciaArticuloUuid = refArt?.uuid || null;
+            }
+            // Igual la dosis del renglón y la unidad de la tasa.
+            let dosisUnidadUuid = null;
+            if (c.dosisUnidadId) {
+              const dosisUni = await UnidadMedida.findByPk(c.dosisUnidadId, { transaction: t });
+              dosisUnidadUuid = dosisUni?.uuid || null;
+            }
+            let tasaUnidadUuid = null;
+            if (c.tasaUnidadId) {
+              const tasaUni = await UnidadMedida.findByPk(c.tasaUnidadId, { transaction: t });
+              tasaUnidadUuid = tasaUni?.uuid || null;
+            }
+            return {
+              articuloUuid: prod.uuid,
+              cantidad: Number(c.cantidad),
+              unidadUuid,
+              tipoDosis: c.tipoDosis || (c.referenciaArticuloId ? 'PORCENTAJE' : 'FIJA'),
+              referenciaArticuloUuid,
+              porcentajeReferencia:
+                c.porcentajeReferencia === null || c.porcentajeReferencia === undefined ? null : Number(c.porcentajeReferencia),
+              tasa: c.tasa === null || c.tasa === undefined ? null : Number(c.tasa),
+              tasaUnidadUuid,
+              dosisPorHectarea:
+                c.dosisPorHectarea === null || c.dosisPorHectarea === undefined ? null : Number(c.dosisPorHectarea),
+              dosisUnidadUuid,
+            };
           }),
         );
         if (payload.rendimiento !== undefined) rendimientoNuevo = Number(payload.rendimiento);
@@ -365,7 +495,12 @@ export const mezclaService = {
         throw ApiError.badRequest('No hay versión activa previa para clonar componentes');
       }
 
-      const { costoTotal, costoUnitario, detalles } = await calcularCostos(componentesPayload, rendimientoNuevo);
+      const { costoTotal, costoUnitario, detalles } = await calcularCostos(componentesPayload, rendimientoNuevo, {
+        totalRef: await totalRefReceta(rendimientoNuevo, {
+          unidadUuid: payload.unidadRendimientoUuid,
+          unidadId: mezcla.unidadRendimientoId,
+        }),
+      });
 
       if (activa) {
         await activa.update({ activa: false }, { transaction: t });
@@ -395,6 +530,14 @@ export const mezclaService = {
             unidadId: det.unidadId,
             costoUnitarioSnapshot: det.costoUnitarioSnapshot,
             costoTotalSnapshot: det.costoTotalSnapshot,
+            esPrincipal: det.esPrincipal,
+            tipoDosis: det.tipoDosis || 'FIJA',
+            referenciaArticuloId: det.referenciaArticuloId ?? null,
+            porcentajeReferencia: det.porcentajeReferencia ?? null,
+            tasa: det.tasa ?? null,
+            tasaUnidadId: det.tasaUnidadId ?? null,
+            dosisPorHectarea: det.dosisPorHectarea ?? null,
+            dosisUnidadId: det.dosisUnidadId ?? null,
           },
           { transaction: t },
         );
@@ -408,6 +551,27 @@ export const mezclaService = {
   async delete(uuid, actorId) {
     const mezcla = await this.getByUuid(uuid);
     await mezclaRepository.softDelete(mezcla, actorId);
+  },
+
+  // Papelera: solo mezclas eliminadas lógicamente. Acceso restringido al
+  // rol Administrador desde la ruta (requireAdmin).
+  async listDeleted(query) {
+    const { page, limit, offset } = getPagination(query);
+    const { rows, count } = await mezclaRepository.findAndCountAllDeleted({
+      limit,
+      offset,
+      search: query.search,
+    });
+    return { items: rows, meta: buildPaginationMeta({ page, limit, total: count }) };
+  },
+
+  // Acceso restringido al rol Administrador desde la ruta (requireAdmin).
+  async restore(uuid) {
+    const mezcla = await mezclaRepository.findByUuidIncludingDeleted(uuid);
+    if (!mezcla) throw ApiError.notFound('Mezcla no encontrada');
+    if (!mezcla.deletedAt) throw ApiError.conflict('La mezcla no está eliminada');
+    await mezclaRepository.restore(mezcla);
+    return mezcla;
   },
 
   // Historial de pruebas (todas las versiones, no solo la activa) con los
@@ -445,7 +609,8 @@ export const mezclaService = {
     if (!componentes?.length) throw ApiError.badRequest('Agrega al menos un componente');
 
     const rendimiento = Number(version.mezcla?.rendimiento || 1);
-    const { costoTotal, costoUnitario, detalles } = await calcularCostos(componentes, rendimiento);
+    const totalRefVersion = await totalRefReceta(rendimiento, { unidadUuid: version.mezcla?.unidadRendimiento?.uuid });
+    const { costoTotal, costoUnitario, detalles } = await calcularCostos(componentes, rendimiento, { totalRef: totalRefVersion });
 
     return sequelize.transaction(async (t) => {
       await mezclaRepository.destroyComponentesByVersionId(version.id, { transaction: t });
@@ -458,6 +623,13 @@ export const mezclaService = {
             unidadId: det.unidadId,
             costoUnitarioSnapshot: det.costoUnitarioSnapshot,
             costoTotalSnapshot: det.costoTotalSnapshot,
+            tipoDosis: det.tipoDosis || 'FIJA',
+            referenciaArticuloId: det.referenciaArticuloId ?? null,
+            porcentajeReferencia: det.porcentajeReferencia ?? null,
+            tasa: det.tasa ?? null,
+            tasaUnidadId: det.tasaUnidadId ?? null,
+            dosisPorHectarea: det.dosisPorHectarea ?? null,
+            dosisUnidadId: det.dosisUnidadId ?? null,
           },
           { transaction: t },
         );
@@ -481,15 +653,16 @@ export const mezclaService = {
     assertVersionEditable(version);
 
     const rendimiento = Number(version.mezcla?.rendimiento || 1);
-    const existentes = (version.componentes || []).map((c) => ({
-      articuloUuid: c.articulo?.uuid,
-      cantidad: c.cantidad,
-      unidadUuid: c.unidad?.uuid || null,
-    }));
+    const existentes = [];
+    for (const c of version.componentes || []) {
+      existentes.push(await filaGuardadaAEdicion(c));
+    }
     // Se costea la receta COMPLETA (existentes + el nuevo) para que
     // costoTotal/costoUnitario de la versión queden consistentes, pero
     // solo se INSERTA la fila nueva — el resto ni se toca.
-    const { costoTotal, costoUnitario, detalles } = await calcularCostos([...existentes, payload], rendimiento);
+    const { costoTotal, costoUnitario, detalles } = await calcularCostos([...existentes, payload], rendimiento, {
+      totalRef: await totalRefReceta(rendimiento, { unidadUuid: version.mezcla?.unidadRendimiento?.uuid }),
+    });
     const nuevo = detalles[detalles.length - 1];
 
     return sequelize.transaction(async (t) => {
@@ -502,6 +675,13 @@ export const mezclaService = {
           unidadId: nuevo.unidadId,
           costoUnitarioSnapshot: nuevo.costoUnitarioSnapshot,
           costoTotalSnapshot: nuevo.costoTotalSnapshot,
+          tipoDosis: nuevo.tipoDosis || 'FIJA',
+          referenciaArticuloId: nuevo.referenciaArticuloId ?? null,
+          porcentajeReferencia: nuevo.porcentajeReferencia ?? null,
+          tasa: nuevo.tasa ?? null,
+          tasaUnidadId: nuevo.tasaUnidadId ?? null,
+          dosisPorHectarea: nuevo.dosisPorHectarea ?? null,
+          dosisUnidadId: nuevo.dosisUnidadId ?? null,
         },
         { transaction: t },
       );
@@ -525,12 +705,18 @@ export const mezclaService = {
     }
 
     const rendimiento = Number(version.mezcla?.rendimiento || 1);
-    const listaActualizada = (version.componentes || []).map((c) =>
-      c.uuid === componenteUuid
-        ? { articuloUuid: c.articulo?.uuid, cantidad: payload.cantidad, unidadUuid: payload.unidadUuid ?? null }
-        : { articuloUuid: c.articulo?.uuid, cantidad: c.cantidad, unidadUuid: c.unidad?.uuid || null },
-    );
-    const { costoTotal, costoUnitario, detalles } = await calcularCostos(listaActualizada, rendimiento);
+    const listaActualizada = [];
+    for (const c of version.componentes || []) {
+      const base = await filaGuardadaAEdicion(c);
+      listaActualizada.push(
+        c.uuid === componenteUuid
+          ? { ...base, cantidad: payload.cantidad, unidadUuid: payload.unidadUuid ?? null }
+          : base,
+      );
+    }
+    const { costoTotal, costoUnitario, detalles } = await calcularCostos(listaActualizada, rendimiento, {
+      totalRef: await totalRefReceta(rendimiento, { unidadUuid: version.mezcla?.unidadRendimiento?.uuid }),
+    });
     const idx = (version.componentes || []).findIndex((c) => c.uuid === componenteUuid);
     const detalle = detalles[idx];
 
@@ -545,7 +731,197 @@ export const mezclaService = {
         },
         { transaction: t },
       );
+      // Si el renglón editado es referencia de una dosis relativa, los
+      // seguidores se recalculan y persisten (la lista ya se validó y
+      // costeó con los valores nuevos, así que los totales no cambian).
+      await propagarDosisRelativas(version.id, { transaction: t });
       await mezclaRepository.updateVersion(version, { costoTotal, costoUnitario, updatedBy: actorId }, { transaction: t });
+      return getVersionOrFail(versionUuid, { transaction: t });
+    });
+  },
+
+  // Lleva la receta a 1 LITRO con las DOSIS EXACTAS — se llama sola al abrir
+  // por primera vez un borrador creado con "Nueva mezcla" (cuyas cantidades
+  // son de un lote de varios litros) y deja la receta lista para medir:
+  //  - Cada insumo con dosis por hectárea queda en la cantidad EXACTA de esa
+  //    dosis para 1 litro de mezcla (6 galones/ha = 22,71 L/ha), en la unidad
+  //    más pequeña compatible (ml, g) porque la columna guarda 2 decimales.
+  //  - Los insumos sin dosis se escalan proporcionalmente (÷ lo que suma hoy).
+  //  - Las dosis relativas (ej. HIPOTENSOR = 1% del ACEITE) se recalculan
+  //    desde su referencia.
+  //  - El Agua completa exactamente 1 litro.
+  //  - El rendimiento de la mezcla pasa a 1 litro (la receta ahora es de 1 L),
+  //    así Aspersiones calcula cada insumo con la dosis exacta por hectárea.
+  // Idempotente: si ya se normalizó, devuelve la versión tal cual.
+  async llevarAUnLitro(versionUuid, actorId) {
+    const version = await getVersionOrFail(versionUuid);
+    assertVersionEditable(version);
+    if (version.recetaNormalizada) return version;
+    if (!version.activa) throw ApiError.badRequest('Solo se puede llevar a 1 litro la versión activa de la mezcla');
+    const componentes = version.componentes || [];
+    if (!componentes.length) throw ApiError.badRequest('La receta no tiene insumos');
+
+    const todasUnidades = await UnidadMedida.findAll();
+    const litro = todasUnidades.find((u) => u.nombre === 'Litro');
+    const galon = todasUnidades.find((u) => u.nombre === 'Galón');
+    if (!litro || !galon) throw ApiError.badRequest('Faltan las unidades "Litro" y/o "Galón" en el catálogo de unidades');
+    const porUuid = new Map(todasUnidades.map((u) => [u.uuid, u]));
+
+    const factorA = async (origenId, destinoId, nombre) => {
+      const f = await resolverFactorConversion(origenId, destinoId);
+      if (f === null) throw ApiError.badRequest(`No hay conversión de unidades para "${nombre}" — agrégala en Unidades de Medida`);
+      return f;
+    };
+    // Litros por hectárea del rendimiento por defecto de una mezcla (6 gal/ha).
+    const litrosPorHa = (await factorA(galon.id, litro.id, 'Galón')) * 6;
+
+    const cacheMasPequena = new Map();
+    const masPequenaDe = async (unidadId) => {
+      if (cacheMasPequena.has(unidadId)) return cacheMasPequena.get(unidadId);
+      let mejor = { id: unidadId, tamano: 1 };
+      for (const u of todasUnidades) {
+        const tamano = await resolverFactorConversion(u.id, unidadId);
+        if (tamano !== null && tamano > 0 && tamano < mejor.tamano) mejor = { id: u.id, tamano };
+      }
+      cacheMasPequena.set(unidadId, mejor.id);
+      return mejor.id;
+    };
+    // Los insumos que NO se pueden expresar en litros (ej. ACONDICIONADOR en
+    // Kg) no suman al volumen, pero sí se escalan igual que los demás.
+    const litrosDe = async (unidadId, cantidad) => {
+      const f = await resolverFactorConversion(unidadId, litro.id);
+      return f === null ? 0 : cantidad * f;
+    };
+
+    let totalLitros = 0;
+    for (const c of componentes) {
+      if (!c.unidadId) throw ApiError.badRequest(`"${c.articulo?.nombre || 'un insumo'}" no tiene unidad`);
+      totalLitros += await litrosDe(c.unidadId, Number(c.cantidad));
+    }
+    const factorEscala = totalLitros > 0 ? 1 / totalLitros : 1;
+
+    const esAgua = (c) => c.articulo?.nombre === 'Agua';
+    const nuevos = new Map(); // uuid -> { cantidad, unidadId }
+    for (const c of componentes) {
+      if (esAgua(c)) continue;
+      const nombre = c.articulo?.nombre || 'un insumo';
+      const art = c.articulo;
+      // Unidad más fina a partir de la unidad base del artículo (como al
+      // agregar un insumo en la prueba); si no tiene, la de la receta.
+      const unidadNuevaId = await masPequenaDe(art?.unidadMedidaId || c.unidadId);
+      const dosisUnidad = art?.dosisUnidad?.uuid ? porUuid.get(art.dosisUnidad.uuid) : null;
+      // La dosis del renglón manda sobre la del artículo (ej. ACEITE a
+      // 2.0/ha en una mezcla y 1.5/ha en la mayoría).
+      const dosisRowUnidad = c.dosisUnidadId ? todasUnidades.find((u) => u.id === c.dosisUnidadId) || null : null;
+      const dosisRef =
+        c.dosisPorHectarea !== null && c.dosisPorHectarea !== undefined && dosisRowUnidad
+          ? { valor: Number(c.dosisPorHectarea), unidad: dosisRowUnidad }
+          : art?.dosisPorHectarea !== null && art?.dosisPorHectarea !== undefined && dosisUnidad
+            ? { valor: Number(art.dosisPorHectarea), unidad: dosisUnidad }
+            : null;
+
+      let cantidad = null;
+      if (dosisRef) {
+        const dosisEnUnidad = dosisRef.valor * (await factorA(dosisRef.unidad.id, unidadNuevaId, nombre));
+        const exacta = Math.round((dosisEnUnidad / litrosPorHa) * 100) / 100;
+        if (exacta > 0) cantidad = exacta;
+      }
+      if (cantidad === null) {
+        cantidad = Math.round(Number(c.cantidad) * (await factorA(c.unidadId, unidadNuevaId, nombre)) * factorEscala * 100) / 100;
+      }
+      nuevos.set(c.uuid, { cantidad, unidadId: unidadNuevaId });
+    }
+    // Agua provisional (se fija abajo, con los valores ya resueltos).
+    for (const c of componentes) {
+      if (esAgua(c)) nuevos.set(c.uuid, { cantidad: 0, unidadId: await masPequenaDe(c.unidadId) });
+    }
+
+    const armarLista = async () => {
+      const lista = [];
+      for (const c of componentes) {
+        const base = await filaGuardadaAEdicion(c);
+        const nuevo = nuevos.get(c.uuid);
+        lista.push({ ...base, cantidad: nuevo.cantidad, unidadUuid: todasUnidades.find((u) => u.id === nuevo.unidadId)?.uuid || null });
+      }
+      return lista;
+    };
+
+    // Primera pasada: resuelve las dosis relativas para saber cuánto volumen
+    // suman TODOS los insumos menos el Agua, y con eso se calcula el Agua.
+    let resultado = await calcularCostos(await armarLista(), 1);
+    let litrosSinAgua = 0;
+    for (let i = 0; i < componentes.length; i += 1) {
+      if (esAgua(componentes[i])) continue;
+      litrosSinAgua += await litrosDe(resultado.detalles[i].unidadId, Number(resultado.detalles[i].cantidad));
+    }
+    for (const c of componentes) {
+      if (!esAgua(c)) continue;
+      const unidadAguaId = nuevos.get(c.uuid).unidadId;
+      const enUnidadAgua = Math.max(0, 1 - litrosSinAgua) * (await factorA(litro.id, unidadAguaId, 'Agua'));
+      nuevos.set(c.uuid, { cantidad: Math.round(enUnidadAgua * 100) / 100, unidadId: unidadAguaId });
+    }
+    resultado = await calcularCostos(await armarLista(), 1);
+    const { costoTotal, costoUnitario, detalles } = resultado;
+
+    const mezcla = version.mezcla;
+    return sequelize.transaction(async (t) => {
+      for (let i = 0; i < componentes.length; i += 1) {
+        const d = detalles[i];
+        await mezclaRepository.updateComponente(
+          await mezclaRepository.findComponenteByUuid(componentes[i].uuid, { transaction: t }),
+          {
+            cantidad: d.cantidad,
+            unidadId: d.unidadId,
+            costoUnitarioSnapshot: d.costoUnitarioSnapshot,
+            costoTotalSnapshot: d.costoTotalSnapshot,
+          },
+          { transaction: t },
+        );
+      }
+      await propagarDosisRelativas(version.id, { transaction: t });
+      // La receta ahora es de 1 litro.
+      await mezclaRepository.update(mezcla, { rendimiento: 1, unidadRendimientoId: litro.id, updatedBy: actorId }, { transaction: t });
+      await mezclaRepository.updateVersion(
+        version,
+        { costoTotal, costoUnitario, recetaNormalizada: true, updatedBy: actorId },
+        { transaction: t },
+      );
+      return getVersionOrFail(versionUuid, { transaction: t });
+    });
+  },
+
+  // Reordena los insumos que TODAVÍA no se midieron (arrastrar y soltar en
+  // "Mediciones"). Un insumo ya medido es inamovible: su posición no cambia
+  // y ni siquiera se acepta en la lista. Los insumos pendientes se reparten
+  // los mismos "huecos" (valores de `orden`) que ya ocupaban, en el orden
+  // pedido — así los medidos conservan su lugar. El principal sigue yendo
+  // siempre primero al mostrar la receta (ver utils/ordenReceta.js).
+  async reordenarComponentes(versionUuid, componenteUuids, actorId) {
+    const version = await getVersionOrFail(versionUuid);
+    assertVersionEditable(version);
+
+    const componentes = version.componentes || [];
+    const medidos = new Set((version.etapas || []).map((e) => e.componenteId).filter(Boolean));
+    const pendientes = componentes.filter((c) => !medidos.has(c.id));
+    const uuidsPendientes = new Set(pendientes.map((c) => c.uuid));
+
+    const repetidos = new Set(componenteUuids).size !== componenteUuids.length;
+    if (repetidos || componenteUuids.length !== uuidsPendientes.size || componenteUuids.some((u) => !uuidsPendientes.has(u))) {
+      const uuidsMedidos = new Set(componentes.filter((c) => medidos.has(c.id)).map((c) => c.uuid));
+      if (componenteUuids.some((u) => uuidsMedidos.has(u))) {
+        throw ApiError.badRequest('Un insumo que ya se midió no se puede mover');
+      }
+      throw ApiError.badRequest('La lista debe incluir exactamente los insumos que todavía no se midieron');
+    }
+
+    const huecos = pendientes.map((c) => c.orden ?? c.id).sort((a, b) => a - b);
+
+    return sequelize.transaction(async (t) => {
+      for (let i = 0; i < componenteUuids.length; i += 1) {
+        const fila = await mezclaRepository.findComponenteByUuid(componenteUuids[i], { transaction: t });
+        await mezclaRepository.updateComponente(fila, { orden: huecos[i] }, { transaction: t });
+      }
+      await mezclaRepository.updateVersion(version, { updatedBy: actorId }, { transaction: t });
       return getVersionOrFail(versionUuid, { transaction: t });
     });
   },
@@ -593,7 +969,7 @@ export const mezclaService = {
       componenteId = comp.id;
     }
 
-    // CORRECCION_PH: el insumo es siempre "Regulador de pH" (se
+    // CORRECCION_PH: el insumo es siempre "ACONDICIONADOR" (se
     // resuelve/crea solo, ver resolveOrCrearReguladorPh) — NO se busca en
     // version.componentes, a propósito no forma parte de la receta
     // permanente.
@@ -789,7 +1165,17 @@ export const mezclaService = {
     const rendimiento = Number(payload.rendimiento);
     const componentes = payload.componentes || [];
     if (!componentes.length) throw ApiError.badRequest('Agrega al menos un insumo a la receta');
-    const { costoTotal, costoUnitario, detalles } = await calcularCostos(componentes, rendimiento);
+    const { costoTotal, costoUnitario, detalles } = await calcularCostos(componentes, rendimiento, {
+      totalRef: await totalRefReceta(rendimiento, { unidadUuid: payload.articuloUnidadMedidaUuid }),
+    });
+
+    // Volumen/ha se puede cargar desde acá (Nueva mezcla) — antes solo se
+    // guardaba editando después con "Editar mezcla".
+    let dosisPorHectareaUnidadId = null;
+    if (payload.dosisPorHectareaUnidadUuid) {
+      const u = await resolveUnidad(payload.dosisPorHectareaUnidadUuid);
+      dosisPorHectareaUnidadId = u.id;
+    }
 
     const esAdmin = (user?.roles || []).includes('Administrador');
 
@@ -825,6 +1211,7 @@ export const mezclaService = {
           unidadRendimientoId: nuevoArticulo.unidadMedidaId || null,
           rendimiento,
           dosisPorHectarea: payload.dosisPorHectarea ?? null,
+          dosisPorHectareaUnidadId,
           estado: true,
           createdBy: actorId,
         },
@@ -859,6 +1246,14 @@ export const mezclaService = {
             unidadId: det.unidadId,
             costoUnitarioSnapshot: det.costoUnitarioSnapshot,
             costoTotalSnapshot: det.costoTotalSnapshot,
+            esPrincipal: det.esPrincipal,
+            tipoDosis: det.tipoDosis || 'FIJA',
+            referenciaArticuloId: det.referenciaArticuloId ?? null,
+            porcentajeReferencia: det.porcentajeReferencia ?? null,
+            tasa: det.tasa ?? null,
+            tasaUnidadId: det.tasaUnidadId ?? null,
+            dosisPorHectarea: det.dosisPorHectarea ?? null,
+            dosisUnidadId: det.dosisUnidadId ?? null,
           },
           { transaction: t },
         );
@@ -867,6 +1262,169 @@ export const mezclaService = {
       const versionFinal = await getVersionOrFail(version.uuid, { transaction: t });
       return { version: versionFinal };
     });
+  },
+
+  // Cargue masivo de mezclas creadas directo (sin prueba de laboratorio) —
+  // mismo camino que "Nueva mezcla" (crearDirecta), en lote. El archivo
+  // trae UNA FILA POR INSUMO — varias filas con el mismo "nombre" forman
+  // la receta completa de una sola mezcla (igual criterio que
+  // ingredienteActivoInsumo.service.js#bulkCreateInsumos agrupa por
+  // nombre, pero acá cada fila además aporta un insumo distinto en vez de
+  // ser 1 fila = 1 registro completo). Columnas esperadas: nombre, codigo
+  // (opcional, solo en la primera fila del grupo), categoria (nombre de
+  // categoría tipo ELABORADO), unidad (opcional, código de unidad del
+  // producto), cantidadAProducir, almacen (código o nombre), dosisPorHectarea
+  // (opcional), dosisUnidad (opcional, código de unidad), insumoNombre,
+  // insumoCantidad, insumoUnidad (opcional, código de unidad del insumo).
+  async bulkCrearDirectas(file, actorId, user, { dryRun = false } = {}) {
+    const rows = parseBulkFile(file);
+    if (rows.length === 0) throw ApiError.badRequest('El archivo no tiene filas para procesar');
+
+    const nombresCategorias = [...new Set(rows.map((r) => String(r.categoria || '').trim()).filter(Boolean))];
+    const categorias = nombresCategorias.length
+      ? await ArticuloCategoria.findAll({ where: { nombre: nombresCategorias, tipo: 'ELABORADO' } })
+      : [];
+    const mapaCategorias = new Map(categorias.map((c) => [c.nombre, c]));
+
+    const codigosUnidades = [
+      ...new Set(rows.flatMap((r) => [String(r.unidad || '').trim(), String(r.dosisunidad || '').trim(), String(r.insumounidad || '').trim()]).filter(Boolean)),
+    ];
+    const unidadesEncontradas = codigosUnidades.length ? await UnidadMedida.findAll({ where: { codigo: codigosUnidades } }) : [];
+    const mapaUnidades = new Map(unidadesEncontradas.map((u) => [u.codigo, u]));
+
+    const textosAlmacen = [...new Set(rows.map((r) => String(r.almacen || '').trim()).filter(Boolean))];
+    const almacenes = textosAlmacen.length
+      ? await Almacen.findAll({ where: { [Op.or]: [{ codigo: textosAlmacen }, { nombre: textosAlmacen }] } })
+      : [];
+    const mapaAlmacenes = new Map();
+    for (const a of almacenes) {
+      if (a.codigo) mapaAlmacenes.set(a.codigo, a);
+      mapaAlmacenes.set(a.nombre, a);
+    }
+
+    const nombresInsumos = [...new Set(rows.map((r) => String(r.insumonombre || '').trim()).filter(Boolean))];
+    const insumosEncontrados = nombresInsumos.length ? await Articulo.findAll({ where: { nombre: nombresInsumos } }) : [];
+    const mapaInsumos = new Map(insumosEncontrados.map((a) => [a.nombre, a]));
+
+    const nombresMezclaExistentes = [...new Set(rows.map((r) => String(r.nombre || '').trim()).filter(Boolean))];
+    const mezclasExistentes = nombresMezclaExistentes.length ? await Mezcla.findAll({ where: { nombre: nombresMezclaExistentes } }) : [];
+    const setMezclasExistentes = new Set(mezclasExistentes.map((m) => m.nombre));
+
+    // Agrupa filas por "nombre" preservando el orden de primera aparición
+    // — cada grupo es una mezcla completa con todos sus insumos.
+    const grupos = new Map();
+    const ordenGrupos = [];
+    for (let i = 0; i < rows.length; i += 1) {
+      const fila = i + 2;
+      const row = rows[i];
+      const nombre = String(row.nombre || '').trim();
+      if (!nombre) continue;
+      if (!grupos.has(nombre)) {
+        grupos.set(nombre, { nombre, filaInicial: fila, rows: [] });
+        ordenGrupos.push(nombre);
+      }
+      grupos.get(nombre).rows.push({ fila, row });
+    }
+
+    const errores = [];
+    const gruposValidos = [];
+
+    for (const nombre of ordenGrupos) {
+      const grupo = grupos.get(nombre);
+      const primera = grupo.rows[0].row;
+
+      if (setMezclasExistentes.has(nombre)) {
+        errores.push({ fila: grupo.filaInicial, mensaje: `Ya existe una mezcla llamada "${nombre}" — se omite` });
+        continue;
+      }
+
+      const categoriaTexto = String(primera.categoria || '').trim();
+      const categoria = mapaCategorias.get(categoriaTexto);
+      if (!categoria) {
+        errores.push({ fila: grupo.filaInicial, mensaje: `Categoría "${categoriaTexto}" no encontrada (debe ser de tipo Elaborado)` });
+        continue;
+      }
+
+      const unidadTexto = String(primera.unidad || '').trim();
+      if (unidadTexto && !mapaUnidades.has(unidadTexto)) {
+        errores.push({ fila: grupo.filaInicial, mensaje: `Unidad "${unidadTexto}" no encontrada` });
+        continue;
+      }
+
+      const almacenTexto = String(primera.almacen || '').trim();
+      const almacen = mapaAlmacenes.get(almacenTexto);
+      if (!almacen) {
+        errores.push({ fila: grupo.filaInicial, mensaje: `Almacén "${almacenTexto}" no encontrado` });
+        continue;
+      }
+
+      const cantidadAProducir = Number(primera.cantidadaproducir);
+      if (!Number.isFinite(cantidadAProducir) || cantidadAProducir <= 0) {
+        errores.push({ fila: grupo.filaInicial, mensaje: `cantidadAProducir "${primera.cantidadaproducir}" no es un número válido` });
+        continue;
+      }
+
+      const dosisTexto = primera.dosisporhectarea;
+      const dosisPorHectarea = dosisTexto !== undefined && dosisTexto !== '' ? Number(dosisTexto) : null;
+      if (dosisPorHectarea !== null && (!Number.isFinite(dosisPorHectarea) || dosisPorHectarea < 0)) {
+        errores.push({ fila: grupo.filaInicial, mensaje: `dosisPorHectarea "${dosisTexto}" no es un número válido` });
+        continue;
+      }
+
+      let filaConError = false;
+      const componentes = [];
+      for (const { fila, row } of grupo.rows) {
+        const insumoNombre = String(row.insumonombre || '').trim();
+        if (!insumoNombre) {
+          errores.push({ fila, mensaje: 'Falta la columna requerida: insumoNombre' });
+          filaConError = true;
+          break;
+        }
+        const insumo = mapaInsumos.get(insumoNombre);
+        if (!insumo) {
+          errores.push({ fila, mensaje: `Insumo "${insumoNombre}" no encontrado` });
+          filaConError = true;
+          break;
+        }
+        const insumoCantidad = Number(row.insumocantidad);
+        if (!Number.isFinite(insumoCantidad) || insumoCantidad <= 0) {
+          errores.push({ fila, mensaje: `insumoCantidad "${row.insumocantidad}" no es un número válido` });
+          filaConError = true;
+          break;
+        }
+        const insumoUnidadTexto = String(row.insumounidad || '').trim();
+        if (insumoUnidadTexto && !mapaUnidades.has(insumoUnidadTexto)) {
+          errores.push({ fila, mensaje: `Unidad de insumo "${insumoUnidadTexto}" no encontrada` });
+          filaConError = true;
+          break;
+        }
+        componentes.push({
+          articuloUuid: insumo.uuid,
+          cantidad: insumoCantidad,
+          unidadUuid: insumoUnidadTexto ? mapaUnidades.get(insumoUnidadTexto).uuid : null,
+        });
+      }
+      if (filaConError) continue;
+
+      gruposValidos.push({
+        articuloNombre: nombre,
+        articuloCodigo: primera.codigo ? String(primera.codigo).trim() : null,
+        articuloCategoriaUuid: categoria.uuid,
+        articuloUnidadMedidaUuid: unidadTexto ? mapaUnidades.get(unidadTexto).uuid : null,
+        almacenUuid: almacen.uuid,
+        rendimiento: cantidadAProducir,
+        dosisPorHectarea,
+        componentes,
+      });
+    }
+
+    if (!dryRun) {
+      for (const payload of gruposValidos) {
+        await this.crearDirecta(payload, actorId, user);
+      }
+    }
+
+    return { totalFilas: rows.length, mezclasCreadas: gruposValidos.length, errores };
   },
 
   // Cierra la prueba: toma pH/CE de la ÚLTIMA etapa como resultado final,
@@ -1280,3 +1838,4 @@ export const mezclaService = {
 };
 
 export default mezclaService;
+

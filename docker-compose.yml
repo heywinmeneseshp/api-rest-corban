@@ -60,8 +60,17 @@ services:
       # (confirmado: el archivo en Drive es accesible y se descarga bien
       # con las credenciales de dev, así que no era un problema del
       # archivo ni del código — solo nunca llegaban al contenedor).
-      GOOGLE_DRIVE_CREDENTIALS: ${GOOGLE_DRIVE_CREDENTIALS}
-      GOOGLE_DRIVE_FOLDER: ${GOOGLE_DRIVE_FOLDER}
+      # NOTA despliegue: el JSON de la cuenta de servicio empieza por `{` y
+      # contiene `:` — sin comillas, Compose lo re-parsea como mapa YAML y
+      # la validación falla con "must be a boolean, null, number or string".
+      # Por eso va entre comillas SIMPLES (el JSON solo usa comillas dobles)
+      # y, mejor aún, se prefiere la variante en base64 de una sola línea
+      # (GOOGLE_DRIVE_CREDENTIALS_B64) que nunca rompe el YAML:
+      #   base64 -w0 clave.json  (Linux) / base64 -i clave.json (macOS)
+      # y pegar el resultado en una sola línea en el panel de despliegue.
+      GOOGLE_DRIVE_CREDENTIALS: '${GOOGLE_DRIVE_CREDENTIALS:-}'
+      GOOGLE_DRIVE_CREDENTIALS_B64: '${GOOGLE_DRIVE_CREDENTIALS_B64:-}'
+      GOOGLE_DRIVE_FOLDER: '${GOOGLE_DRIVE_FOLDER:-}'
 
     networks:
       - banarica-network

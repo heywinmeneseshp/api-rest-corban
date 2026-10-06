@@ -67,6 +67,12 @@ async function semanaQueFaltaLiquidar(fincaId, semanaRegistro, user) {
 
 const TIPOS_VALIDOS = ['EMBOLSE', 'REPIQUE', 'RECUSE', 'PROCESADO'];
 
+// Un racimo no se puede cortar/procesar (ni recusar en el corte) antes de
+// esta edad — pedido explícito del negocio. No aplica a EMBOLSE/REPIQUE (no
+// son "corte") ni a un ajuste (es una corrección retroactiva, no un registro
+// nuevo de corte).
+const EDAD_MINIMA_CORTE_SEMANAS = 8;
+
 // Tope de filas por cargue masivo — ver comentario en bulkCreateMovimientos.
 const MAX_FILAS_BULK = 15000;
 
@@ -502,6 +508,17 @@ export const racimoMovimientoService = {
         const esAjuste = m.esAjuste === true;
         if (esAjuste && !puedeAjustar(user)) {
           throw new Error('No tienes permiso para registrar ajustes');
+        }
+
+        if ((m.tipo === 'PROCESADO' || m.tipo === 'RECUSE') && !esAjuste) {
+          const edadSemanas = Math.round(
+            (new Date(semanaRegistro.fechaInicio) - new Date(semanaEmbolse.fechaInicio)) / (7 * 86400000),
+          ) + 1;
+          if (edadSemanas < EDAD_MINIMA_CORTE_SEMANAS) {
+            throw new Error(
+              `El racimo tiene ${edadSemanas} semana(s) de edad — no se puede registrar el corte antes de las ${EDAD_MINIMA_CORTE_SEMANAS} semanas`,
+            );
+          }
         }
 
         if (esAjuste) {

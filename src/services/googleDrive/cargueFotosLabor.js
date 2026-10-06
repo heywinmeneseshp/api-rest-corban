@@ -11,16 +11,71 @@ import { logger } from '../../utils/logger.js';
 // propia en "Mi unidad".
 let drive = null;
 
+// El JSON de la cuenta de servicio llega a veces con saltos de línea REALES
+// dentro de `private_key` (dotenv expande los \n escritos entre comillas
+// dobles, y algunos paneles de despliegue hacen lo mismo) — JSON.parse lo
+// rechaza con "Bad control character". Se reintenta escapando los
+// caracteres de control que estén DENTRO de un string; fuera de los strings
+// (espacios entre tokens) se dejan tal cual.
+const ESCAPES_DE_CONTROL = { '\n': '\\n', '\r': '\\r', '\t': '\\t' };
+
+const parsearJsonTolerante = (texto) => {
+  try {
+    return JSON.parse(texto);
+  } catch (errorOriginal) {
+    let reparado = '';
+    let dentroDeString = false;
+    let escapado = false;
+    for (const ch of texto) {
+      if (dentroDeString) {
+        if (escapado) {
+          escapado = false;
+          reparado += ch;
+        } else if (ch === '\\') {
+          escapado = true;
+          reparado += ch;
+        } else if (ch === '"') {
+          dentroDeString = false;
+          reparado += ch;
+        } else {
+          reparado += ESCAPES_DE_CONTROL[ch] ?? ch;
+        }
+      } else {
+        if (ch === '"') dentroDeString = true;
+        reparado += ch;
+      }
+    }
+    try {
+      return JSON.parse(reparado);
+    } catch {
+      throw errorOriginal;
+    }
+  }
+};
+
 const getDrive = () => {
   if (drive) return drive;
 
-  if (!process.env.GOOGLE_DRIVE_CREDENTIALS) {
+  // Se aceptan dos formatos (en este orden):
+  // 1. GOOGLE_DRIVE_CREDENTIALS_B64: el JSON de la cuenta de servicio en
+  //    base64 de una sola línea — es la forma recomendada en producción
+  //    porque nunca rompe el parseo YAML/env del docker-compose ni los
+  //    paneles de despliegue (sin `{`, `:`, comillas ni saltos de línea).
+  // 2. GOOGLE_DRIVE_CREDENTIALS: el JSON crudo como string de una sola
+  //    línea (con `\n` escapados dentro de private_key, no saltos reales).
+  const rawB64 = (process.env.GOOGLE_DRIVE_CREDENTIALS_B64 || '').trim();
+  const rawJson = (process.env.GOOGLE_DRIVE_CREDENTIALS || '').trim();
+
+  if (!rawB64 && !rawJson) {
     throw new Error('Falta GOOGLE_DRIVE_CREDENTIALS en el entorno');
   }
 
   let creds;
   try {
-    creds = JSON.parse(process.env.GOOGLE_DRIVE_CREDENTIALS);
+    const jsonText = rawB64
+      ? Buffer.from(rawB64, 'base64').toString('utf8')
+      : rawJson;
+    creds = parsearJsonTolerante(jsonText);
   } catch (error) {
     throw new Error(`Error al parsear GOOGLE_DRIVE_CREDENTIALS: ${error.message}`);
   }

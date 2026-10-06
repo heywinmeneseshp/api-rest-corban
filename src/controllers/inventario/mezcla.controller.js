@@ -30,6 +30,16 @@ export const mezclaController = {
     ApiResponse.send(res, { message: 'Mezcla eliminada correctamente' });
   }),
 
+  listDeleted: asyncHandler(async (req, res) => {
+    const { items, meta } = await mezclaService.listDeleted(req.query);
+    ApiResponse.send(res, { message: 'Mezclas eliminadas obtenidas correctamente', data: { items, meta } });
+  }),
+
+  restore: asyncHandler(async (req, res) => {
+    const mezcla = await mezclaService.restore(req.params.uuid);
+    ApiResponse.send(res, { message: 'Mezcla restaurada correctamente', data: mezcla });
+  }),
+
   listHistorial: asyncHandler(async (req, res) => {
     const { items, meta } = await mezclaService.listHistorial(req.query);
     ApiResponse.send(res, { message: 'Historial de pruebas obtenido correctamente', data: { items, meta } });
@@ -55,6 +65,16 @@ export const mezclaController = {
   actualizarComponente: asyncHandler(async (req, res) => {
     const version = await mezclaService.actualizarComponente(req.params.versionUuid, req.params.componenteUuid, req.body, req.user?.id);
     ApiResponse.send(res, { message: 'Insumo actualizado correctamente', data: version });
+  }),
+
+  llevarAUnLitro: asyncHandler(async (req, res) => {
+    const version = await mezclaService.llevarAUnLitro(req.params.versionUuid, req.user?.id);
+    ApiResponse.send(res, { message: 'Receta llevada a 1 litro correctamente', data: version });
+  }),
+
+  reordenarComponentes: asyncHandler(async (req, res) => {
+    const version = await mezclaService.reordenarComponentes(req.params.versionUuid, req.body.componenteUuids, req.user?.id);
+    ApiResponse.send(res, { message: 'Orden de los insumos actualizado correctamente', data: version });
   }),
 
   marcarComponentePrincipal: asyncHandler(async (req, res) => {
@@ -118,6 +138,12 @@ export const mezclaController = {
   crearDirecta: asyncHandler(async (req, res) => {
     const resultado = await mezclaService.crearDirecta(req.body, req.user?.id, req.user);
     ApiResponse.send(res, { statusCode: HTTP_STATUS.CREATED, message: 'Receta creada correctamente', data: resultado });
+  }),
+
+  bulkCrearDirectas: asyncHandler(async (req, res) => {
+    const dryRun = req.body?.dryRun === 'true';
+    const resultado = await mezclaService.bulkCrearDirectas(req.file, req.user?.id, req.user, { dryRun });
+    ApiResponse.send(res, { message: 'Cargue masivo de mezclas procesado', data: resultado });
   }),
 
   crearElaborado: asyncHandler(async (req, res) => {

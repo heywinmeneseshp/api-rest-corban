@@ -49,6 +49,8 @@ MezclaVersion.init(
     // excluye (pedido explícito: "una mezcla que no tiene prueba no
     // debería registrarse ahí").
     esDirecta: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: 'es_directa' },
+    // Receta ya llevada a 1 litro con dosis exactas (ver llevarAUnLitro).
+    recetaNormalizada: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: 'receta_normalizada' },
   },
   {
     sequelize,

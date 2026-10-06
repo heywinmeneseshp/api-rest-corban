@@ -4,7 +4,7 @@ import { auth } from '../../middlewares/auth.middleware.js';
 import { permission } from '../../middlewares/permission.middleware.js';
 import { requireAdmin } from '../../middlewares/requireAdmin.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
-import { uploadFotosLabor } from '../../middlewares/upload.middleware.js';
+import { uploadFotosLabor, uploadBulkFile } from '../../middlewares/upload.middleware.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import {
   createMezclaSchema,
@@ -16,6 +16,8 @@ import {
   agregarComponenteSchema,
   actualizarComponenteSchema,
   marcarComponentePrincipalSchema,
+  reordenarComponentesSchema,
+  llevarAUnLitroSchema,
   agregarEtapaSchema,
   finalizarVersionSchema,
   crearElaboradoSchema,
@@ -53,6 +55,15 @@ router.get('/historial', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_VER), v
 // mismo motivo. Mismo permiso que "Nueva elaboración"/"Crear elaborado".
 router.post('/directo', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_ELABORAR), validate(crearDirectaSchema), mezclaController.crearDirecta);
 
+// Cargue masivo de mezclas directas — mismo permiso que "Nueva mezcla" (una
+// fila por insumo, agrupadas por nombre de mezcla, ver
+// mezcla.service.js#bulkCrearDirectas). Antes de /:uuid por el mismo motivo.
+router.post('/bulk-upload', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_ELABORAR), uploadBulkFile, mezclaController.bulkCrearDirectas);
+
+// Papelera de mezclas eliminadas — solo Administrador (ver eliminados).
+// Antes de /:uuid por el mismo motivo que el resto de sub-rutas fijas.
+router.get('/eliminados', auth, requireAdmin, mezclaController.listDeleted);
+
 router.get('/', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_VER), validate(listMezclaSchema), mezclaController.list);
 router.post('/', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_CREAR), validate(createMezclaSchema), mezclaController.create);
 router.get('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_VER), validate(getMezclaSchema), mezclaController.getByUuid);
@@ -61,6 +72,7 @@ router.put('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_EDITAR), va
 // (pedido explícito) — a diferencia del resto del CRUD, que sigue usando el
 // permiso granular inventario.mezclas.eliminar asignable por rol.
 router.delete('/:uuid', auth, requireAdmin, validate(getMezclaSchema), mezclaController.remove);
+router.post('/:uuid/restore', auth, requireAdmin, validate(getMezclaSchema), mezclaController.restore);
 
 // ─── Prueba de laboratorio (MezclaVersion) ───
 
@@ -77,6 +89,20 @@ router.put(
   permission(PERMISSIONS.INVENTARIO_MEZCLAS_CREAR),
   validate(setComponentesSchema),
   mezclaController.setComponentes,
+);
+router.post(
+  '/:uuid/versiones/:versionUuid/llevar-a-un-litro',
+  auth,
+  permission(PERMISSIONS.INVENTARIO_MEZCLAS_CREAR),
+  validate(llevarAUnLitroSchema),
+  mezclaController.llevarAUnLitro,
+);
+router.put(
+  '/:uuid/versiones/:versionUuid/componentes/orden',
+  auth,
+  permission(PERMISSIONS.INVENTARIO_MEZCLAS_CREAR),
+  validate(reordenarComponentesSchema),
+  mezclaController.reordenarComponentes,
 );
 router.post(
   '/:uuid/versiones/:versionUuid/componentes/agregar',

@@ -184,6 +184,15 @@ export const PERMISSIONS = {
   // ningún permiso puntual — ver loteAreaConfig.routes.js.
   AREA_LOTE_VER: 'area_lote.ver',
   AREA_LOTE_CONFIGURAR: 'area_lote.configurar',
+  // Agregar y ocultar lotes desde el modal de pendiente de área
+  // (Maestros > Área de Lotes lo programa, el modal lo ejecuta). Asignable
+  // a roles: quien lo tenga ve los iconos en el modal y puede usar los
+  // endpoints sin ser Administrador. Ocultar no borra el lote.
+  AREA_LOTE_GESTIONAR_LOTES: 'area_lote.gestionar_lotes',
+  // Aprobar o rechazar los cambios de área enviados desde el modal. Quien lo
+  // tiene (y el Administrador) aplica sus propios cambios directo, sin pasar
+  // por aprobación.
+  AREA_LOTE_APROBAR: 'area_lote.aprobar',
 
   CATEGORIA_LABOR_VER: 'categoria_labor.ver',
   CATEGORIA_LABOR_CREAR: 'categoria_labor.crear',
@@ -214,12 +223,6 @@ export const PERMISSIONS = {
   PROGRAMACION_CORTE_CREAR: 'programacion_corte.crear',
   PROGRAMACION_CORTE_ELIMINAR: 'programacion_corte.eliminar',
 
-  // Precalibración de racimos en báscula (empacadora), antes de la
-  // calibración final — registro simple, sin módulo móvil.
-  PRECALIBRACION_VER: 'precalibracion.ver',
-  PRECALIBRACION_CREAR: 'precalibracion.crear',
-  PRECALIBRACION_EDITAR: 'precalibracion.editar',
-  PRECALIBRACION_ELIMINAR: 'precalibracion.eliminar',
 
   // Maestro de Ingredientes Activos (Sanidad Vegetal) — catálogo simple de
   // referencia (ej. Mancozeb, Propiconazol).
@@ -280,7 +283,9 @@ export const PERMISSIONS = {
   MENU_SANIDAD_VEGETAL_ALERTAS: 'menu.sanidad_vegetal.alertas',
   MENU_SANIDAD_VEGETAL_OBJETIVOS: 'menu.sanidad_vegetal.objetivos',
   MENU_SANIDAD_VEGETAL_ASPERSIONES: 'menu.sanidad_vegetal.aspersiones',
+  MENU_SANIDAD_VEGETAL_COMPROBANTES_ASPERSION: 'menu.sanidad_vegetal.comprobantes_aspersion',
   MENU_SANIDAD_VEGETAL_INGREDIENTES_ACTIVOS: 'menu.sanidad_vegetal.ingredientes_activos',
+  MENU_SANIDAD_VEGETAL_INSUMOS: 'menu.sanidad_vegetal.insumos',
 
   // Ítems planos del menú (hoy sin submenú propio, un solo código cada uno).
   MENU_PRECIPITACION_DIARIA: 'menu.precipitacion_diaria',
@@ -379,6 +384,10 @@ export const PERMISSIONS = {
   SANIDAD_ASPERSIONES_ELIMINAR: 'sanidad_vegetal.aspersiones.eliminar',
   SANIDAD_ASPERSIONES_EJECUTAR: 'sanidad_vegetal.aspersiones.ejecutar',
   SANIDAD_ASPERSIONES_ENVIAR_CORREO: 'sanidad_vegetal.aspersiones.enviar_correo',
+  SANIDAD_COMPROBANTES_ASPERSION_VER: 'sanidad_vegetal.comprobantes_aspersion.ver',
+  SANIDAD_COMPROBANTES_ASPERSION_EDITAR: 'sanidad_vegetal.comprobantes_aspersion.editar',
+  SANIDAD_COMPROBANTES_ASPERSION_EMITIR: 'sanidad_vegetal.comprobantes_aspersion.emitir',
+  SANIDAD_COMPROBANTES_ASPERSION_ELIMINAR: 'sanidad_vegetal.comprobantes_aspersion.eliminar',
 
   MENU_INVENTARIOS_PLANES: 'menu.inventarios.planes',
   MENU_INVENTARIOS_PROGRAMACIONES: 'menu.inventarios.programaciones',
@@ -500,6 +509,8 @@ export const PERMISSIONS_SEED = [
 
   { codigo: PERMISSIONS.AREA_LOTE_VER, nombre: 'Ver configuración de área de lotes' },
   { codigo: PERMISSIONS.AREA_LOTE_CONFIGURAR, nombre: 'Programar captura obligatoria de área de lotes' },
+  { codigo: PERMISSIONS.AREA_LOTE_GESTIONAR_LOTES, nombre: 'Agregar lotes y ocultar lotes del pendiente de área' },
+  { codigo: PERMISSIONS.AREA_LOTE_APROBAR, nombre: 'Aprobar o rechazar cambios de área de lotes' },
 
   { codigo: PERMISSIONS.CATEGORIA_LABOR_VER, nombre: 'Ver categorías de labor' },
   { codigo: PERMISSIONS.CATEGORIA_LABOR_CREAR, nombre: 'Crear categorías de labor' },
@@ -527,10 +538,6 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.PROGRAMACION_CORTE_CREAR, nombre: 'Cargar programación de corte' },
   { codigo: PERMISSIONS.PROGRAMACION_CORTE_ELIMINAR, nombre: 'Eliminar programación de corte' },
 
-  { codigo: PERMISSIONS.PRECALIBRACION_VER, nombre: 'Ver precalibraciones' },
-  { codigo: PERMISSIONS.PRECALIBRACION_CREAR, nombre: 'Registrar precalibraciones' },
-  { codigo: PERMISSIONS.PRECALIBRACION_EDITAR, nombre: 'Editar precalibraciones' },
-  { codigo: PERMISSIONS.PRECALIBRACION_ELIMINAR, nombre: 'Eliminar precalibraciones' },
 
   { codigo: PERMISSIONS.INGREDIENTE_ACTIVO_VER, nombre: 'Ver ingredientes activos' },
   { codigo: PERMISSIONS.INGREDIENTE_ACTIVO_CREAR, nombre: 'Crear ingredientes activos' },
@@ -577,7 +584,9 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.MENU_SANIDAD_VEGETAL_ALERTAS, nombre: 'Ver submenú Alertas' },
   { codigo: PERMISSIONS.MENU_SANIDAD_VEGETAL_OBJETIVOS, nombre: 'Ver submenú Objetivos' },
   { codigo: PERMISSIONS.MENU_SANIDAD_VEGETAL_ASPERSIONES, nombre: 'Ver submenú Programación de Aspersiones' },
+  { codigo: PERMISSIONS.MENU_SANIDAD_VEGETAL_COMPROBANTES_ASPERSION, nombre: 'Ver submenú Comprobante de aspersiones' },
   { codigo: PERMISSIONS.MENU_SANIDAD_VEGETAL_INGREDIENTES_ACTIVOS, nombre: 'Ver submenú Ingredientes Activos' },
+  { codigo: PERMISSIONS.MENU_SANIDAD_VEGETAL_INSUMOS, nombre: 'Ver submenú Insumos (Sanidad Vegetal)' },
 
   { codigo: PERMISSIONS.MENU_PRECIPITACION_DIARIA, nombre: 'Ver ítem de menú Precipitación Diaria' },
   { codigo: PERMISSIONS.MENU_ESTACION_METEOROLOGICA, nombre: 'Ver ítem de menú Estación Meteorológica' },
@@ -657,6 +666,10 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.SANIDAD_ASPERSIONES_ELIMINAR, nombre: 'Eliminar/cancelar programaciones de aspersión' },
   { codigo: PERMISSIONS.SANIDAD_ASPERSIONES_EJECUTAR, nombre: 'Ejecutar aspersión (genera salida de inventario)' },
   { codigo: PERMISSIONS.SANIDAD_ASPERSIONES_ENVIAR_CORREO, nombre: 'Enviar aviso de aspersión por correo' },
+  { codigo: PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_VER, nombre: 'Ver comprobantes de aspersión' },
+  { codigo: PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_EDITAR, nombre: 'Editar borradores de comprobante de aspersión' },
+  { codigo: PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_EMITIR, nombre: 'Emitir comprobantes de aspersión' },
+  { codigo: PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_ELIMINAR, nombre: 'Eliminar borradores de comprobante de aspersión' },
   { codigo: PERMISSIONS.MENU_INVENTARIOS_PLANES, nombre: 'Ver submenú Planes de Mantenimiento (Inventarios)' },
   { codigo: PERMISSIONS.MENU_INVENTARIOS_PROGRAMACIONES, nombre: 'Ver submenú Programaciones de Mantenimiento (Inventarios)' },
   { codigo: PERMISSIONS.MENU_INVENTARIOS_ORDENES, nombre: 'Ver submenú Órdenes de Mantenimiento (Inventarios)' },

@@ -1,11 +1,12 @@
 import { Op } from 'sequelize';
-import { Articulo, ArticuloCategoria, UnidadMedida, Almacen, ArticuloAlmacen } from '../../database/associations.js';
+import { Articulo, ArticuloCategoria, UnidadMedida, Almacen, ArticuloAlmacen, IngredienteActivo } from '../../database/associations.js';
 
 const INCLUDE = [
   { model: ArticuloCategoria, as: 'categoria', attributes: ['uuid', 'nombre', 'tipo'] },
   { model: UnidadMedida, as: 'unidadMedida', attributes: ['uuid', 'nombre', 'simbolo', 'codigo'] },
-  { model: UnidadMedida, as: 'dosisMaximaUnidad', attributes: ['uuid', 'nombre', 'simbolo'] },
+  { model: UnidadMedida, as: 'dosisUnidad', attributes: ['uuid', 'nombre', 'simbolo'] },
   { model: Almacen, as: 'almacenes', attributes: ['uuid', 'nombre', 'codigo'], through: { attributes: [] } },
+  { model: IngredienteActivo, as: 'ingredientesActivos', attributes: ['uuid', 'nombre'], through: { attributes: [] } },
 ];
 
 export const articuloRepository = {
@@ -74,6 +75,10 @@ export const articuloRepository = {
     return articulo.setAlmacenes(almacenIds, { through: { createdBy }, transaction });
   },
 
+  setIngredientesActivos(articulo, ingredientesActivoIds, createdBy, { transaction } = {}) {
+    return articulo.setIngredientesActivos(ingredientesActivoIds, { through: { createdBy }, transaction });
+  },
+
   // Ids (no uuids) de los almacenes asignados a un artículo — consulta
   // liviana para el chequeo de visibilidad (ver
   // articulo.service.js#getByUuid), sin traer el modelo Almacen completo.
@@ -89,10 +94,11 @@ export const articuloRepository = {
   // Solo artículos eliminados lógicamente (deleted_at no nulo) — para la
   // papelera, restringida al rol Administrador (ver requireAdmin en la
   // ruta).
-  async findAndCountAllDeleted({ limit, offset, search }) {
+  async findAndCountAllDeleted({ limit, offset, search, categoriaId }) {
     const where = {
       deletedAt: { [Op.ne]: null },
       ...(search ? { [Op.or]: [{ codigo: { [Op.like]: `%${search}%` } }, { nombre: { [Op.like]: `%${search}%` } }] } : {}),
+      ...(categoriaId ? { categoriaId } : {}),
     };
     return Articulo.findAndCountAll({
       where,

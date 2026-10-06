@@ -2,6 +2,7 @@ import { Op } from 'sequelize';
 import {
   OrdenMantenimiento,
   Equipo,
+  EquipoTipo,
   PlanMantenimiento,
   ProgramacionMantenimiento,
   OrdenDetalle,
@@ -13,7 +14,16 @@ import {
 } from '../../database/associations.js';
 
 const INCLUDE = [
-  { model: Equipo, as: 'equipo', attributes: ['uuid', 'codigo', 'nombre', 'tipo', 'estado'] },
+  // `tipo` NO es un atributo propio de Equipo (es una relación a
+  // EquipoTipo vía `tipoId`, ver equipo.model.js) — pedirlo como atributo
+  // plano rompía CUALQUIER lectura de una orden con "Unknown column
+  // 'equipo.tipo'". Se corrige anidando la relación real.
+  {
+    model: Equipo,
+    as: 'equipo',
+    attributes: ['uuid', 'codigo', 'nombre', 'estado'],
+    include: [{ model: EquipoTipo, as: 'tipo', attributes: ['uuid', 'nombre'] }],
+  },
   { model: PlanMantenimiento, as: 'plan', attributes: ['uuid', 'nombre', 'tipo'] },
   { model: ProgramacionMantenimiento, as: 'programacion', attributes: ['uuid', 'fechaProgramada', 'estado'] },
   { model: Almacen, as: 'almacen', attributes: ['uuid', 'nombre', 'codigo'] },
@@ -36,13 +46,23 @@ const INCLUDE = [
 ];
 
 export const ordenMantenimientoRepository = {
-  async findAndCountAll({ limit, offset, equipoUuid, planUuid, estado, prioridad, tipo, fechaDesde, fechaHasta, search }) {
+  async findAndCountAll({ limit, offset, equipoUuid, planUuid, estado, prioridad, tipo, fechaDesde, fechaHasta, search, almacenIdsPermitidos }) {
     const where = {};
     if (estado) where.estado = estado;
     if (prioridad) where.prioridad = prioridad;
     if (tipo) where.tipo = tipo;
     if (search) {
       where[Op.or] = [{ numero: { [Op.like]: `%${search}%` } }, { descripcion: { [Op.like]: `%${search}%` } }];
+    }
+    // `almacenId` es nullable (una orden puede ser solo de mano de obra/
+    // servicio, sin repuestos) — una orden sin almacén queda visible para
+    // todos, igual criterio "abierto por defecto" que el resto del scope.
+    // Se combina con `Op.and` para no pisar el `Op.or` de `search` de arriba.
+    if (almacenIdsPermitidos !== null && almacenIdsPermitidos !== undefined) {
+      where[Op.and] = [
+        ...(where[Op.and] || []),
+        { [Op.or]: [{ almacenId: null }, { almacenId: { [Op.in]: almacenIdsPermitidos } }] },
+      ];
     }
     if (fechaDesde || fechaHasta) {
       where.fecha = {};

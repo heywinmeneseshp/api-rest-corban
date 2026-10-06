@@ -5,7 +5,7 @@ const crypto = require('node:crypto');
 // Artículos base para el flujo de Corrección de pH en Pruebas de Mezcla
 // (ver mezcla.service.js#finalizar): el Agua se mide pero NUNCA debe
 // descontar inventario (maneja_inventario = false, respetado por
-// stock.helper.js#consumirStockConReceta), y el Regulador de pH sí lleva
+// stock.helper.js#consumirStockConReceta), y el ACONDICIONADOR sí lleva
 // inventario normal — se usa desde la etapa CORRECCION_PH, nunca como
 // componente de la receta permanente. Idempotente por `nombre` (columna
 // UNIQUE en articulos/articulo_categorias): en un servidor donde ya se
@@ -51,7 +51,7 @@ module.exports = {
     );
 
     const existentes = await queryInterface.sequelize.query(
-      "SELECT nombre FROM articulos WHERE nombre IN ('Agua', 'Regulador de pH')",
+      "SELECT nombre FROM articulos WHERE nombre IN ('Agua', 'ACONDICIONADOR')",
       { type: queryInterface.sequelize.QueryTypes.SELECT },
     );
     const nombresExistentes = new Set(existentes.map((a) => a.nombre));
@@ -75,11 +75,11 @@ module.exports = {
         updated_at: now,
       });
     }
-    if (!nombresExistentes.has('Regulador de pH')) {
+    if (!nombresExistentes.has('ACONDICIONADOR')) {
       filas.push({
         uuid: crypto.randomUUID(),
         codigo: null,
-        nombre: 'Regulador de pH',
+        nombre: 'ACONDICIONADOR',
         categoria_id: categoriaId,
         // Es un producto en polvo/sólido, se dosifica por peso (pedido
         // explícito) — distinto del Agua, que es líquido.
@@ -100,6 +100,6 @@ module.exports = {
   },
 
   async down(queryInterface) {
-    await queryInterface.bulkDelete('articulos', { nombre: ['Agua', 'Regulador de pH'] });
+    await queryInterface.bulkDelete('articulos', { nombre: ['Agua', 'ACONDICIONADOR'] });
   },
 };

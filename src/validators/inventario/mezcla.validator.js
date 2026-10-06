@@ -12,6 +12,34 @@ const componenteSchema = Joi.object({
   articuloUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
   cantidad: Joi.number().positive().required(),
   unidadUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
+  // Insumo principal de la receta — antes solo se podía marcar desde
+  // Mezclas → Prueba de laboratorio (marcarComponentePrincipal). Ahora
+  // también se puede fijar al crear/editar directo ("Nueva mezcla" /
+  // "Editar mezcla"), porque Programación de Aspersiones lo necesita para
+  // el tope de 100%-110% del "% Aumento" automático — sin él, esas
+  // mezclas quedaban sin ese límite de seguridad. Opcional: como mucho un
+  // componente por versión debería venir en true (el service se encarga
+  // de dejar solo uno).
+  esPrincipal: Joi.boolean(),
+  // Dosis de referencia del renglón (manda sobre la del artículo; null =
+  // usar la del artículo). Van juntas (ambas o ninguna).
+  dosisPorHectarea: Joi.number().positive().allow(null),
+  dosisUnidadUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
+  // Dosis relativa: este insumo es el X% de OTRO insumo de la misma receta
+  // (ej. HIPOTENSOR SYS = 1% del ACEITE BANOLE) en vez de una cantidad
+  // fija — ver utils/dosisRelativa.js. Van siempre juntos (ambos o
+  // ninguno); el service valida que la referencia exista en la receta, que
+  // no sea el mismo renglón, que no haya ciclos y que las unidades sean
+  // convertibles.
+  referenciaArticuloUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
+  porcentajeReferencia: Joi.number().positive().allow(null),
+  // Segundo tipo de regla (excluyente con el anterior): tasa por unidad de
+  // volumen de mezcla TOTAL preparada (ej. ANTIFOAM = 1 g por galón, o X ml
+  // por litro) — ver utils/dosisRelativa.js. La tasa va en la unidad del
+  // renglón y tasaUnidadUuid dice por cada cuánto volumen.
+  tipoDosis: Joi.string().valid('FIJA', 'PORCENTAJE', 'POR_VOLUMEN', 'POR_LITRO_AGUA').allow(null, ''),
+  tasa: Joi.number().positive().allow(null),
+  tasaUnidadUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
 });
 
 export const createMezclaSchema = Joi.object({
@@ -94,6 +122,11 @@ export const listMezclaSchema = Joi.object({
     // laboratorio) — la usa la pantalla de Mezclas — Pruebas de laboratorio,
     // que solo debe listar pruebas reales.
     incluirDirectas: Joi.boolean().default(true),
+    // Filtran por la receta (componentes) de la versión activa: solo
+    // mezclas que usan ese insumo, o cuyo insumo tiene ese ingrediente
+    // activo asignado (relación N:M articulo_ingredientes_activos).
+    insumoUuid: Joi.string().guid({ version: 'uuidv4' }),
+    ingredienteActivoUuid: Joi.string().guid({ version: 'uuidv4' }),
   }),
 });
 
@@ -154,6 +187,21 @@ export const actualizarComponenteSchema = Joi.object({
   query: Joi.object({}),
 });
 
+export const llevarAUnLitroSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({ uuid: uuidParam, versionUuid: uuidParam }),
+  query: Joi.object({}),
+});
+
+export const reordenarComponentesSchema = Joi.object({
+  body: Joi.object({
+    // uuids de los insumos AÚN SIN MEDIR, en el orden deseado.
+    componenteUuids: Joi.array().items(Joi.string().guid({ version: 'uuidv4' })).min(1).required(),
+  }),
+  params: Joi.object({ uuid: uuidParam, versionUuid: uuidParam }),
+  query: Joi.object({}),
+});
+
 export const marcarComponentePrincipalSchema = Joi.object({
   body: Joi.object({}),
   params: Joi.object({ uuid: uuidParam, versionUuid: uuidParam, componenteUuid: uuidParam }),
@@ -165,11 +213,11 @@ export const agregarEtapaSchema = Joi.object({
     // Opcional: uuid propio de la etapa — mismo criterio que
     // componenteSchema.uuid (app móvil offline).
     uuid: Joi.string().guid({ version: 'uuidv4' }),
-    // CORRECCION_PH: se usó el Regulador de pH para ajustar el pH — va con
+    // CORRECCION_PH: se usó el ACONDICIONADOR para ajustar el pH — va con
     // su propia cantidad/unidad, nunca con componenteUuid (ese insumo no
     // forma parte de la receta permanente, ver
     // mezcla.service.js#finalizar). El artículo NO se elige acá: siempre es
-    // "Regulador de pH", que el service resuelve/crea solo (pedido
+    // "ACONDICIONADOR", que el service resuelve/crea solo (pedido
     // explícito — no tiene sentido corregir pH con otra cosa).
     tipoEtapa: Joi.string().valid('MEDICION', 'CORRECCION_PH').default('MEDICION'),
     componenteUuid: Joi.string()
@@ -246,6 +294,10 @@ export const crearDirectaSchema = Joi.object({
     almacenUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
     rendimiento: Joi.number().positive().required(),
     dosisPorHectarea: Joi.number().positive().allow(null),
+    // Unidad de dosisPorHectarea — sin ella no se puede calcular nada con
+    // esa dosis después (Programación de Aspersiones, "Dosis real" en
+    // Mezclas), mismo criterio que updateMezclaSchema.
+    dosisPorHectareaUnidadUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
     componentes: Joi.array().items(componenteSchema).min(1).required(),
     observaciones: Joi.string().allow(null, '').max(1000),
   }),
@@ -296,6 +348,10 @@ export const mezclaParametrosSchema = Joi.object({
     phMinimo: Joi.number().min(0).max(14).required(),
     phMaximo: Joi.number().min(0).max(14).required(),
     ceMaxima: Joi.number().min(0).required(),
+    // Gramos de ACONDICIONADOR sugeridos por litro de agua (default 0.8,
+    // ver configuracion.service.js#MEZCLA_PARAMETROS_DEFAULT) — solo
+    // sugiere la cantidad al registrar una Corrección de pH, sigue editable.
+    reguladorPhDosisGL: Joi.number().positive(),
   }),
   params: Joi.object({}),
   query: Joi.object({}),

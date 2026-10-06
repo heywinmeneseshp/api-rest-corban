@@ -16,6 +16,7 @@ export const createLoteAreaConfigSchema = Joi.object({
     fincaUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
     rolId: Joi.number().integer().positive().required(),
     fechaObjetivo: Joi.date().raw().required(),
+    recurrencia: Joi.string().valid('UNA_VEZ', 'SEMANAL', 'QUINCENAL', 'MENSUAL').default('UNA_VEZ'),
   }),
   params: Joi.object({}),
   query: Joi.object({}),
@@ -49,5 +50,38 @@ export const registrarAreaLoteSchema = Joi.object({
       .required(),
   }),
   params: Joi.object({}),
+  query: Joi.object({}),
+});
+
+export const removeLotePendienteSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({ loteUuid: uuidParam }),
+  query: Joi.object({}),
+});
+
+// Nombre numérico como en el maestro de lotes (ver
+// lote.validator.js#nombreLote): el código se genera solo.
+export const createLotePendienteSchema = Joi.object({
+  body: Joi.object({
+    fincaUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
+    nombre: Joi.string()
+      .pattern(/^\d+$/)
+      .max(150)
+      .required()
+      .messages({ 'string.pattern.base': 'El nombre del lote debe contener solo números (ej: 01, 02).' }),
+  }),
+  params: Joi.object({}),
+  query: Joi.object({}),
+});
+
+export const listSolicitudesSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({}),
+  query: Joi.object({ estado: Joi.string().valid('PENDIENTE', 'APROBADA', 'RECHAZADA', 'TODAS') }),
+});
+
+export const resolverSolicitudSchema = Joi.object({
+  body: Joi.object({ motivo: Joi.string().max(300).allow('', null) }),
+  params: Joi.object({ uuid: uuidParam }),
   query: Joi.object({}),
 });

@@ -24,8 +24,8 @@ Articulo.init(
     // aplican por hectárea (ej. "4 L/ha"); puramente informativo, no afecta
     // el cálculo de stock ni de aspersiones (esa cantidad real la define la
     // mezcla, ver mezcla.model.js#dosisPorHectarea).
-    dosisMaximaPorHectarea: { type: DataTypes.DECIMAL(12, 4), allowNull: true, field: 'dosis_maxima_por_hectarea' },
-    dosisMaximaUnidadId: { type: DataTypes.INTEGER, allowNull: true, field: 'dosis_maxima_unidad_id' },
+    dosisPorHectarea: { type: DataTypes.DECIMAL(12, 4), allowNull: true, field: 'dosis_por_hectarea' },
+    dosisUnidadId: { type: DataTypes.INTEGER, allowNull: true, field: 'dosis_unidad_id' },
     estado: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
     updatedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'updated_by' },

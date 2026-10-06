@@ -15,6 +15,46 @@ function fincaWhere(fincaIds, restringido = false) {
   return { fincaId: { [Op.in]: fincaIds } };
 }
 
+// El ratio (cajas / racimos cosechados) solo debe contar racimos con edad
+// entre 8 y 12 semanas al momento del corte (pedido explícito del negocio)
+// — ni por debajo de 8 (muy verdes) ni de 13 en adelante (se excluyen, no
+// se "topan" a 12). Edad = semanas entre la semana de embolse (cohorte de
+// origen) y la semana de registro del corte, contando la semana de embolse
+// como 1 — mismo cálculo que ya usa racimoMovimiento.service.js para el
+// bloqueo de corte antes de las 8 semanas.
+const EDAD_MINIMA_RATIO = 8;
+const EDAD_MAXIMA_RATIO = 12;
+
+function calcularEdadSemanas(fechaInicioEmbolse, fechaInicioRegistro) {
+  if (!fechaInicioEmbolse || !fechaInicioRegistro) return null;
+  const diffMs = new Date(fechaInicioRegistro) - new Date(fechaInicioEmbolse);
+  return Math.round(diffMs / (7 * 86400000)) + 1;
+}
+
+// Suma `cantidad` de filas RECUSE/PROCESADO (ya traídas sin agrupar, con
+// semanaEmbolseId y semanaRegistroId) que caigan en el rango de edad del
+// ratio, opcionalmente agrupadas por una clave (ej. fincaId o
+// semanaRegistroId) — devuelve un Map(clave -> total) o, sin `claveDe`, un
+// solo número.
+function sumarRacimosParaRatio(filas, fechaInicioPorSemanaId, claveDe) {
+  if (!claveDe) {
+    let total = 0;
+    for (const f of filas) {
+      const edad = calcularEdadSemanas(fechaInicioPorSemanaId.get(f.semanaEmbolseId), fechaInicioPorSemanaId.get(f.semanaRegistroId));
+      if (edad !== null && edad >= EDAD_MINIMA_RATIO && edad <= EDAD_MAXIMA_RATIO) total += Number(f.cantidad);
+    }
+    return total;
+  }
+  const totales = new Map();
+  for (const f of filas) {
+    const edad = calcularEdadSemanas(fechaInicioPorSemanaId.get(f.semanaEmbolseId), fechaInicioPorSemanaId.get(f.semanaRegistroId));
+    if (edad === null || edad < EDAD_MINIMA_RATIO || edad > EDAD_MAXIMA_RATIO) continue;
+    const clave = claveDe(f);
+    totales.set(clave, (totales.get(clave) || 0) + Number(f.cantidad));
+  }
+  return totales;
+}
+
 export const dashboardService = {
   async getResumen(query, user) {
     const cantidadSemanas = Number(query.cantidadSemanas) || 14;
@@ -98,6 +138,13 @@ export const dashboardService = {
       }
     }
 
+    // Tabla de semanas es chica (cientos de filas) — se trae una sola vez
+    // acá y se reusa en todos los cálculos de ratio de esta función para no
+    // repetir el join/lookup de fechaInicio por cada suma filtrada por edad.
+    const fechaInicioPorSemanaId = new Map(
+      (await Semana.findAll({ attributes: ['id', 'fechaInicio'], raw: true })).map((s) => [s.id, s.fechaInicio]),
+    );
+
     const [cajasRow] = await ProduccionSemanal.findAll({
       where: { semanaId: ultimaSemana.id, ...fw },
       attributes: [[fn('SUM', col('cajas_20kg')), 'total']],
@@ -114,12 +161,12 @@ export const dashboardService = {
     }) : [{ total: 0 }];
     const cajasExternas = Number(cajasExternasRow?.total || 0);
 
-    const [cortesRow] = await RacimoMovimiento.findAll({
+    const cortesRows = await RacimoMovimiento.findAll({
       where: { tipo: { [Op.in]: ['RECUSE', 'PROCESADO'] }, semanaRegistroId: ultimaSemana.id, ...fw },
-      attributes: [[fn('SUM', col('cantidad')), 'total']],
+      attributes: ['semanaEmbolseId', 'semanaRegistroId', 'cantidad'],
       raw: true,
     });
-    const racimosCortados = Number(cortesRow?.total || 0);
+    const racimosCortados = sumarRacimosParaRatio(cortesRows, fechaInicioPorSemanaId);
     const ratio = racimosCortados > 0 ? Math.round((cajasProducidas / racimosCortados) * 100) / 100 : 0;
 
     const semanaActual = query.semanaUuid
@@ -131,7 +178,7 @@ export const dashboardService = {
 
     const movimientos = semanaEmbolseIds.length > 0 ? await RacimoMovimiento.findAll({
       where: { semanaEmbolseId: { [Op.in]: semanaEmbolseIds }, ...fw },
-      attributes: ['semanaEmbolseId', 'tipo', 'cantidad'],
+      attributes: ['semanaEmbolseId', 'semanaRegistroId', 'tipo', 'cantidad'],
     }) : [];
 
     const cajasPorSemana = semanaEmbolseIds.length > 0 ? await ProduccionSemanal.findAll({
@@ -142,7 +189,9 @@ export const dashboardService = {
     }) : [];
     const cajasMap = new Map(cajasPorSemana.map((r) => [r.semanaId, Number(r.total)]));
 
-    const porCohorte = Object.fromEntries(semanaEmbolseIds.map((id) => [id, { totalEmbolsado: 0, totalRepicado: 0, totalRecusado: 0, totalProcesado: 0 }]));
+    const porCohorte = Object.fromEntries(
+      semanaEmbolseIds.map((id) => [id, { totalEmbolsado: 0, totalRepicado: 0, totalRecusado: 0, totalProcesado: 0, cortadosParaRatio: 0 }]),
+    );
 
     for (const m of movimientos) {
       const c = porCohorte[m.semanaEmbolseId];
@@ -151,14 +200,22 @@ export const dashboardService = {
       else if (m.tipo === 'REPIQUE') c.totalRepicado += m.cantidad;
       else if (m.tipo === 'RECUSE') c.totalRecusado += m.cantidad;
       else if (m.tipo === 'PROCESADO') c.totalProcesado += m.cantidad;
+      // `cortadosParaRatio`: solo RECUSE/PROCESADO dentro del rango de edad
+      // del ratio (8-12 semanas) — totalRecusado/totalProcesado de arriba
+      // quedan SIN filtrar porque también alimentan saldo/recobrosPct/
+      // aprovechamientoPct de esta misma cohorte, que no deben cambiar.
+      if (m.tipo === 'RECUSE' || m.tipo === 'PROCESADO') {
+        const edad = calcularEdadSemanas(fechaInicioPorSemanaId.get(m.semanaEmbolseId), fechaInicioPorSemanaId.get(m.semanaRegistroId));
+        if (edad !== null && edad >= EDAD_MINIMA_RATIO && edad <= EDAD_MAXIMA_RATIO) c.cortadosParaRatio += m.cantidad;
+      }
     }
 
     const cohortes = semanasEmbolse.map((semana) => {
-      const c = porCohorte[semana.id] || { totalEmbolsado: 0, totalRepicado: 0, totalRecusado: 0, totalProcesado: 0 };
+      const c = porCohorte[semana.id] || { totalEmbolsado: 0, totalRepicado: 0, totalRecusado: 0, totalProcesado: 0, cortadosParaRatio: 0 };
       const diffMs = semanaActual ? new Date(semanaActual.fechaInicio) - new Date(semana.fechaInicio) : 0;
       const edadSemanas = Math.round(diffMs / (7 * 86400000)) + 1;
       const saldo = c.totalEmbolsado - c.totalRepicado - c.totalRecusado - c.totalProcesado;
-      const racimosCortadosCohorte = c.totalRecusado + c.totalProcesado;
+      const racimosCortadosCohorte = c.cortadosParaRatio;
       const cajas = cajasMap.get(semana.id) || 0;
       return {
         semanaUuid: semana.uuid,
@@ -188,13 +245,12 @@ export const dashboardService = {
     }) : [];
     const cajasRegMap = new Map(cajasPorRegistro.map((r) => [r.semanaId, Number(r.total)]));
 
-    const cortesPorRegistro = semanasRegistroIds.length > 0 ? await RacimoMovimiento.findAll({
+    const cortesPorRegistroRows = semanasRegistroIds.length > 0 ? await RacimoMovimiento.findAll({
       where: { tipo: { [Op.in]: ['RECUSE', 'PROCESADO'] }, semanaRegistroId: { [Op.in]: semanasRegistroIds }, ...fw },
-      attributes: ['semanaRegistroId', [fn('SUM', col('cantidad')), 'total']],
-      group: ['semanaRegistroId'],
+      attributes: ['semanaEmbolseId', 'semanaRegistroId', 'cantidad'],
       raw: true,
     }) : [];
-    const cortesRegMap = new Map(cortesPorRegistro.map((r) => [r.semanaRegistroId, Number(r.total)]));
+    const cortesRegMap = sumarRacimosParaRatio(cortesPorRegistroRows, fechaInicioPorSemanaId, (r) => r.semanaRegistroId);
 
     const semanasRegistro = semanasEmbolse.map((semana) => {
       const cajasSem = cajasRegMap.get(semana.id) || 0;
@@ -245,10 +301,12 @@ export const dashboardService = {
       raw: true,
     }) : [];
 
-    const cortesAnualPorFinca = todasSemanaIds.length > 0 ? await RacimoMovimiento.findAll({
+    // Sin agrupar en SQL (a diferencia de cajasAnualPorFinca) porque hace
+    // falta `semanaEmbolseId` por fila para calcular la edad y filtrar por
+    // el rango del ratio (8-12 semanas) antes de sumar.
+    const cortesAnualPorFincaRows = todasSemanaIds.length > 0 ? await RacimoMovimiento.findAll({
       where: { tipo: { [Op.in]: ['RECUSE', 'PROCESADO'] }, semanaRegistroId: { [Op.in]: todasSemanaIds }, ...fw },
-      attributes: ['semanaRegistroId', 'fincaId', [fn('SUM', col('cantidad')), 'total']],
-      group: ['semanaRegistroId', 'fincaId'],
+      attributes: ['semanaEmbolseId', 'semanaRegistroId', 'fincaId', 'cantidad'],
       raw: true,
     }) : [];
 
@@ -260,9 +318,12 @@ export const dashboardService = {
       cajasPorSemanaYFinca.get(r.semanaId).set(r.fincaId, Number(r.total));
     }
     const cortesPorSemanaYFinca = new Map();
-    for (const r of cortesAnualPorFinca) {
+    for (const r of cortesAnualPorFincaRows) {
+      const edad = calcularEdadSemanas(fechaInicioPorSemanaId.get(r.semanaEmbolseId), fechaInicioPorSemanaId.get(r.semanaRegistroId));
+      if (edad === null || edad < EDAD_MINIMA_RATIO || edad > EDAD_MAXIMA_RATIO) continue;
       if (!cortesPorSemanaYFinca.has(r.semanaRegistroId)) cortesPorSemanaYFinca.set(r.semanaRegistroId, new Map());
-      cortesPorSemanaYFinca.get(r.semanaRegistroId).set(r.fincaId, Number(r.total));
+      const porFinca = cortesPorSemanaYFinca.get(r.semanaRegistroId);
+      porFinca.set(r.fincaId, (porFinca.get(r.fincaId) || 0) + Number(r.cantidad));
     }
 
     // Total real de cajas por semana, sin cruzar con racimos — es lo que se
@@ -355,6 +416,16 @@ export const dashboardService = {
     });
     const fincaProcesadosMap = new Map(fincasProcesados.map((r) => [r.fincaId, Number(r.total)]));
 
+    // Solo para el `ratio` de fincasActivas de abajo (8-12 semanas) — NO se
+    // usa para `recusados`/`procesados`/`aprovechamientoPct`, que siguen
+    // usando los mapas de arriba sin filtrar por edad.
+    const fincasCortesRatioRows = await RacimoMovimiento.findAll({
+      where: { tipo: { [Op.in]: ['RECUSE', 'PROCESADO'] }, semanaRegistroId: ultimaSemana.id, ...fwScope },
+      attributes: ['semanaEmbolseId', 'semanaRegistroId', 'fincaId', 'cantidad'],
+      raw: true,
+    });
+    const fincaCortesRatioMap = sumarRacimosParaRatio(fincasCortesRatioRows, fechaInicioPorSemanaId, (r) => r.fincaId);
+
     // Todas las fincas del alcance del usuario (activas, internas Y
     // externas), no solo las que tengan cajas/recusados/procesados en
     // `ultimaSemana` — si no, una finca sin movimiento esa semana puntual
@@ -379,10 +450,12 @@ export const dashboardService = {
           group: ['fincaId'],
           raw: true,
         }),
+        // Sin agrupar: hace falta semanaEmbolseId por fila para filtrar por
+        // edad (8-12 semanas) antes de sumar — este mapa solo alimenta el
+        // ratio del ranking semanal.
         RacimoMovimiento.findAll({
           where: { tipo: { [Op.in]: ['RECUSE', 'PROCESADO'] }, semanaRegistroId: semanaId, ...fwScope },
-          attributes: ['fincaId', [fn('SUM', col('cantidad')), 'total']],
-          group: ['fincaId'],
+          attributes: ['semanaEmbolseId', 'semanaRegistroId', 'fincaId', 'cantidad'],
           raw: true,
         }),
         RacimoMovimiento.findAll({
@@ -400,7 +473,7 @@ export const dashboardService = {
       ]);
       return {
         cajas: new Map(cajasRows.map((r) => [r.fincaId, Number(r.total)])),
-        cortes: new Map(cortesRows.map((r) => [r.fincaId, Number(r.total)])),
+        cortes: sumarRacimosParaRatio(cortesRows, fechaInicioPorSemanaId, (r) => r.fincaId),
         embolsado: new Map(embRows.map((r) => [r.fincaId, Number(r.total)])),
         salidas: new Map(salRows.map((r) => [r.fincaId, Number(r.total)])),
       };
@@ -453,6 +526,9 @@ export const dashboardService = {
       const recusados = fincaRecusadosMap.get(f.id) || 0;
       const procesados = fincaProcesadosMap.get(f.id) || 0;
       const totalCortes = recusados + procesados;
+      // Solo para el ratio (8-12 semanas de edad) — `aprovechamientoPct`
+      // sigue usando `totalCortes` sin filtrar por edad, a propósito.
+      const cortesParaRatio = fincaCortesRatioMap.get(f.id) || 0;
       return {
         id: f.id,
         codigo: f.codigo,
@@ -465,7 +541,7 @@ export const dashboardService = {
         cajas: cajasFinca,
         recusados,
         procesados,
-        ratio: totalCortes > 0 ? Math.round((cajasFinca / totalCortes) * 100) / 100 : 0,
+        ratio: cortesParaRatio > 0 ? Math.round((cajasFinca / cortesParaRatio) * 100) / 100 : 0,
         aprovechamientoPct: totalCortes > 0 ? Math.round((procesados / totalCortes) * 10000) / 100 : 0,
       };
     }).sort((a, b) => a.codigo.localeCompare(b.codigo, undefined, { numeric: true }));

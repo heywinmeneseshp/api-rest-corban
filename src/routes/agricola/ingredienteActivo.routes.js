@@ -2,7 +2,9 @@ import { Router } from 'express';
 import { ingredienteActivoController } from '../../controllers/agricola/ingredienteActivo.controller.js';
 import { auth } from '../../middlewares/auth.middleware.js';
 import { permission } from '../../middlewares/permission.middleware.js';
+import { requireAdmin } from '../../middlewares/requireAdmin.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
+import { uploadBulkFile } from '../../middlewares/upload.middleware.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import {
   listIngredientesActivosSchema,
@@ -43,6 +45,13 @@ router.post(
   validate(createIngredienteActivoSchema),
   ingredienteActivoController.create,
 );
+router.post(
+  '/bulk-upload',
+  auth,
+  permission(PERMISSIONS.INGREDIENTE_ACTIVO_CREAR),
+  uploadBulkFile,
+  ingredienteActivoController.bulkUpload,
+);
 
 /**
  * @openapi
@@ -66,6 +75,11 @@ router.post(
  *     responses:
  *       200: { description: OK }
  */
+// Papelera de ingredientes activos eliminados — solo Administrador (ver
+// eliminados). Antes de /:uuid por el mismo motivo que /bulk-upload arriba.
+router.get('/eliminados', auth, requireAdmin, ingredienteActivoController.listDeleted);
+router.post('/:uuid/restore', auth, requireAdmin, validate(getIngredienteActivoSchema), ingredienteActivoController.restore);
+
 router.get(
   '/:uuid',
   auth,

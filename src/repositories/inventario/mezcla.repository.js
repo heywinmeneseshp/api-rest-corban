@@ -12,6 +12,8 @@ import {
   Elaboracion,
   User,
   Role,
+  IngredienteActivo,
+  ArticuloIngredienteActivo,
 } from '../../database/associations.js';
 
 // Usuario + sus roles (el "cargo" que se muestra en el detalle: quién creó
@@ -66,14 +68,20 @@ const VERSION_DETAIL_INCLUDE = [
       {
         model: Articulo,
         as: 'articulo',
-        // dosisMaximaPorHectarea/dosisMaximaUnidadId: dosis máxima de
-        // referencia del insumo (categoría INSUMO, ver articulo.model.js) —
-        // Programación de Aspersiones la usa para alertar si lo que se va a
-        // aplicar la supera. manejaInventario: lo necesita
-        // consumirStockConReceta (stock.helper.js) para saltear por
-        // completo el descuento de un artículo como el Agua.
-        attributes: ['id', 'uuid', 'nombre', 'codigo', 'costoCompra', 'unidadMedidaId', 'dosisMaximaPorHectarea', 'manejaInventario'],
-        include: [{ model: UnidadMedida, as: 'dosisMaximaUnidad', attributes: ['uuid', 'nombre', 'simbolo'] }],
+        // dosisPorHectarea/dosisUnidadId: dosis máxima de referencia del
+        // insumo (categoría INSUMO, ver articulo.model.js) — Programación
+        // de Aspersiones la usa para alertar si lo que se va a aplicar la
+        // supera. manejaInventario: lo necesita consumirStockConReceta
+        // (stock.helper.js) para saltear por completo el descuento de un
+        // artículo como el Agua.
+        attributes: ['id', 'uuid', 'nombre', 'codigo', 'costoCompra', 'unidadMedidaId', 'dosisPorHectarea', 'manejaInventario'],
+        // unidadMedida: la unidad PROPIA del artículo (L, Gal, Kg) — Aspersiones
+        // muestra y redondea "Cantidad necesaria" en ella, no en la unidad
+        // fina (ml, g) a la que puede quedar la receta.
+        include: [
+          { model: UnidadMedida, as: 'dosisUnidad', attributes: ['uuid', 'nombre', 'simbolo'] },
+          { model: UnidadMedida, as: 'unidadMedida', attributes: ['uuid', 'nombre', 'simbolo'] },
+        ],
       },
       { model: UnidadMedida, as: 'unidad', attributes: ['uuid', 'nombre', 'simbolo', 'codigo'] },
     ],
@@ -149,7 +157,16 @@ const DETAIL_INCLUDE = [
   {
     model: MezclaVersion,
     as: 'versiones',
-    separate: false,
+    // `separate: true` — con `false` (join único) Sequelize no aplica el
+    // `order` de un include anidado, así que `versiones[0]` terminaba
+    // siendo la versión 1 (la más VIEJA) en vez de la más nueva, y el
+    // frontend (que siempre lee versiones[0] como "la receta actual")
+    // mostraba datos de hace muchas ediciones atrás — bug real detectado:
+    // una edición de "Editar mezcla" se guardaba bien en la DB pero al
+    // reabrir el modal se leía la primerísima versión. Con `separate: true`
+    // esta relación corre como una consulta aparte, donde el `order` sí se
+    // respeta.
+    separate: true,
     order: [['version', 'DESC']],
     include: VERSION_DETAIL_INCLUDE,
   },
@@ -168,8 +185,51 @@ const ORDEN_PRIORIDAD_OPTIMA_SIN_ELABORAR = literal(`(
   LIMIT 1
 )`);
 
+// Mezclas cuya versión ACTIVA tiene alguno de estos articuloId en su receta
+// (MezclaComponente). Devuelve mezclaId (no versionId) — cada mezcla tiene
+// como máximo una versión activa.
+async function mezclaIdsPorArticuloEnReceta(articuloIds) {
+  if (!articuloIds.length) return [];
+  const versiones = await MezclaVersion.findAll({
+    where: { activa: true },
+    attributes: ['mezclaId'],
+    include: [{ model: MezclaComponente, as: 'componentes', attributes: [], where: { articuloId: articuloIds }, required: true }],
+  });
+  return [...new Set(versiones.map((v) => v.mezclaId))];
+}
+
+// Intersecta un `where.id` ya existente (puede venir de un filtro previo,
+// ej. `incluirDirectas`, como `{ [Op.notIn]: [...] }`) con una nueva lista
+// de ids permitidos. Si no había nada antes, simplemente usa la lista nueva
+// (vacía = ningún resultado, vía id -1 de respaldo).
+function interseccionIds(whereIdActual, nuevosIds) {
+  if (whereIdActual === undefined) {
+    return nuevosIds.length ? { [Op.in]: nuevosIds } : -1;
+  }
+  if (whereIdActual[Op.notIn]) {
+    const excluidos = new Set(whereIdActual[Op.notIn]);
+    const filtrados = nuevosIds.filter((id) => !excluidos.has(id));
+    return filtrados.length ? { [Op.in]: filtrados } : -1;
+  }
+  if (whereIdActual[Op.in]) {
+    const permitidos = new Set(nuevosIds);
+    const filtrados = whereIdActual[Op.in].filter((id) => permitidos.has(id));
+    return filtrados.length ? { [Op.in]: filtrados } : -1;
+  }
+  return nuevosIds.length ? { [Op.in]: nuevosIds } : -1;
+}
+
 export const mezclaRepository = {
-  async findAndCountAll({ limit, offset, search, estado, articuloElaboradoUuid, incluirDirectas = true }) {
+  async findAndCountAll({
+    limit,
+    offset,
+    search,
+    estado,
+    articuloElaboradoUuid,
+    incluirDirectas = true,
+    insumoUuid,
+    ingredienteActivoUuid,
+  }) {
     const where = {
       ...(search
         ? {
@@ -185,6 +245,34 @@ export const mezclaRepository = {
     if (articuloElaboradoUuid) {
       const prod = await Articulo.findOne({ where: { uuid: articuloElaboradoUuid } });
       where.articuloElaboradoId = prod ? prod.id : -1;
+    }
+
+    // Filtro por insumo: solo mezclas cuya versión ACTIVA tiene ese
+    // artículo en su receta (MezclaComponente). Se resuelve a una lista de
+    // mezclaId con una subconsulta chica, en vez de meter el JOIN en la
+    // consulta principal (que usa `separate: true` para `versiones`, así
+    // que no se puede filtrar por ahí directamente).
+    if (insumoUuid) {
+      const articulo = await Articulo.findOne({ where: { uuid: insumoUuid } });
+      const mezclaIds = articulo ? await mezclaIdsPorArticuloEnReceta([articulo.id]) : [];
+      where.id = interseccionIds(where.id, mezclaIds);
+    }
+
+    // Filtro por ingrediente activo: mezclas cuya receta activa tiene ALGÚN
+    // artículo que tenga ese ingrediente activo asignado (relación N:M
+    // articulo_ingredientes_activos).
+    if (ingredienteActivoUuid) {
+      const ingrediente = await IngredienteActivo.findOne({ where: { uuid: ingredienteActivoUuid } });
+      let articuloIds = [];
+      if (ingrediente) {
+        const relaciones = await ArticuloIngredienteActivo.findAll({
+          where: { ingredienteActivoId: ingrediente.id },
+          attributes: ['articuloId'],
+        });
+        articuloIds = relaciones.map((r) => r.articuloId);
+      }
+      const mezclaIds = articuloIds.length ? await mezclaIdsPorArticuloEnReceta(articuloIds) : [];
+      where.id = interseccionIds(where.id, mezclaIds);
     }
 
     // "Mezclas — Pruebas de laboratorio" (incluirDirectas: false) no debe
@@ -233,6 +321,37 @@ export const mezclaRepository = {
   async softDelete(mezcla, deletedBy, { transaction } = {}) {
     await mezcla.update({ deletedBy }, { transaction });
     await mezcla.destroy({ transaction });
+    return mezcla;
+  },
+
+  // Papelera: solo mezclas eliminadas lógicamente. Acceso restringido al
+  // rol Administrador desde la ruta (requireAdmin) — mismo patrón que
+  // articulo.repository.js#findAndCountAllDeleted.
+  async findAndCountAllDeleted({ limit, offset, search }) {
+    const where = {
+      deletedAt: { [Op.ne]: null },
+      ...(search
+        ? { [Op.or]: [{ nombre: { [Op.like]: `%${search}%` } }, { codigo: { [Op.like]: `%${search}%` } }] }
+        : {}),
+    };
+    return Mezcla.findAndCountAll({
+      where,
+      limit,
+      offset,
+      order: [['deletedAt', 'DESC']],
+      include: LIST_INCLUDE,
+      paranoid: false,
+      distinct: true,
+    });
+  },
+
+  findByUuidIncludingDeleted(uuid) {
+    return Mezcla.findOne({ where: { uuid }, paranoid: false });
+  },
+
+  async restore(mezcla, { transaction } = {}) {
+    await mezcla.restore({ transaction });
+    await mezcla.update({ deletedBy: null }, { transaction });
     return mezcla;
   },
 

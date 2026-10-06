@@ -23,6 +23,8 @@ import { EstadioHoja } from './models/estadioHoja.model.js';
 import { Configuracion } from './models/configuracion.model.js';
 import { LoteAreaProduccion } from './models/loteAreaProduccion.model.js';
 import { LoteAreaConfig } from './models/loteAreaConfig.model.js';
+import { LoteAreaOmitido } from './models/loteAreaOmitido.model.js';
+import { LoteAreaSolicitud } from './models/loteAreaSolicitud.model.js';
 import { MotivoRepique } from './models/motivoRepique.model.js';
 import { MotivoRecuse } from './models/motivoRecuse.model.js';
 import { RacimoMovimiento } from './models/racimoMovimiento.model.js';
@@ -49,6 +51,7 @@ import { UnidadConversion } from './models/unidadConversion.model.js';
 import { Almacen } from './models/almacen.model.js';
 import { Motivo } from './models/motivo.model.js';
 import { MovimientoInventario } from './models/movimientoInventario.model.js';
+import { ordenarRecetasAfterFind } from '../utils/ordenReceta.js';
 import { Mezcla } from './models/mezcla.model.js';
 import { MezclaVersion } from './models/mezclaVersion.model.js';
 import { MezclaComponente } from './models/mezclaComponente.model.js';
@@ -75,8 +78,10 @@ import { Factura } from './models/factura.model.js';
 import { FacturaDetalle } from './models/facturaDetalle.model.js';
 import { AspersionProgramacion } from './models/aspersionProgramacion.model.js';
 import { AspersionProgramacionComponente } from './models/aspersionProgramacionComponente.model.js';
+import { ComprobanteAspersion } from './models/comprobanteAspersion.model.js';
 import { IngredienteActivo } from './models/ingredienteActivo.model.js';
 import { ArticuloAlmacen } from './models/articuloAlmacen.model.js';
+import { ArticuloIngredienteActivo } from './models/articuloIngredienteActivo.model.js';
 
 const withAuditAssociations = (TargetModel) => {
   TargetModel.belongsTo(User, { as: 'creadoPor', foreignKey: 'createdBy' });
@@ -230,6 +235,17 @@ export const setupAssociations = () => {
   LoteAreaConfig.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
   Role.hasMany(LoteAreaConfig, { foreignKey: 'rolId', as: 'areaLoteConfigs' });
   LoteAreaConfig.belongsTo(Role, { foreignKey: 'rolId', as: 'rol' });
+
+  // Lotes ocultados del pendiente de área (solo dejan de verse en el modal
+  // de confirmación — estadísticas, informes y Maestros los siguen leyendo
+  // normal). Alcance por campaña (finca + fecha_objetivo).
+  LoteAreaOmitido.belongsTo(Lote, { foreignKey: 'loteId', as: 'lote' });
+  LoteAreaOmitido.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+  LoteAreaOmitido.belongsTo(User, { foreignKey: 'createdBy', as: 'creadoPor' });
+  LoteAreaSolicitud.belongsTo(Lote, { foreignKey: 'loteId', as: 'lote' });
+  LoteAreaSolicitud.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+  LoteAreaSolicitud.belongsTo(User, { foreignKey: 'solicitadoPor', as: 'solicitante' });
+  LoteAreaSolicitud.belongsTo(User, { foreignKey: 'resueltoPor', as: 'resolutor' });
 
   CategoriaPlanta.hasMany(Planta, { foreignKey: 'categoriaPlantaId', as: 'plantas' });
   Planta.belongsTo(CategoriaPlanta, { foreignKey: 'categoriaPlantaId', as: 'categoriaPlanta' });
@@ -434,7 +450,7 @@ export const setupAssociations = () => {
 
   UnidadMedida.hasMany(Articulo, { foreignKey: 'unidadMedidaId', as: 'articulos' });
   Articulo.belongsTo(UnidadMedida, { foreignKey: 'unidadMedidaId', as: 'unidadMedida' });
-  Articulo.belongsTo(UnidadMedida, { foreignKey: 'dosisMaximaUnidadId', as: 'dosisMaximaUnidad' });
+  Articulo.belongsTo(UnidadMedida, { foreignKey: 'dosisUnidadId', as: 'dosisUnidad' });
 
   UnidadMedida.hasMany(UnidadConversion, { foreignKey: 'unidadOrigenId', as: 'conversionesOrigen' });
   UnidadMedida.hasMany(UnidadConversion, { foreignKey: 'unidadDestinoId', as: 'conversionesDestino' });
@@ -465,6 +481,23 @@ export const setupAssociations = () => {
   });
   ArticuloAlmacen.belongsTo(Articulo, { foreignKey: 'articuloId', as: 'articulo' });
   ArticuloAlmacen.belongsTo(Almacen, { foreignKey: 'almacenId', as: 'almacen' });
+
+  // Articulos <-> Ingredientes Activos (N:M, opcional) — qué ingredientes
+  // activos componen un insumo (ver ingredienteActivoInsumo.service.js).
+  Articulo.belongsToMany(IngredienteActivo, {
+    through: ArticuloIngredienteActivo,
+    foreignKey: 'articuloId',
+    otherKey: 'ingredienteActivoId',
+    as: 'ingredientesActivos',
+  });
+  IngredienteActivo.belongsToMany(Articulo, {
+    through: ArticuloIngredienteActivo,
+    foreignKey: 'ingredienteActivoId',
+    otherKey: 'articuloId',
+    as: 'articulos',
+  });
+  ArticuloIngredienteActivo.belongsTo(Articulo, { foreignKey: 'articuloId', as: 'articulo' });
+  ArticuloIngredienteActivo.belongsTo(IngredienteActivo, { foreignKey: 'ingredienteActivoId', as: 'ingredienteActivo' });
 
   withAuditAssociations(ArticuloCategoria);
   withAuditAssociations(Articulo);
@@ -668,7 +701,20 @@ export const setupAssociations = () => {
   AspersionProgramacionComponente.belongsTo(Articulo, { foreignKey: 'articuloId', as: 'articulo' });
   AspersionProgramacionComponente.belongsTo(UnidadMedida, { foreignKey: 'unidadId', as: 'unidad' });
 
+  // Comprobante de aplicación (uno por aspersión ejecutada).
+  ComprobanteAspersion.belongsTo(AspersionProgramacion, { foreignKey: 'aspersionProgramacionId', as: 'aspersion' });
+  AspersionProgramacion.hasOne(ComprobanteAspersion, { foreignKey: 'aspersionProgramacionId', as: 'comprobante' });
+  ComprobanteAspersion.belongsTo(User, { foreignKey: 'ejecutadoPorId', as: 'ejecutadoPor' });
+  ComprobanteAspersion.belongsTo(User, { foreignKey: 'emitidoPorId', as: 'emitidoPor' });
+  withAuditAssociations(ComprobanteAspersion);
+
   withAuditAssociations(IngredienteActivo);
+
+  // Orden único de los insumos de una receta en toda la API (principal
+  // primero, luego el orden en que se agregaron) — ver utils/ordenReceta.js.
+  for (const modelo of [Mezcla, MezclaVersion, Elaboracion, AspersionProgramacion]) {
+    modelo.addHook('afterFind', 'ordenarRecetas', ordenarRecetasAfterFind);
+  }
 };
 
 export {
@@ -699,6 +745,8 @@ export {
   Configuracion,
   LoteAreaProduccion,
   LoteAreaConfig,
+  LoteAreaOmitido,
+  LoteAreaSolicitud,
   MotivoRepique,
   MotivoRecuse,
   RacimoMovimiento,
@@ -751,9 +799,11 @@ export {
   FacturaDetalle,
   AspersionProgramacion,
   AspersionProgramacionComponente,
+  ComprobanteAspersion,
   IngredienteActivo,
   UsuarioAlmacen,
   ArticuloAlmacen,
+  ArticuloIngredienteActivo,
 };
 
 export default setupAssociations;

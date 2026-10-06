@@ -6,6 +6,7 @@ import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { assertStockSuficiente, registrarMovimientoEnCache } from './stock.helper.js';
 import { generarCorrelativo } from '../../utils/correlativo.js';
 import { OrdenMantenimiento } from '../../database/associations.js';
+import { assertAlmacenPermitido, getAlmacenIdsPermitidas } from '../../utils/almacenScope.js';
 
 async function resolveProveedor(uuid) {
   if (!uuid) return null;
@@ -87,7 +88,7 @@ async function calcularCostoTotal(detalles, manoObra, servicios) {
 }
 
 export const ordenMantenimientoService = {
-  async list(query) {
+  async list(query, user) {
     const { page, limit, offset } = getPagination(query);
     const { rows, count } = await ordenMantenimientoRepository.findAndCountAll({
       limit,
@@ -100,21 +101,31 @@ export const ordenMantenimientoService = {
       fechaDesde: query.fechaDesde,
       fechaHasta: query.fechaHasta,
       search: query.search,
+      almacenIdsPermitidos: getAlmacenIdsPermitidas(user),
     });
     return { items: rows, meta: buildPaginationMeta({ page, limit, total: count }) };
   },
 
-  async getByUuid(uuid) {
+  // `user` opcional: una orden SIN almacén asignado sigue visible para
+  // todos (mismo criterio "abierto por defecto" que el resto del scope) —
+  // solo se bloquea (404) si tiene un almacén puntual fuera de alcance.
+  // Todas las acciones puntuales (update/delete/cerrar) pasan por acá.
+  async getByUuid(uuid, user) {
     const orden = await ordenMantenimientoRepository.findByUuid(uuid);
     if (!orden) throw ApiError.notFound('Orden de mantenimiento no encontrada');
+    const permitidos = getAlmacenIdsPermitidas(user);
+    if (permitidos !== null && orden.almacenId !== null && !permitidos.includes(orden.almacenId)) {
+      throw ApiError.notFound('Orden de mantenimiento no encontrada');
+    }
     return orden;
   },
 
-  async create(payload, actorId) {
+  async create(payload, actorId, user) {
     const equipo = await resolveEquipo(payload.equipoUuid);
     const plan = await resolvePlan(payload.planUuid);
     const prog = await resolveProgramacion(payload.programacionUuid);
     const almacen = await resolveAlmacen(payload.almacenUuid);
+    if (almacen) assertAlmacenPermitido(user, almacen.id);
     const responsable = await resolveUser(payload.responsableUuid);
 
     if (plan && plan.equipoId !== equipo.id) throw ApiError.badRequest('El plan no pertenece al equipo');
@@ -198,8 +209,8 @@ export const ordenMantenimientoService = {
     });
   },
 
-  async update(uuid, payload, actorId) {
-    const orden = await this.getByUuid(uuid);
+  async update(uuid, payload, actorId, user) {
+    const orden = await this.getByUuid(uuid, user);
     if (orden.estado === 'CERRADA') throw ApiError.badRequest('No se puede editar una orden cerrada');
 
     let equipoId = orden.equipoId;
@@ -230,6 +241,7 @@ export const ordenMantenimientoService = {
       if (!payload.almacenUuid) almacenId = null;
       else {
         const a = await resolveAlmacen(payload.almacenUuid);
+        assertAlmacenPermitido(user, a.id);
         almacenId = a.id;
       }
     }
@@ -351,14 +363,14 @@ export const ordenMantenimientoService = {
     });
   },
 
-  async delete(uuid, actorId) {
-    const orden = await this.getByUuid(uuid);
+  async delete(uuid, actorId, user) {
+    const orden = await this.getByUuid(uuid, user);
     if (orden.estado === 'CERRADA') throw ApiError.badRequest('No se puede eliminar una orden cerrada');
     await ordenMantenimientoRepository.softDelete(orden, actorId);
   },
 
-  async cerrar(uuid, payload, actorId) {
-    const orden = await this.getByUuid(uuid);
+  async cerrar(uuid, payload, actorId, user) {
+    const orden = await this.getByUuid(uuid, user);
     if (orden.estado === 'CERRADA') throw ApiError.badRequest('La orden ya está cerrada');
     if (orden.estado === 'CANCELADA') throw ApiError.badRequest('No se puede cerrar una orden cancelada');
 

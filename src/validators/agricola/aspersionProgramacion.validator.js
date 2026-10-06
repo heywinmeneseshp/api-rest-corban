@@ -45,6 +45,12 @@ export const updateAspersionSchema = Joi.object({
     medio: Joi.string().valid('AVION', 'DRON'),
     hectareas: Joi.number().positive(),
     cantidad: Joi.number().positive(),
+    componentes: Joi.array().items(
+      Joi.object({
+        articuloUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
+        cantidad: Joi.number().positive().required(),
+      }),
+    ),
     representanteCorbanaNombre: Joi.string().trim().max(150).allow(null, ''),
     administradorFincaNombre: Joi.string().trim().max(150).allow(null, ''),
     observaciones: Joi.string().allow(null, '').max(1000),
@@ -81,6 +87,15 @@ export const ejecutarAspersionSchema = Joi.object({
     // true solo en el reenvío tras confirmar la advertencia de stock
     // insuficiente (ver aspersionProgramacion.service.js#ejecutar).
     forzarSaldoNegativo: Joi.boolean().default(false),
+    // Datos del modal de ejecutar: con ellos se crea el comprobante de
+    // aplicación en borrador (ver comprobanteAspersion.service.js). Todo
+    // opcional — se pueden completar después en el comprobante.
+    comprobante: Joi.object({
+      piloto: Joi.string().trim().max(150).allow(null, ''),
+      hectareasAplicadas: Joi.number().positive(),
+      galonesTotales: Joi.number().min(0),
+      observaciones: Joi.string().allow(null, '').max(1000),
+    }),
   }),
   params: Joi.object({ uuid: uuidParam }),
   query: Joi.object({}),

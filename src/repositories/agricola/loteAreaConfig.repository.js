@@ -19,6 +19,11 @@ export const loteAreaConfigRepository = {
     return LoteAreaConfig.findOne({ where: { uuid }, include: INCLUDE_COMPLETO });
   },
 
+  // Config no eliminada de una finca+rol (para upsert en crearConfig).
+  findByFincaYRol(fincaId, rolId) {
+    return LoteAreaConfig.findOne({ where: { fincaId, rolId }, include: INCLUDE_COMPLETO });
+  },
+
   findActivas() {
     return LoteAreaConfig.findAll({ where: { activo: true }, include: INCLUDE_COMPLETO });
   },

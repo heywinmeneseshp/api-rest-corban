@@ -7,12 +7,12 @@ import { HTTP_STATUS } from '../../constants/httpStatus.constants.js';
 
 export const aspersionProgramacionController = {
   list: asyncHandler(async (req, res) => {
-    const { items, meta } = await aspersionProgramacionService.list(req.query);
+    const { items, meta } = await aspersionProgramacionService.list(req.query, req.user);
     ApiResponse.send(res, { message: 'Programaciones de aspersión obtenidas correctamente', data: { items, meta } });
   }),
 
   getByUuid: asyncHandler(async (req, res) => {
-    const aspersion = await aspersionProgramacionService.getByUuid(req.params.uuid);
+    const aspersion = await aspersionProgramacionService.getByUuid(req.params.uuid, req.user);
     ApiResponse.send(res, { message: 'Programación de aspersión obtenida correctamente', data: aspersion });
   }),
 
@@ -21,13 +21,25 @@ export const aspersionProgramacionController = {
     ApiResponse.send(res, { message: 'Usuarios de la finca obtenidos correctamente', data: usuarios });
   }),
 
+  listMezclasReferencia: asyncHandler(async (req, res) => {
+    const mezclas = await aspersionProgramacionService.listMezclasReferencia();
+    ApiResponse.send(res, { message: 'Mezclas obtenidas correctamente', data: mezclas });
+  }),
+
   create: asyncHandler(async (req, res) => {
-    const aspersion = await aspersionProgramacionService.create(req.body, req.user?.id);
+    const aspersion = await aspersionProgramacionService.create(req.body, req.user?.id, req.user);
     ApiResponse.send(res, { statusCode: HTTP_STATUS.CREATED, message: 'Aspersión programada correctamente', data: aspersion });
   }),
 
+  bulkCrear: asyncHandler(async (req, res) => {
+    if (!req.file) throw ApiError.badRequest('Debes adjuntar un archivo (.csv o .xlsx)');
+    const dryRun = req.body?.dryRun === 'true';
+    const resultado = await aspersionProgramacionService.bulkCrear(req.file, req.user?.id, req.user, { dryRun });
+    ApiResponse.send(res, { message: 'Cargue masivo de aspersiones procesado', data: resultado });
+  }),
+
   update: asyncHandler(async (req, res) => {
-    const aspersion = await aspersionProgramacionService.update(req.params.uuid, req.body, req.user?.id);
+    const aspersion = await aspersionProgramacionService.update(req.params.uuid, req.body, req.user?.id, req.user);
     ApiResponse.send(res, { message: 'Programación de aspersión actualizada correctamente', data: aspersion });
   }),
 
@@ -37,24 +49,26 @@ export const aspersionProgramacionController = {
       req.params.componenteUuid,
       req.body.cantidad,
       req.user?.id,
+      req.user,
     );
     ApiResponse.send(res, { message: 'Cantidad del insumo actualizada correctamente', data: aspersion });
   }),
 
   remove: asyncHandler(async (req, res) => {
-    await aspersionProgramacionService.delete(req.params.uuid, req.user?.id);
+    await aspersionProgramacionService.delete(req.params.uuid, req.user?.id, req.user);
     ApiResponse.send(res, { message: 'Programación de aspersión eliminada correctamente' });
   }),
 
   cancelar: asyncHandler(async (req, res) => {
-    const aspersion = await aspersionProgramacionService.cancelar(req.params.uuid, req.user?.id);
+    const aspersion = await aspersionProgramacionService.cancelar(req.params.uuid, req.user?.id, req.user);
     ApiResponse.send(res, { message: 'Aspersión cancelada correctamente', data: aspersion });
   }),
 
   ejecutar: asyncHandler(async (req, res) => {
     const resultado = await aspersionProgramacionService.ejecutar(req.params.uuid, req.user?.id, {
       forzarSaldoNegativo: req.body?.forzarSaldoNegativo === true,
-    });
+      comprobante: req.body?.comprobante,
+    }, req.user);
     if (resultado.requiereConfirmacion) {
       return ApiResponse.send(res, {
         message: 'Stock insuficiente en uno o más insumos — confirma para continuar',
@@ -63,7 +77,7 @@ export const aspersionProgramacionController = {
     }
     ApiResponse.send(res, {
       message: 'Aspersión ejecutada correctamente (salida de inventario generada)',
-      data: { requiereConfirmacion: false, advertencias: [], aspersion: resultado.aspersion },
+      data: { requiereConfirmacion: false, advertencias: [], aspersion: resultado.aspersion, comprobante: resultado.comprobante },
     });
   }),
 
