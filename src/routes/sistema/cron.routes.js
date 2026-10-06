@@ -37,4 +37,15 @@ router.get('/enviar-alertas-sanidad-vegetal', requireCronSecret, cronController.
  */
 router.get('/sincronizar-estacion-meteorologica', requireCronSecret, cronController.sincronizarEstacionMeteorologica);
 
+/**
+ * @openapi
+ * /cron/alerta-estacion-sin-datos:
+ *   get:
+ *     tags: [Cron]
+ *     summary: Revisa si la estación meteorológica lleva más de 24 h sin datos y avisa por correo (Vercel Cron, 6 a.m. Colombia) — requiere Authorization Bearer CRON_SECRET.
+ *     responses:
+ *       200: { description: OK }
+ */
+router.get('/alerta-estacion-sin-datos', requireCronSecret, cronController.alertaEstacionSinDatos);
+
 export default router;

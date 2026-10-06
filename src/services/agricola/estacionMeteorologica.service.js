@@ -2,7 +2,12 @@ import { Op } from 'sequelize';
 import { EstacionClimaDiaria } from '../../database/associations.js';
 import { weatherlinkClient } from './weatherlink.client.js';
 import { ApiError } from '../../utils/ApiError.js';
+import { configuracionService } from '../sistema/configuracion.service.js';
+import { mailService } from '../sistema/mail.service.js';
+import { resolverDestinatarios } from '../../utils/resolverDestinatarios.js';
+import { logger } from '../../utils/logger.js';
 
+const HORAS_LIMITE_SIN_DATOS = 24;
 const SENSOR_EXTERIOR = 43; // sensor_type del sensor exterior (lluvia/temp/hum/viento)
 
 const aCelsius = (f) => (f === null || f === undefined ? null : ((Number(f) - 32) * 5) / 9);
@@ -202,6 +207,61 @@ export const estacionMeteorologicaService = {
       if (fecha !== faltantes[faltantes.length - 1]) await dormir(PAUSA_ENTRE_DIAS_MS);
     }
     return { sincronizados, errores };
+  },
+
+  // ¿La estación lleva más de 24 horas sin reportar? Mira la hora del último
+  // dato del sensor exterior en WeatherLink; si la API no devuelve datos o
+  // falla la consulta, también cuenta como "sin datos" (con el motivo en
+  // `detalle`).
+  async verificarSinDatos() {
+    let ultimoDato = null;
+    let detalle = null;
+    try {
+      const data = await weatherlinkClient.current();
+      const sensor = data.sensors?.find((s) => s.sensor_type === SENSOR_EXTERIOR);
+      const ts = sensor?.data?.[0]?.ts;
+      if (ts) ultimoDato = new Date(ts * 1000);
+      else detalle = 'La estación no reportó datos actuales';
+    } catch (err) {
+      detalle = err.message;
+    }
+
+    const horasSinDatos = ultimoDato ? (Date.now() - ultimoDato.getTime()) / 3600000 : null;
+    const sinDatos = ultimoDato === null || horasSinDatos > HORAS_LIMITE_SIN_DATOS;
+    return {
+      sinDatos,
+      ultimoDato: ultimoDato ? ultimoDato.toISOString() : null,
+      horasSinDatos: horasSinDatos !== null ? Math.round(horasSinDatos * 10) / 10 : null,
+      detalle,
+      limiteHoras: HORAS_LIMITE_SIN_DATOS,
+    };
+  },
+
+  // Revisión diaria (6 a.m.): si la estación lleva más de 24 horas sin datos,
+  // manda el correo de alerta a los destinatarios configurados. No manda nada
+  // si todo está bien o si no hay destinatarios.
+  async enviarAlertaSinDatos() {
+    const estado = await this.verificarSinDatos();
+    if (!estado.sinDatos) return { ...estado, enviado: false, destinatarios: [] };
+
+    const config = await configuracionService.getEstacionAlertaDestinatarios();
+    const personas = await resolverDestinatarios(config);
+    const destinatarios = personas.map((p) => p.email).filter(Boolean);
+    if (destinatarios.length === 0) {
+      logger.warn('Estación meteorológica sin datos, pero no hay destinatarios configurados para la alerta');
+      return { ...estado, enviado: false, destinatarios: [] };
+    }
+
+    const ultimoDatoTexto = estado.ultimoDato
+      ? new Date(estado.ultimoDato).toLocaleString('es-CO', { timeZone: 'America/Bogota', dateStyle: 'long', timeStyle: 'short' })
+      : null;
+    await mailService.sendAlertaEstacionSinDatos({
+      destinatarios,
+      ultimoDatoTexto,
+      horasSinDatos: estado.horasSinDatos,
+      detalle: estado.detalle,
+    });
+    return { ...estado, enviado: true, destinatarios };
   },
 
   async listarHistorico({ fechaDesde, fechaHasta } = {}) {

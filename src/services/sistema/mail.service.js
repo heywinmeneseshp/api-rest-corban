@@ -306,6 +306,55 @@ export const mailService = {
     });
   },
 
+  // Alerta diaria cuando la Estación Meteorológica lleva más de 24 horas
+  // sin enviar datos (ver estacionMeteorologica.service.js#enviarAlertaSinDatos).
+  async sendAlertaEstacionSinDatos({ destinatarios, ultimoDatoTexto, horasSinDatos, detalle }) {
+    if (!destinatarios?.length) return;
+
+    const { nombre: marca, nombreHtml: marcaHtml, from } = await obtenerMarca();
+    const resumen = ultimoDatoTexto
+      ? `Último dato recibido: <strong>${escaparHtml(ultimoDatoTexto)}</strong>${horasSinDatos !== null ? ` (hace ${Math.floor(horasSinDatos)} horas)` : ''}.`
+      : 'No se pudo obtener ningún dato reciente de la estación.';
+
+    const html = `
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.08);">
+        <div style="background: linear-gradient(135deg, #b45309 0%, #dc2626 100%); padding: 28px 32px; text-align: center;">
+          <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">${marcaHtml}</h1>
+          <p style="color: rgba(255,255,255,.9); margin: 4px 0 0; font-size: 13px;">Alerta — Estación Meteorológica sin datos</p>
+        </div>
+        <div style="padding: 32px;">
+          <p style="margin: 0 0 16px; color: #374151; font-size: 15px; line-height: 1.6;">
+            La estación meteorológica <strong>no ha enviado información en más de 24 horas</strong>.
+            Por favor revisen si está conectada.
+          </p>
+          <p style="margin: 0 0 16px; color: #374151; font-size: 14px; line-height: 1.6;">${resumen}</p>
+          ${detalle ? `<p style="margin: 0 0 16px; color: #6b7280; font-size: 12px;">Detalle técnico: ${escaparHtml(detalle)}</p>` : ''}
+          <table role="presentation" style="width: 100%;"><tr><td align="center">
+            <a href="${APP_URL}/estacion-meteorologica" style="background: linear-gradient(135deg, #b45309 0%, #dc2626 100%); color: #fff; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-size: 15px; font-weight: 600; display: inline-block;">Ver Estación Meteorológica</a>
+          </td></tr></table>
+        </div>
+        <div style="background: #f9fafb; padding: 16px 32px; text-align: center; border-top: 1px solid #e5e7eb;">
+          <p style="margin: 0; color: #9ca3af; font-size: 11px;">Este mensaje se generó automáticamente (revisión diaria a las 6:00 a.m.), por favor no respondas a este correo.</p>
+        </div>
+      </div>
+    `;
+
+    if (!isConfigured || !transporter) {
+      console.log('═══════════════════════════════════════════════');
+      console.log('📧  MAIL SERVICE (no configurado) — estación meteorológica sin datos');
+      console.log(`To:  ${destinatarios.join(', ')}`);
+      console.log('═══════════════════════════════════════════════');
+      return;
+    }
+
+    await transporter.sendMail({
+      from,
+      to: destinatarios,
+      subject: `${marca} — Alerta: la estación meteorológica lleva más de 24 horas sin datos`,
+      html,
+    });
+  },
+
   // Comunicado manual (Configuración → Comunicados) — un correo por
   // destinatario (no en copia entre ellos), personalizado con su nombre
   // cuando se conoce (llegó por rol/usuario, no por correo suelto).

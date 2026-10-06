@@ -31,6 +31,10 @@ Finca.init(
     // de pares [lat, lng], normalmente importado desde un .kml de Google
     // Earth (ver PUT /fincas/:uuid). Null = sin perímetro cargado.
     perimetro: { type: DataTypes.JSON, allowNull: true },
+    // Coordenadas de la finca (grados decimales) — las usa Open-Meteo para
+    // consultar el clima. Null = sin coordenadas.
+    latitud: { type: DataTypes.DECIMAL(9, 6), allowNull: true },
+    longitud: { type: DataTypes.DECIMAL(9, 6), allowNull: true },
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
     updatedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'updated_by' },
     deletedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'deleted_by' },

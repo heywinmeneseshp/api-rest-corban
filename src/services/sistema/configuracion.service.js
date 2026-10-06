@@ -13,6 +13,9 @@ export const CLAVE_ALERTAS_SANIDAD_DESTINATARIOS = 'sanidad_vegetal_alertas_dest
 export const CLAVE_SB_HOJA_UMBRALES = 'sanidad_vegetal_sb_hoja_umbrales';
 export const CLAVE_MEZCLA_PARAMETROS = 'inventario_mezcla_parametros';
 export const CLAVE_ASPERSION_DESTINATARIOS = 'aspersion_correo_destinatarios';
+export const CLAVE_ESTACION_ALERTA_DESTINATARIOS = 'estacion_meteorologica_alerta_destinatarios';
+export const CLAVE_ESTACION_UC_BASES = 'estacion_meteorologica_uc_bases';
+export const CLAVE_OPEN_METEO_CONFIG = 'open_meteo_config';
 export const CLAVE_ASPERSION_RESUMEN_SEMANAL_DESTINATARIOS = 'aspersion_resumen_semanal_destinatarios';
 
 // "Cajas de 20kg" es el nombre convencional de la unidad, pero el peso neto
@@ -63,6 +66,24 @@ const ALERTAS_SANIDAD_DESTINATARIOS_DEFAULT = { correos: [], rolesUuids: [], usu
 // Programación de Aspersiones por correo (además del destinatario puntual
 // que se escoge al momento de enviar el aviso).
 const ASPERSION_DESTINATARIOS_DEFAULT = { correos: [], rolesUuids: [], usuariosUuids: [] };
+// Sin valor guardado todavía = nadie recibe la alerta de "estación sin datos".
+const ESTACION_ALERTA_DESTINATARIOS_DEFAULT = { correos: [], rolesUuids: [], usuariosUuids: [] };
+// Bases (temperatura base) de las columnas de Unidades Calóricas del
+// histórico diario de la Estación Meteorológica: UC = (Tmáx + Tmín) / 2 − base.
+const OPEN_METEO_FRECUENCIAS = ['DIARIA', 'SEMANAL', 'MENSUAL'];
+const OPEN_METEO_CONFIG_DEFAULT = { frecuencia: 'DIARIA', ultimaActualizacion: null };
+const ESTACION_UC_BASES_DEFAULT = [14];
+const ESTACION_UC_BASES_MAX = 6;
+
+// Números únicos, ordenados, entre 0 y 50, con un máximo de bases; si queda
+// vacío vuelve al default (siempre hay al menos una columna).
+const normalizarUcBases = (lista) => {
+  const nums = Array.isArray(lista)
+    ? lista.map((x) => Math.round(Number(x) * 100) / 100).filter((n) => Number.isFinite(n) && n >= 0 && n <= 50)
+    : [];
+  const unicas = [...new Set(nums)].sort((a, b) => a - b).slice(0, ESTACION_UC_BASES_MAX);
+  return unicas.length ? unicas : ESTACION_UC_BASES_DEFAULT;
+};
 // Sin valor guardado todavía = nadie recibe el resumen semanal (Excel) de
 // Programación de Aspersiones — este NO se filtra por finca (es un solo
 // Excel con toda la semana, igual que el botón "Excel" del Calendario).
@@ -227,6 +248,72 @@ export const configuracionService = {
     // volver a guardar.
     const valor = JSON.stringify(normalizarDestinatarios(destinatarios));
     const config = await configuracionRepository.upsert(CLAVE_ALERTAS_SANIDAD_DESTINATARIOS, valor, actorId);
+    return JSON.parse(config.valor);
+  },
+
+  // Quién recibe la alerta de la Estación Meteorológica cuando pasa más de
+  // 24 horas sin enviar datos (se revisa todos los días a las 6 a.m. hora
+  // Colombia, ver jobs/estacionSinDatos.job.js). Mismo formato que las demás
+  // configs de destinatarios: correos sueltos, roles y usuarios puntuales.
+  async getEstacionAlertaDestinatarios() {
+    const config = await configuracionRepository.findByClave(CLAVE_ESTACION_ALERTA_DESTINATARIOS);
+    if (!config?.valor) return ESTACION_ALERTA_DESTINATARIOS_DEFAULT;
+    try {
+      return normalizarDestinatarios({ ...ESTACION_ALERTA_DESTINATARIOS_DEFAULT, ...JSON.parse(config.valor) });
+    } catch {
+      return ESTACION_ALERTA_DESTINATARIOS_DEFAULT;
+    }
+  },
+
+  async setEstacionAlertaDestinatarios(destinatarios, actorId) {
+    const valor = JSON.stringify(normalizarDestinatarios(destinatarios));
+    const config = await configuracionRepository.upsert(CLAVE_ESTACION_ALERTA_DESTINATARIOS, valor, actorId);
+    return JSON.parse(config.valor);
+  },
+
+  // Open-Meteo: cada cuánto se actualiza el clima de las fincas (DIARIA,
+  // SEMANAL o MENSUAL) y cuándo fue la última actualización.
+  async getOpenMeteoConfig() {
+    const config = await configuracionRepository.findByClave(CLAVE_OPEN_METEO_CONFIG);
+    if (!config?.valor) return OPEN_METEO_CONFIG_DEFAULT;
+    try {
+      const v = JSON.parse(config.valor);
+      return {
+        frecuencia: OPEN_METEO_FRECUENCIAS.includes(v.frecuencia) ? v.frecuencia : 'DIARIA',
+        ultimaActualizacion: v.ultimaActualizacion || null,
+      };
+    } catch {
+      return OPEN_METEO_CONFIG_DEFAULT;
+    }
+  },
+
+  async setOpenMeteoConfig(parcial, actorId) {
+    const actual = await this.getOpenMeteoConfig();
+    const nuevo = { ...actual };
+    if (parcial.frecuencia !== undefined) {
+      if (!OPEN_METEO_FRECUENCIAS.includes(parcial.frecuencia)) throw ApiError.badRequest('Frecuencia no válida');
+      nuevo.frecuencia = parcial.frecuencia;
+    }
+    if (parcial.ultimaActualizacion !== undefined) nuevo.ultimaActualizacion = parcial.ultimaActualizacion;
+    const config = await configuracionRepository.upsert(CLAVE_OPEN_METEO_CONFIG, JSON.stringify(nuevo), actorId);
+    return JSON.parse(config.valor);
+  },
+
+  // Bases de las columnas de Unidades Calóricas (global, la edita el
+  // Administrador desde Estación Meteorológica).
+  async getEstacionUcBases() {
+    const config = await configuracionRepository.findByClave(CLAVE_ESTACION_UC_BASES);
+    if (!config?.valor) return ESTACION_UC_BASES_DEFAULT;
+    try {
+      return normalizarUcBases(JSON.parse(config.valor));
+    } catch {
+      return ESTACION_UC_BASES_DEFAULT;
+    }
+  },
+
+  async setEstacionUcBases(bases, actorId) {
+    const valor = JSON.stringify(normalizarUcBases(bases));
+    const config = await configuracionRepository.upsert(CLAVE_ESTACION_UC_BASES, valor, actorId);
     return JSON.parse(config.valor);
   },
 

@@ -25,6 +25,7 @@ import { LoteAreaProduccion } from './models/loteAreaProduccion.model.js';
 import { LoteAreaConfig } from './models/loteAreaConfig.model.js';
 import { LoteAreaOmitido } from './models/loteAreaOmitido.model.js';
 import { LoteAreaSolicitud } from './models/loteAreaSolicitud.model.js';
+import { OpenMeteoClimaDiaria } from './models/openMeteoClimaDiaria.model.js';
 import { MotivoRepique } from './models/motivoRepique.model.js';
 import { MotivoRecuse } from './models/motivoRecuse.model.js';
 import { RacimoMovimiento } from './models/racimoMovimiento.model.js';
@@ -242,6 +243,7 @@ export const setupAssociations = () => {
   LoteAreaOmitido.belongsTo(Lote, { foreignKey: 'loteId', as: 'lote' });
   LoteAreaOmitido.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
   LoteAreaOmitido.belongsTo(User, { foreignKey: 'createdBy', as: 'creadoPor' });
+  OpenMeteoClimaDiaria.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
   LoteAreaSolicitud.belongsTo(Lote, { foreignKey: 'loteId', as: 'lote' });
   LoteAreaSolicitud.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
   LoteAreaSolicitud.belongsTo(User, { foreignKey: 'solicitadoPor', as: 'solicitante' });
@@ -747,6 +749,7 @@ export {
   LoteAreaConfig,
   LoteAreaOmitido,
   LoteAreaSolicitud,
+  OpenMeteoClimaDiaria,
   MotivoRepique,
   MotivoRecuse,
   RacimoMovimiento,

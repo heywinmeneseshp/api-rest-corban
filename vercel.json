@@ -12,6 +12,10 @@
     {
       "path": "/api/v1/cron/sincronizar-estacion-meteorologica",
       "schedule": "10 5 * * *"
+    },
+    {
+      "path": "/api/v1/cron/alerta-estacion-sin-datos",
+      "schedule": "0 11 * * *"
     }
   ]
 }

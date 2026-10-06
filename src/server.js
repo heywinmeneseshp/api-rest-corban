@@ -4,6 +4,8 @@ import { testConnection } from './database/connection.js';
 import { setupAssociations } from './database/associations.js';
 import { runPendingMigrationsAndSeeders } from './database/migrationRunner.js';
 import { iniciarJobAlertasSanidadVegetal } from './jobs/alertasSanidadVegetal.job.js';
+import { iniciarJobEstacionSinDatos } from './jobs/estacionSinDatos.job.js';
+import { iniciarJobOpenMeteo } from './jobs/openMeteo.job.js';
 import { logger } from './utils/logger.js';
 
 const start = async () => {
@@ -32,6 +34,8 @@ const start = async () => {
     // Vercel (serverless, sin estado entre invocaciones) el envío semanal lo
     // dispara Vercel Cron por HTTP en su lugar (ver vercel.json).
     iniciarJobAlertasSanidadVegetal();
+    iniciarJobEstacionSinDatos();
+    iniciarJobOpenMeteo();
 
     const shutdown = (signal) => {
       logger.info(`Señal ${signal} recibida, cerrando servidor...`);

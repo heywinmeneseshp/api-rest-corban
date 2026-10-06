@@ -60,6 +60,8 @@ export const fincaService = {
       estado: payload.estado ?? true,
       esExterna: payload.esExterna ?? false,
       grupoFincaId: await resolverGrupoFincaId(payload.grupoFincaUuid),
+      latitud: payload.latitud ?? null,
+      longitud: payload.longitud ?? null,
       createdBy: actorId,
     });
 

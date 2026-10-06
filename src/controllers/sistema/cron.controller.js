@@ -36,6 +36,16 @@ export const cronController = {
     const result = await estacionMeteorologicaService.sincronizarDiaAnterior();
     ApiResponse.send(res, { message: `Estación meteorológica sincronizada para ${result.fecha}`, data: result });
   }),
+
+  // Llamado una vez al día por Vercel Cron a las 6 a.m. Colombia — avisa por
+  // correo si la estación lleva más de 24 horas sin datos.
+  alertaEstacionSinDatos: asyncHandler(async (req, res) => {
+    const result = await estacionMeteorologicaService.enviarAlertaSinDatos();
+    ApiResponse.send(res, {
+      message: result.enviado ? 'Alerta de estación sin datos enviada' : 'Estación meteorológica: nada que avisar',
+      data: result,
+    });
+  }),
 };
 
 export default cronController;

@@ -1,4 +1,6 @@
 import { estacionMeteorologicaService } from '../../services/agricola/estacionMeteorologica.service.js';
+import { openMeteoService } from '../../services/agricola/openMeteo.service.js';
+import { configuracionService } from '../../services/sistema/configuracion.service.js';
 import { ApiResponse } from '../../utils/ApiResponse.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 
@@ -6,6 +8,76 @@ export const estacionMeteorologicaController = {
   actual: asyncHandler(async (req, res) => {
     const data = await estacionMeteorologicaService.obtenerActual();
     ApiResponse.send(res, { message: 'Condiciones actuales obtenidas correctamente', data });
+  }),
+
+  // Estado de conexión (¿más de 24 h sin datos?) — lo muestra el modal de
+  // configuración de alertas.
+  estadoConexion: asyncHandler(async (req, res) => {
+    const data = await estacionMeteorologicaService.verificarSinDatos();
+    ApiResponse.send(res, { message: 'Estado de la estación obtenido correctamente', data });
+  }),
+
+  // ─── Open-Meteo (clima por finca) ───
+  openMeteoFincas: asyncHandler(async (req, res) => {
+    const data = await openMeteoService.fincasConCoordenadas(req.user);
+    ApiResponse.send(res, { message: 'Fincas obtenidas correctamente', data });
+  }),
+
+  openMeteoActuales: asyncHandler(async (req, res) => {
+    const data = await openMeteoService.actuales(req.user);
+    ApiResponse.send(res, { message: 'Condiciones actuales (Open-Meteo) obtenidas correctamente', data });
+  }),
+
+  openMeteoListar: asyncHandler(async (req, res) => {
+    const { fincaUuids, fechaDesde, fechaHasta } = req.query;
+    const items = await openMeteoService.listar(
+      { fincaUuids: fincaUuids ? String(fincaUuids).split(',').filter(Boolean) : [], fechaDesde, fechaHasta },
+      req.user,
+    );
+    ApiResponse.send(res, { message: 'Clima de Open-Meteo obtenido correctamente', data: { items } });
+  }),
+
+  openMeteoActualizar: asyncHandler(async (req, res) => {
+    const data = await openMeteoService.actualizar(req.body || {}, req.user?.id);
+    ApiResponse.send(res, {
+      message: `Open-Meteo actualizado: ${data.fincas.length} finca(s)${data.errores.length ? `, ${data.errores.length} con error` : ''}`,
+      data,
+    });
+  }),
+
+  openMeteoActualizarFaltantes: asyncHandler(async (req, res) => {
+    const data = await openMeteoService.actualizarFaltantes(req.user);
+    ApiResponse.send(res, { message: `Open-Meteo: ${data.fincas.length} finca(s) rellenadas`, data });
+  }),
+
+  openMeteoGetConfig: asyncHandler(async (req, res) => {
+    const data = await configuracionService.getOpenMeteoConfig();
+    ApiResponse.send(res, { message: 'Configuración de Open-Meteo obtenida correctamente', data });
+  }),
+
+  openMeteoSetConfig: asyncHandler(async (req, res) => {
+    const data = await configuracionService.setOpenMeteoConfig({ frecuencia: req.body.frecuencia }, req.user?.id);
+    ApiResponse.send(res, { message: 'Configuración de Open-Meteo guardada correctamente', data });
+  }),
+
+  getUcBases: asyncHandler(async (req, res) => {
+    const data = await configuracionService.getEstacionUcBases();
+    ApiResponse.send(res, { message: 'Bases de unidades calóricas obtenidas correctamente', data });
+  }),
+
+  setUcBases: asyncHandler(async (req, res) => {
+    const data = await configuracionService.setEstacionUcBases(req.body.bases, req.user?.id);
+    ApiResponse.send(res, { message: 'Bases de unidades calóricas guardadas correctamente', data });
+  }),
+
+  getAlertaDestinatarios: asyncHandler(async (req, res) => {
+    const data = await configuracionService.getEstacionAlertaDestinatarios();
+    ApiResponse.send(res, { message: 'Destinatarios obtenidos correctamente', data });
+  }),
+
+  setAlertaDestinatarios: asyncHandler(async (req, res) => {
+    const data = await configuracionService.setEstacionAlertaDestinatarios(req.body, req.user?.id);
+    ApiResponse.send(res, { message: 'Destinatarios guardados correctamente', data });
   }),
 
   historico: asyncHandler(async (req, res) => {
