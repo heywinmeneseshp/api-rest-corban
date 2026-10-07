@@ -400,7 +400,19 @@ export const estimacionFincaService = {
     }
 
     const semanaIdsUnicos = [...new Set([...columnasPorRegistro.values()].flat().map((s) => s.id))];
-    const semanaRegistroIds = semanasRegistro.map((r) => r.id);
+
+    // Si una finca no cargó estimaciones en la semana de registro, cada columna
+    // muestra la de la semana de registro ANTERIOR más reciente que sí tenga ese
+    // mismo valor para la misma semana de calendario (hasta N semanas atrás, que
+    // es hasta donde llega la ventana de cada registro).
+    const previosPorRegistro = new Map(); // semanaRegistro.id -> [semana R-1, R-2, ...] (la más reciente primero)
+    for (const registro of semanasRegistro) {
+      const idx = idxPorId.get(registro.id);
+      const previos = [];
+      if (idx !== undefined) for (let k = 1; k <= n && idx - k >= 0; k++) previos.push(todasSemanas[idx - k]);
+      previosPorRegistro.set(registro.id, previos);
+    }
+    const semanaRegistroIds = [...new Set([...semanasRegistro.map((r) => r.id), ...[...previosPorRegistro.values()].flat().map((s) => s.id)])];
 
     let creadoPorUserId;
     if (soloPropias) {
@@ -419,7 +431,7 @@ export const estimacionFincaService = {
       }),
       estimacionFincaRepository.getObservacionesPorFincaYRegistro({
         fincaIds: fincas.map((f) => f.id),
-        semanaRegistroIds,
+        semanaRegistroIds: semanasRegistro.map((r) => r.id),
       }),
     ]);
 
@@ -427,12 +439,32 @@ export const estimacionFincaService = {
     for (const f of fincas) {
       for (const registro of semanasRegistro) {
         const cols = columnasPorRegistro.get(registro.id);
+        const propios = cols.map((c) => mapaValores.get(`${f.id}-${registro.id}-${c.id}`) ?? null);
+        const sinCarga = propios.every((v) => v === null);
+        let valores = propios;
+        // origenes[i]: código de la semana de registro de donde sale el valor cuando
+        // es un respaldo (null si es de la propia semana).
+        const origenes = cols.map(() => null);
+        if (sinCarga) {
+          const previos = previosPorRegistro.get(registro.id) || [];
+          valores = cols.map((c, i) => {
+            for (const previo of previos) {
+              const v = mapaValores.get(`${f.id}-${previo.id}-${c.id}`);
+              if (v !== undefined && v !== null) {
+                origenes[i] = previo.codigo;
+                return v;
+              }
+            }
+            return null;
+          });
+        }
         filas.push({
           finca: { uuid: f.uuid, codigo: f.codigo, nombre: f.nombre },
           semanaRegistro: { uuid: registro.uuid, codigo: registro.codigo },
           observaciones: mapaObservaciones.get(`${f.id}-${registro.id}`) || null,
           columnas: cols.map((c) => ({ uuid: c.uuid, codigo: c.codigo })),
-          valores: cols.map((c) => mapaValores.get(`${f.id}-${registro.id}-${c.id}`) ?? null),
+          valores,
+          origenes,
         });
       }
     }
