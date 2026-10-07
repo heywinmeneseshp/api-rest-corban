@@ -624,6 +624,117 @@ export const climaService = {
     return { items, aniosDisponibles };
   },
 
+  // Promedio DIARIO de clima: mismo criterio que promedioSemanal pero un punto
+  // por día. Por cada día se promedia entre las fincas cuyo rango real de
+  // captura lo cubre: precipitación = mm del día de cada finca (Precipitación
+  // Diaria manda; si no hay, el mm de clima; si tampoco, 0), temperatura y
+  // humedad = promedio de las fincas con dato ese día (no se rellenan con 0).
+  // `query.anio` filtra a un año y devuelve `numeroDia` (1-366) para alinear
+  // años distintos por día del año.
+  async promedioDiario(query, user) {
+    await ensureTable();
+    const fincaUuids = await resolverFincaUuids(query, user);
+    const whereFinca = fincaUuids ? 'WHERE finca_uuid IN (:fincaUuids)' : '';
+    const replacementsFinca = fincaUuids ? { fincaUuids } : {};
+    const aIso = (f) => (f instanceof Date ? f.toISOString().slice(0, 10) : String(f).slice(0, 10));
+
+    const filasPrecDiaria = await sequelize.query(
+      `SELECT finca_uuid AS fincaUuid, fecha, mm FROM precipitacion_diaria ${whereFinca}`,
+      { replacements: replacementsFinca, type: 'SELECT' },
+    );
+    const precDiariaPorFincaFecha = new Map(
+      filasPrecDiaria.filter((f) => f.mm !== null).map((f) => [`${f.fincaUuid}-${aIso(f.fecha)}`, Number(f.mm)]),
+    );
+
+    const rangosClima = await sequelize.query(
+      `SELECT finca_uuid AS fincaUuid, MIN(fecha) AS desde, MAX(fecha) AS hasta FROM ${TABLE} ${whereFinca} GROUP BY finca_uuid`,
+      { replacements: replacementsFinca, type: 'SELECT' },
+    );
+    const rangosPrecDiaria = await sequelize.query(
+      `SELECT finca_uuid AS fincaUuid, MIN(fecha) AS desde, MAX(fecha) AS hasta FROM precipitacion_diaria ${whereFinca} GROUP BY finca_uuid`,
+      { replacements: replacementsFinca, type: 'SELECT' },
+    );
+    const rangoPorFinca = new Map();
+    for (const r of [...rangosClima, ...rangosPrecDiaria]) {
+      if (r.desde === null || r.hasta === null) continue;
+      const prev = rangoPorFinca.get(r.fincaUuid);
+      if (!prev) rangoPorFinca.set(r.fincaUuid, { fincaUuid: r.fincaUuid, desde: r.desde, hasta: r.hasta });
+      else {
+        if (new Date(r.desde) < new Date(prev.desde)) prev.desde = r.desde;
+        if (new Date(r.hasta) > new Date(prev.hasta)) prev.hasta = r.hasta;
+      }
+    }
+    const aniosDisponibles = await semanaRepository.findAniosDistintos();
+    if (rangoPorFinca.size === 0) return { items: [], aniosDisponibles };
+
+    const filasReales = await sequelize.query(
+      `SELECT finca_uuid AS fincaUuid, fecha, mm, temperatura, humedad_relativa AS humedadRelativa FROM ${TABLE} ${whereFinca}`,
+      { replacements: replacementsFinca, type: 'SELECT' },
+    );
+    const realPorFincaFecha = new Map(filasReales.map((f) => [`${f.fincaUuid}-${aIso(f.fecha)}`, f]));
+
+    const semanas = await Semana.findAll({ attributes: ['uuid', 'codigo', 'anio', 'numeroSemana', 'fechaInicio', 'fechaFin'], raw: true });
+    const unDiaMs = 24 * 60 * 60 * 1000;
+    const semanaPorFecha = new Map();
+    for (const sm of semanas) {
+      const inicio = new Date(sm.fechaInicio).getTime();
+      const fin = new Date(sm.fechaFin).getTime();
+      for (let t = inicio; t <= fin; t += unDiaMs) semanaPorFecha.set(new Date(t).toISOString().slice(0, 10), sm);
+    }
+
+    const anio = query.anio ? Number(query.anio) : null;
+    const porDia = new Map(); // fecha -> { sumaMm, nMm, sumaTemp, nTemp, sumaHum, nHum }
+    for (const r of rangoPorFinca.values()) {
+      let desde = new Date(r.desde).getTime();
+      let hasta = new Date(r.hasta).getTime();
+      if (anio) {
+        desde = Math.max(desde, Date.UTC(anio, 0, 1));
+        hasta = Math.min(hasta, Date.UTC(anio, 11, 31));
+      }
+      for (let t = desde; t <= hasta; t += unDiaMs) {
+        const fechaIso = new Date(t).toISOString().slice(0, 10);
+        const real = realPorFincaFecha.get(`${r.fincaUuid}-${fechaIso}`);
+        const mmDiaria = precDiariaPorFincaFecha.get(`${r.fincaUuid}-${fechaIso}`);
+        const mm = mmDiaria !== undefined ? mmDiaria : real && real.mm !== null ? Number(real.mm) : 0;
+        let a = porDia.get(fechaIso);
+        if (!a) {
+          a = { sumaMm: 0, nMm: 0, sumaTemp: 0, nTemp: 0, sumaHum: 0, nHum: 0 };
+          porDia.set(fechaIso, a);
+        }
+        a.sumaMm += mm;
+        a.nMm += 1;
+        if (real && real.temperatura !== null) {
+          a.sumaTemp += Number(real.temperatura);
+          a.nTemp += 1;
+        }
+        if (real && real.humedadRelativa !== null) {
+          a.sumaHum += Number(real.humedadRelativa);
+          a.nHum += 1;
+        }
+      }
+    }
+
+    const items = [...porDia.entries()]
+      .map(([fecha, a]) => {
+        const sm = semanaPorFecha.get(fecha);
+        const d = new Date(`${fecha}T00:00:00Z`);
+        const numeroDia = Math.floor((d - Date.UTC(d.getUTCFullYear(), 0, 0)) / unDiaMs);
+        return {
+          fecha,
+          anio: d.getUTCFullYear(),
+          numeroDia,
+          numeroSemana: sm?.numeroSemana ?? null,
+          semanaCodigo: sm?.codigo ?? null,
+          semanaUuid: sm?.uuid ?? null,
+          totalMm: a.nMm > 0 ? Math.round((a.sumaMm / a.nMm) * 100) / 100 : null,
+          promedioTemperatura: a.nTemp > 0 ? Math.round((a.sumaTemp / a.nTemp) * 100) / 100 : null,
+          promedioHumedad: a.nHum > 0 ? Math.round((a.sumaHum / a.nHum) * 100) / 100 : null,
+        };
+      })
+      .sort((x, y) => x.fecha.localeCompare(y.fecha));
+    return { items, aniosDisponibles };
+  },
+
   // Detalle por finca de UNA semana puntual — usado al hacer clic en un
   // punto del gráfico de Clima, para ver qué finca aportó qué del total
   // combinado ("Todas las fincas"). Mismo criterio de 0mm en días sin

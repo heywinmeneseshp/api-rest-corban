@@ -23,6 +23,11 @@ export const climaController = {
     ApiResponse.send(res, { message: 'Cargue masivo de clima procesado', data: resultado });
   }),
 
+  promedioDiario: asyncHandler(async (req, res) => {
+    const result = await climaService.promedioDiario(req.query, req.user);
+    ApiResponse.send(res, { message: 'Promedio diario de clima obtenido correctamente', data: result });
+  }),
+
   promedioSemanal: asyncHandler(async (req, res) => {
     const result = await climaService.promedioSemanal(req.query, req.user);
     ApiResponse.send(res, { message: 'Promedio semanal de clima obtenido correctamente', data: result });

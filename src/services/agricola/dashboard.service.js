@@ -352,6 +352,15 @@ export const dashboardService = {
       if (totalCortes > 0) cortesAnualMap.set(semanaId, totalCortes);
     }
 
+    // Aprovechamiento: solo cuentan las cintas (semanas de embolse) con 12
+    // semanas de edad o más — antes de eso todavía faltan racimos por salir
+    // (recusados/procesados) y el porcentaje saldría artificialmente bajo.
+    // Aplica al gráfico por semana y al ranking por finca.
+    const MIN_SEMANAS_EDAD_APROVECHAMIENTO = 12;
+    const ahoraAprov = Date.now();
+    const esCintaMadura = (semana) => Math.floor((ahoraAprov - new Date(semana.fechaInicio).getTime()) / (7 * 24 * 60 * 60 * 1000)) >= MIN_SEMANAS_EDAD_APROVECHAMIENTO;
+    const semanaIdsMaduras = semanasAnio.filter(esCintaMadura).map((s) => s.id);
+
     const embolseRows = todasSemanaIds.length > 0 ? await RacimoMovimiento.findAll({
       where: { tipo: 'EMBOLSE', semanaEmbolseId: { [Op.in]: todasSemanaIds }, ...fw },
       attributes: ['semanaEmbolseId', [fn('SUM', col('cantidad')), 'total']],
@@ -371,16 +380,16 @@ export const dashboardService = {
     // Mismos dos totales (embolsado/salidas) pero desglosados por finca, en
     // vez de solo por semana — para el ranking de fincas de Aprovechamiento
     // que va debajo del gráfico anual.
-    const embolseAnualPorFincaRows = todasSemanaIds.length > 0 ? await RacimoMovimiento.findAll({
-      where: { tipo: 'EMBOLSE', semanaEmbolseId: { [Op.in]: todasSemanaIds }, ...fw },
+    const embolseAnualPorFincaRows = semanaIdsMaduras.length > 0 ? await RacimoMovimiento.findAll({
+      where: { tipo: 'EMBOLSE', semanaEmbolseId: { [Op.in]: semanaIdsMaduras }, ...fw },
       attributes: ['fincaId', [fn('SUM', col('cantidad')), 'total']],
       group: ['fincaId'],
       raw: true,
     }) : [];
     const embolseAnualPorFincaMap = new Map(embolseAnualPorFincaRows.map((r) => [r.fincaId, Number(r.total)]));
 
-    const salidasAnualPorFincaRows = todasSemanaIds.length > 0 ? await RacimoMovimiento.findAll({
-      where: { tipo: { [Op.in]: ['RECUSE', 'PROCESADO'] }, semanaEmbolseId: { [Op.in]: todasSemanaIds }, ...fw },
+    const salidasAnualPorFincaRows = semanaIdsMaduras.length > 0 ? await RacimoMovimiento.findAll({
+      where: { tipo: { [Op.in]: ['RECUSE', 'PROCESADO'] }, semanaEmbolseId: { [Op.in]: semanaIdsMaduras }, ...fw },
       attributes: ['fincaId', [fn('SUM', col('cantidad')), 'total']],
       group: ['fincaId'],
       raw: true,
@@ -635,7 +644,8 @@ export const dashboardService = {
       return {
         numeroSemana: semana.numeroSemana,
         semanaCodigo: semana.codigo,
-        aprovechamiento: esFutura || pct === null ? null : pct,
+        // Solo cintas con 12+ semanas de edad (ver esCintaMadura).
+        aprovechamiento: esFutura || pct === null || !esCintaMadura(semana) ? null : pct,
       };
     });
 
