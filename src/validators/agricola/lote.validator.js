@@ -43,7 +43,8 @@ export const createLoteSchema = Joi.object({
     // se acepta opcionalmente por si se quiere forzar uno específico.
     codigo: Joi.string().min(1).max(20),
     nombre: nombreLote.required(),
-    area: Joi.number().positive().precision(2),
+    // El área total puede ser 0.
+    area: Joi.number().min(0).precision(2),
     estado: Joi.boolean(),
   }),
   params: Joi.object({}),
@@ -55,7 +56,8 @@ export const updateLoteSchema = Joi.object({
     fincaUuid: uuidRef,
     codigo: Joi.string().min(1).max(20),
     nombre: nombreLote,
-    area: Joi.number().positive().precision(2),
+    // El área total puede ser 0.
+    area: Joi.number().min(0).precision(2),
     estado: Joi.boolean(),
   }).min(1),
   params: Joi.object({ uuid: uuidParam }),
