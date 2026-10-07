@@ -28,6 +28,11 @@ export const grupoFincaController = {
     ApiResponse.send(res, { message: 'Grupo de finca actualizado correctamente', data: grupo });
   }),
 
+  restore: asyncHandler(async (req, res) => {
+    const grupo = await grupoFincaService.restoreGrupo(req.params.uuid, req.user?.id);
+    ApiResponse.send(res, { message: 'Grupo de finca restaurado correctamente', data: grupo });
+  }),
+
   remove: asyncHandler(async (req, res) => {
     await grupoFincaService.deleteGrupo(req.params.uuid, req.user?.id);
     ApiResponse.send(res, { message: 'Grupo de finca eliminado correctamente' });

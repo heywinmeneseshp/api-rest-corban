@@ -80,6 +80,13 @@ router.put(
   validate(updateGrupoFincaSchema),
   grupoFincaController.update,
 );
+router.post(
+  '/:uuid/restore',
+  auth,
+  permission(PERMISSIONS.GRUPO_FINCA_ELIMINAR),
+  validate(getGrupoFincaSchema),
+  grupoFincaController.restore,
+);
 router.delete(
   '/:uuid',
   auth,

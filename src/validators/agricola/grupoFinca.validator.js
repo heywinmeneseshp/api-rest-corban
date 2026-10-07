@@ -9,6 +9,8 @@ export const listGruposFincaSchema = Joi.object({
     page: Joi.number().integer().min(1),
     limit: Joi.number().integer().min(1).max(100),
     search: Joi.string().allow('').max(150),
+    // Incluye los grupos eliminados (para restaurarlos).
+    incluirEliminados: Joi.boolean(),
   }),
 });
 

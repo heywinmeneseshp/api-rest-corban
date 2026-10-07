@@ -70,7 +70,8 @@ export const loteService = {
     let codigo;
     do {
       codigo = `${finca.codigo}-${String(consecutivo).padStart(2, '0')}`;
-      const existing = await loteRepository.findByFincaAndCodigo(finca.id, codigo);
+      // Incluye los lotes eliminados: su código sigue ocupado (índice único finca+código).
+      const existing = await loteRepository.findByFincaAndCodigoIncludingDeleted(finca.id, codigo);
       if (!existing) break;
       consecutivo += 1;
     } while (true);
@@ -386,6 +387,7 @@ export const loteService = {
     const fincasCache = new Map();
     const semanasCache = new Map();
     const vistos = new Set();
+    const lotesNuevos = new Map(); // `${fincaId}|${nombre}` -> { finca, nombre, instancia }
 
     for (let i = 0; i < rows.length; i++) {
       const fila = i + 2; // fila del Excel (1 = encabezados)
@@ -429,12 +431,36 @@ export const loteService = {
         errores.push({ fila, error: `No tienes acceso a la finca ${codigoFinca}` });
         continue;
       }
-      const lote = await Lote.findOne({ where: { fincaId: finca.id, nombre: nombreLote } });
-      if (!lote) {
-        errores.push({ fila, error: `La finca ${codigoFinca} no tiene el lote ${nombreLote}` });
-        continue;
+      // Incluye los lotes OCULTOS (inactivos o eliminados): el área se agrega a ese
+      // mismo lote en lugar de crear otro.
+      let lote = await Lote.findOne({ where: { fincaId: finca.id, nombre: nombreLote }, paranoid: false });
+      // Excel suele quitar los ceros a la izquierda (el lote 00000 llega como "0"): si el
+      // nombre no existe tal cual pero es numérico, se usa el lote de esa finca con el
+      // MISMO valor numérico. Si hay más de uno (no eliminado), la fila se reporta.
+      if (!lote && /^\d+$/.test(nombreLote)) {
+        const equivalentes = (await Lote.findAll({ where: { fincaId: finca.id }, paranoid: false })).filter(
+          (l) => /^\d+$/.test(l.nombre) && parseInt(l.nombre, 10) === parseInt(nombreLote, 10),
+        );
+        const vigentes = equivalentes.filter((l) => !l.deletedAt);
+        const candidatos = vigentes.length > 0 ? vigentes : equivalentes;
+        if (candidatos.length > 1) {
+          errores.push({ fila, error: `El lote ${nombreLote} es ambiguo en la finca ${codigoFinca}: coincide con ${candidatos.map((l) => l.nombre).join(', ')}` });
+          continue;
+        }
+        if (candidatos.length === 1) lote = candidatos[0];
       }
-      const clave = `${lote.id}|${semana.id}`;
+      let nuevoLote = false;
+      if (!lote) {
+        // Un lote que no existe se CREA (como en el alta de lotes: el nombre es numérico).
+        if (!/^\d+$/.test(nombreLote)) {
+          errores.push({ fila, error: `El lote ${nombreLote} no existe en la finca ${codigoFinca} y no se puede crear: el nombre debe ser solo números` });
+          continue;
+        }
+        if (!lotesNuevos.has(`${finca.id}|${nombreLote}`)) lotesNuevos.set(`${finca.id}|${nombreLote}`, { finca, nombre: nombreLote, instancia: null });
+        lote = { id: null, nuevo: true, area: null, fincaId: finca.id, nombre: nombreLote };
+        nuevoLote = true;
+      }
+      const clave = lote.id ? `${lote.id}|${semana.id}` : `nuevo|${finca.id}|${nombreLote}|${semana.id}`;
       if (vistos.has(clave)) {
         errores.push({ fila, error: `El lote ${nombreLote} de la finca ${codigoFinca} está repetido para la semana ${semana.codigo}` });
         continue;
@@ -450,7 +476,7 @@ export const loteService = {
       if (total === undefined && prod === undefined) continue; // sin cambios en esta fila
 
       // Un campo vacío conserva el valor vigente en esa semana.
-      const vig = await loteAreaProduccionRepository.areaVigenteEnSemana(lote.id, semana);
+      const vig = lote.id ? await loteAreaProduccionRepository.areaVigenteEnSemana(lote.id, semana) : null;
       const prodFinal = prod !== undefined ? prod : vig ? Number(vig.area) : undefined;
       if (prodFinal === undefined) {
         errores.push({ fila, error: 'El lote no tiene área en producción registrada: escribe un valor' });
@@ -458,8 +484,26 @@ export const loteService = {
       }
       const totalFinal = total !== undefined ? total : esActual ? (hay(lote.area) ? Number(lote.area) : null) : hay(vig?.areaTotal) ? Number(vig.areaTotal) : null;
 
-      aplicar.push({ lote, semana, esActual, total: totalFinal, totalCambia: total !== undefined, prod: prodFinal });
-      vistaPrevia.push({ fila, semana: semana.codigo, codigoFinca, lote: nombreLote, areaTotal: totalFinal, areaProduccion: prodFinal });
+      const ocultoLote = !nuevoLote && (!lote.estado || !!lote.deletedAt);
+      aplicar.push({ lote, nuevoLote, semana, esActual, total: totalFinal, totalCambia: total !== undefined, prod: prodFinal });
+      vistaPrevia.push({ fila, semana: semana.codigo, codigoFinca, lote: lote.nombre, nuevoLote, ocultoLote, areaTotal: totalFinal, areaProduccion: prodFinal });
+    }
+
+    // Lotes que no existían: se crean (activos, sin área total; el código se
+    // genera solo). Solo los que tienen al menos una fila válida para aplicar.
+    const nuevosCreados = [];
+    if (!dryRun) {
+      for (const a of aplicar) {
+        if (!a.nuevoLote) continue;
+        const clave = `${a.lote.fincaId}|${a.lote.nombre}`;
+        const reg = lotesNuevos.get(clave);
+        if (!reg.instancia) {
+          const codigo = await this.generateCodigo(reg.finca, reg.nombre);
+          reg.instancia = await Lote.create({ fincaId: reg.finca.id, codigo, nombre: reg.nombre, area: null, estado: true, createdBy: actorId });
+          nuevosCreados.push({ codigoFinca: reg.finca.codigo, lote: reg.nombre, codigo: reg.instancia.codigo });
+        }
+        a.lote = reg.instancia;
+      }
     }
 
     if (!dryRun && aplicar.length > 0) {
@@ -487,6 +531,9 @@ export const loteService = {
     return {
       totalFilas: rows.length,
       actualizados: aplicar.length,
+      lotesNuevos: dryRun
+        ? [...new Map(aplicar.filter((a) => a.nuevoLote).map((a) => [`${a.lote.fincaId}|${a.lote.nombre}`, { codigoFinca: a.lote.fincaId && lotesNuevos.get(`${a.lote.fincaId}|${a.lote.nombre}`).finca.codigo, lote: a.lote.nombre }])).values()]
+        : nuevosCreados,
       semanas: [...new Set(aplicar.map((a) => a.semana.codigo))],
       errores,
       vistaPrevia: vistaPrevia.slice(0, 200),
