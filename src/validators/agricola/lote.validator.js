@@ -77,7 +77,11 @@ export const createAreaProduccionSchema = Joi.object({
   body: Joi.object({
     // El área en producción puede ser 0 (lote sin producción por ahora).
     area: Joi.number().min(0).precision(2).required(),
-    fecha: Joi.date().raw(),
+    // Área total del lote en el momento del registro (opcional).
+    areaTotal: Joi.number().min(0).precision(2).allow(null),
+    // Semana a la que pertenece el valor (por defecto la actual); una anterior exige permiso.
+    semanaUuid: Joi.string().guid({ version: 'uuidv4' }),
+    fecha: Joi.date().raw(), // (en desuso: la fecha real de guardado la pone el servidor)
   }),
   params: Joi.object({ uuid: uuidParam }),
   query: Joi.object({}),

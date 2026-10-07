@@ -4,10 +4,11 @@ import { Finca, Role, Lote, User, LoteAreaProduccion, LoteAreaOmitido, LoteAreaS
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import { loteAreaConfigRepository } from '../../repositories/agricola/loteAreaConfig.repository.js';
 import { loteRepository } from '../../repositories/agricola/lote.repository.js';
+import { semanaRepository } from '../../repositories/agricola/semana.repository.js';
 import { loteService } from './lote.service.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
-import { getFincaIdsPermitidas, expandirFincaIds } from '../../utils/fincaScope.js';
+import { getFincaIdsPermitidas } from '../../utils/fincaScope.js';
 
 // Zona horaria del negocio, no la del servidor — mismo criterio (y mismo
 // motivo: Vercel corre en UTC) que precipitacionDiaria.service.js.
@@ -35,8 +36,10 @@ const findFincaByUuidOrFail = async (uuid) => {
   return finca;
 };
 
-// Fincas (expandidas por Grupo de Finca) con config activa relevante para
-// el usuario — mismo criterio que getPendientes. null = sin restricción.
+// Fincas con config activa relevante para el usuario — mismo criterio que
+// getPendientes. Cada finca es independiente (no se expande por Grupo de
+// Finca: los lotes de una finca no se mezclan con los de otra). null = sin
+// restricción.
 const fincaIdsConConfigRelevante = async (user) => {
   const roles = user?.roles || [];
   if (roles.length === 0) return [];
@@ -52,8 +55,7 @@ const fincaIdsConConfigRelevante = async (user) => {
     )
     .map((c) => c.fincaId);
   if (fincaIdsPermitidas === null) return null;
-  if (ids.length === 0) return [];
-  return expandirFincaIds(ids);
+  return [...new Set(ids)];
 };
 
 // Config relevante (la de fechaObjetivo más reciente) que cubre una finca,
@@ -75,11 +77,8 @@ const configRelevanteParaFinca = async (user, fincaId) => {
     const actual = porFinca.get(c.fincaId);
     if (!actual || c.fechaObjetivo > actual.fechaObjetivo) porFinca.set(c.fincaId, c);
   }
-  for (const config of porFinca.values()) {
-    const expandidas = await expandirFincaIds([config.fincaId]);
-    if (expandidas.includes(fincaId)) return config;
-  }
-  return null;
+  // Solo la config de ESA finca (los lotes de cada finca son independientes).
+  return porFinca.get(fincaId) || null;
 };
 
 export const loteAreaConfigService = {
@@ -144,9 +143,9 @@ export const loteAreaConfigService = {
   // (hoy o antes). A diferencia de Precipitación Diaria (que exige ponerse
   // al día con CADA día faltante desde una fecha de inicio), acá es un
   // evento puntual: si hay varias configs vencidas para la misma finca, se
-  // usa la de fechaObjetivo más reciente. Si la finca pertenece a un Grupo
-  // de Finca, se exige el área de los lotes de TODAS las fincas del grupo
-  // (ver utils/fincaScope.js).
+  // usa la de fechaObjetivo más reciente. Cada finca es INDEPENDIENTE: solo
+  // se piden (y se ocultan) los lotes de la propia finca, aunque pertenezca a
+  // un Grupo de Finca.
   async getPendientes(user) {
     const roles = user?.roles || [];
     if (roles.length === 0) return [];
@@ -173,7 +172,9 @@ export const loteAreaConfigService = {
 
     const pendientesPorFinca = [];
     for (const config of porFinca.values()) {
-      const fincaIds = await expandirFincaIds([config.fincaId]);
+      // Solo los lotes de la propia finca de la config: cada finca es independiente
+      // (aunque pertenezca a un Grupo de Finca, sus lotes no se mezclan con los de otra).
+      const fincaIds = [config.fincaId];
       // Mismo orden natural por nombre (1, 2, 3, ... 10, 11) que el resto de
       // listados de lotes, con `codigo` como desempate estable.
       const lotes = await Lote.findAll({
@@ -255,6 +256,7 @@ export const loteAreaConfigService = {
       throw ApiError.badRequest('Debes enviar al menos un registro');
     }
     const hoy = hoyIso();
+    const semanaHoy = await semanaRepository.findByFecha(hoy);
     const aplicaDirecto = (user?.permissions || []).includes(PERMISSIONS.AREA_LOTE_APROBAR);
 
     return sequelize.transaction(async (transaction) => {
@@ -287,6 +289,7 @@ export const loteAreaConfigService = {
             area: r.areaProduccion,
             areaTotal: r.areaTotal,
             fechaRegistro: hoy,
+            semanaId: semanaHoy ? semanaHoy.id : null,
             createdBy: actorId,
           },
           { transaction },
@@ -345,6 +348,7 @@ export const loteAreaConfigService = {
           area: sol.areaProduccion,
           areaTotal: sol.areaTotal,
           fechaRegistro: sol.fechaSolicitud || hoy,
+          semanaId: (await semanaRepository.findByFecha(sol.fechaSolicitud || hoy))?.id ?? null,
           createdBy: sol.solicitadoPor ?? actorId,
         },
         { transaction },

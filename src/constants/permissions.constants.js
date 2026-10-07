@@ -193,6 +193,11 @@ export const PERMISSIONS = {
   // tiene (y el Administrador) aplica sus propios cambios directo, sin pasar
   // por aprobación.
   AREA_LOTE_APROBAR: 'area_lote.aprobar',
+  // Editar el área de lotes en una SEMANA ANTERIOR (sin él solo se edita la
+  // semana actual). El rol Administrador ya recibe todos los permisos.
+  AREA_LOTE_EDITAR_SEMANAS_ANTERIORES: 'area_lote.editar_semanas_anteriores',
+  // Actualización MASIVA de áreas por Excel (Maestros > Fincas): exige elegir la semana.
+  AREA_LOTE_ACTUALIZAR_MASIVO: 'area_lote.actualizar_masivo',
 
   CATEGORIA_LABOR_VER: 'categoria_labor.ver',
   CATEGORIA_LABOR_CREAR: 'categoria_labor.crear',
@@ -511,6 +516,8 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.AREA_LOTE_CONFIGURAR, nombre: 'Programar captura obligatoria de área de lotes' },
   { codigo: PERMISSIONS.AREA_LOTE_GESTIONAR_LOTES, nombre: 'Agregar lotes y ocultar lotes del pendiente de área' },
   { codigo: PERMISSIONS.AREA_LOTE_APROBAR, nombre: 'Aprobar o rechazar cambios de área de lotes' },
+  { codigo: PERMISSIONS.AREA_LOTE_EDITAR_SEMANAS_ANTERIORES, nombre: 'Editar el área de lotes de semanas anteriores' },
+  { codigo: PERMISSIONS.AREA_LOTE_ACTUALIZAR_MASIVO, nombre: 'Actualización masiva de áreas de lotes (Excel)' },
 
   { codigo: PERMISSIONS.CATEGORIA_LABOR_VER, nombre: 'Ver categorías de labor' },
   { codigo: PERMISSIONS.CATEGORIA_LABOR_CREAR, nombre: 'Crear categorías de labor' },

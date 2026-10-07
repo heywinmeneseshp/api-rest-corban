@@ -33,6 +33,11 @@ export const fincaController = {
     ApiResponse.send(res, { message: 'Finca eliminada correctamente' });
   }),
 
+  listAreaHistorial: asyncHandler(async (req, res) => {
+    const { items } = await fincaService.listAreaHistorial(req.params.uuid, req.query, req.user);
+    ApiResponse.send(res, { message: 'Histórico de áreas obtenido correctamente', data: { items } });
+  }),
+
   listLotes: asyncHandler(async (req, res) => {
     const { items, meta } = await fincaService.listLotes(req.params.uuid, req.query, req.user);
     ApiResponse.send(res, { message: 'Lotes de la finca obtenidos correctamente', data: { items, meta } });

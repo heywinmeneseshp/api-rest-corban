@@ -1,5 +1,7 @@
+import { QueryTypes } from 'sequelize';
+import { sequelize } from '../../database/connection.js';
 import { fincaRepository } from '../../repositories/agricola/finca.repository.js';
-import { GrupoFinca } from '../../database/associations.js';
+import { GrupoFinca, Lote, LoteAreaProduccion, Semana, User } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { logger } from '../../utils/logger.js';
@@ -24,6 +26,44 @@ const parseEstado = (value) => {
   return !['false', '0', 'no', 'inactivo', 'inactive'].includes(v);
 };
 
+// Suma por finca de las áreas de sus lotes ACTIVOS (los ocultos/inactivos o
+// eliminados no cuentan): areaTotal = área total de cada lote; areaProduccion =
+// la última área en producción registrada de cada lote.
+async function agregarAreas(fincas) {
+  if (fincas.length === 0) return fincas;
+  const ids = fincas.map((f) => f.id);
+  const totales = await sequelize.query(
+    `SELECT finca_id AS fincaId, SUM(area) AS total, COUNT(*) AS lotes
+       FROM lotes
+      WHERE deleted_at IS NULL AND estado = 1 AND finca_id IN (:ids)
+      GROUP BY finca_id`,
+    { replacements: { ids }, type: QueryTypes.SELECT },
+  );
+  const produccion = await sequelize.query(
+    `SELECT l.finca_id AS fincaId, SUM(ap.area) AS total
+       FROM lotes l
+       JOIN lote_area_produccion ap
+         ON ap.lote_id = l.id
+        AND ap.id = (SELECT x.id FROM lote_area_produccion x LEFT JOIN semanas sx ON sx.id = x.semana_id WHERE x.lote_id = l.id ORDER BY COALESCE(sx.fecha_inicio, x.fecha_registro) DESC, x.id DESC LIMIT 1)
+      WHERE l.deleted_at IS NULL AND l.estado = 1 AND l.finca_id IN (:ids)
+      GROUP BY l.finca_id`,
+    { replacements: { ids }, type: QueryTypes.SELECT },
+  );
+  const totalPorFinca = new Map(totales.map((r) => [r.fincaId, r]));
+  const prodPorFinca = new Map(produccion.map((r) => [r.fincaId, Number(r.total)]));
+  const redondear = (n) => Math.round(Number(n) * 100) / 100;
+  return fincas.map((f) => {
+    const json = typeof f.toJSON === 'function' ? f.toJSON() : { ...f };
+    const t = totalPorFinca.get(f.id);
+    return {
+      ...json,
+      areaTotal: t && t.total !== null ? redondear(t.total) : 0,
+      areaProduccion: redondear(prodPorFinca.get(f.id) || 0),
+      totalLotes: t ? Number(t.lotes) : 0,
+    };
+  });
+}
+
 export const fincaService = {
   async listFincas(query, user) {
     const { page, limit, offset } = getPagination(query);
@@ -34,7 +74,9 @@ export const fincaService = {
       fincaIdsPermitidas: getFincaIdsPermitidas(user),
       soloOperativas: query.soloOperativas === true || query.soloOperativas === 'true',
     });
-    return { items: rows, meta: buildPaginationMeta({ page, limit, total: count }) };
+    let items = rows;
+    if (query.incluirAreas === true || query.incluirAreas === 'true') items = await agregarAreas(rows);
+    return { items, meta: buildPaginationMeta({ page, limit, total: count }) };
   },
 
   // `user` opcional: si se da y el usuario tiene restricción de fincas, se
@@ -131,6 +173,31 @@ export const fincaService = {
   // lotes locales finca-por-finca asumiendo que esta respuesta nunca trae
   // lotes de otra finca (ver app-movil/src/services/sync.service.ts) — traer
   // el grupo completo por defecto le rompería la sincronización.
+  // Histórico de áreas de TODOS los lotes de la finca: cada actualización de
+  // área (total y en producción) con su fecha, el lote y quién la registró,
+  // de la más reciente a la más antigua.
+  async listAreaHistorial(uuid, query, user) {
+    const finca = await this.getFincaByUuid(uuid, user);
+    const limit = Math.min(Number(query.limit) || 500, 1000);
+    const lotes = await Lote.findAll({ where: { fincaId: finca.id }, attributes: ['id'], paranoid: false });
+    if (lotes.length === 0) return { items: [] };
+    const rows = await LoteAreaProduccion.findAll({
+      where: { loteId: lotes.map((l) => l.id) },
+      include: [
+        { model: Lote, as: 'lote', attributes: ['uuid', 'nombre', 'codigo'], paranoid: false },
+        { model: User, as: 'creadoPor', attributes: ['uuid', 'usuario', 'nombre', 'apellido'] },
+        { model: Semana, as: 'semana', attributes: ['uuid', 'codigo', 'numeroSemana', 'anio', 'fechaInicio', 'fechaFin'], required: false },
+      ],
+      order: [
+        [{ model: Semana, as: 'semana' }, 'fechaInicio', 'DESC'],
+        ['fechaRegistro', 'DESC'],
+        ['id', 'DESC'],
+      ],
+      limit,
+    });
+    return { items: rows };
+  },
+
   async listLotes(uuid, query, user) {
     const finca = await this.getFincaByUuid(uuid, user);
     const { page, limit, offset } = getPagination(query);

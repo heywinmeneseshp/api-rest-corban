@@ -42,6 +42,18 @@ router.post(
   loteController.create,
 );
 
+// Actualización masiva de áreas (Maestros > Fincas): plantilla con las áreas
+// vigentes y carga del Excel (la semana va en cada fila; validación previa).
+// Va ANTES de '/:uuid' para que 'area-plantilla' no se tome como un uuid.
+router.get('/area-plantilla', auth, permission(PERMISSIONS.AREA_LOTE_ACTUALIZAR_MASIVO), loteController.plantillaAreas);
+router.post(
+  '/area-bulk-upload',
+  auth,
+  permission(PERMISSIONS.AREA_LOTE_ACTUALIZAR_MASIVO),
+  uploadBulkFile,
+  loteController.bulkActualizarAreas,
+);
+
 /**
  * @openapi
  * /lotes/{uuid}:

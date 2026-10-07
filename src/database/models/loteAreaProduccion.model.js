@@ -15,6 +15,9 @@ LoteAreaProduccion.init(
     // (ver LoteAreaConfig) — el alta manual/voluntaria puede seguir sin ella.
     areaTotal: { type: DataTypes.DECIMAL(10, 2), allowNull: true, field: 'area_total' },
     fechaRegistro: { type: DataTypes.DATEONLY, allowNull: false, field: 'fecha_registro' },
+    // Semana a la que pertenece este valor de área (no siempre la de `fechaRegistro`:
+    // una corrección retroactiva se guarda en la semana editada).
+    semanaId: { type: DataTypes.INTEGER, allowNull: true, field: 'semana_id' },
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
   },
   {

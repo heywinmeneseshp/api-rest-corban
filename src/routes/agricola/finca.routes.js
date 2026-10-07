@@ -11,6 +11,7 @@ import {
   createFincaSchema,
   updateFincaSchema,
   listFincaLotesSchema,
+  listFincaAreaHistorialSchema,
   syncBanaricaSchema,
 } from '../../validators/agricola/finca.validator.js';
 
@@ -105,6 +106,24 @@ router.delete(
   permission(PERMISSIONS.FINCA_ELIMINAR),
   validate(getFincaSchema),
   fincaController.remove,
+);
+
+/**
+ * @openapi
+ * /fincas/{uuid}/lotes/area-historial:
+ *   get:
+ *     tags: [Fincas]
+ *     summary: Histórico de áreas (total y en producción) de todos los lotes de una finca
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.get(
+  '/:uuid/lotes/area-historial',
+  auth,
+  permission(PERMISSIONS.LOTE_VER),
+  validate(listFincaAreaHistorialSchema),
+  fincaController.listAreaHistorial,
 );
 
 /**

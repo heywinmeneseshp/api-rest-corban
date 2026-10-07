@@ -1,12 +1,18 @@
 import { Op } from 'sequelize';
-import { Finca, Planta, RacimoMovimiento, LoteAreaProduccion } from '../../database/associations.js';
+import { Finca, Lote, Planta, RacimoMovimiento, LoteAreaProduccion } from '../../database/associations.js';
+import { sequelize } from '../../database/connection.js';
 import { loteRepository } from '../../repositories/agricola/lote.repository.js';
 import { loteAreaProduccionRepository } from '../../repositories/agricola/loteAreaProduccion.repository.js';
+import { semanaRepository } from '../../repositories/agricola/semana.repository.js';
+import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import { ROLES } from '../../constants/roles.constants.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { parseBulkFile } from '../../utils/bulkFileParser.js';
 import { getFincaIdsPermitidas, assertFincaPermitida } from '../../utils/fincaScope.js';
+
+// ¿Tiene valor (ni null ni undefined)?
+const hay = (v) => v !== null && v !== undefined;
 
 const findFincaByUuidOrFail = async (fincaUuid) => {
   const finca = await Finca.findOne({ where: { uuid: fincaUuid } });
@@ -323,12 +329,199 @@ export const loteService = {
     return { items: rows, meta: buildPaginationMeta({ page, limit, total: count }) };
   },
 
+  // ─── Actualización masiva de áreas (Excel) ───
+  //
+  // La SEMANA a actualizar va en el propio Excel (columna `semana`, obligatoria
+  // en cada fila, ej. S41-2026): una misma carga puede actualizar semanas
+  // distintas. Solo con el permiso area_lote.actualizar_masivo (el Administrador
+  // ya los tiene todos).
+
+  // Plantilla: todos los lotes activos del alcance del usuario con el área
+  // vigente hoy; la columna `semana` va vacía a propósito (hay que escribirla).
+  async plantillaAreas(user) {
+    const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+    const semanaActual = await semanaRepository.findByFecha(hoy);
+    const fincaIdsPermitidas = getFincaIdsPermitidas(user);
+    const lotes = await Lote.findAll({
+      where: { estado: true },
+      include: [{ model: Finca, as: 'finca', attributes: ['id', 'codigo', 'nombre'], where: fincaIdsPermitidas ? { id: { [Op.in]: fincaIdsPermitidas } } : undefined }],
+      order: [['fincaId', 'ASC'], ['nombre', 'ASC']],
+    });
+    const filas = [];
+    for (const l of lotes) {
+      const ultimo = await loteAreaProduccionRepository.findLatestByLoteId(l.id);
+      filas.push({
+        codigoFinca: l.finca.codigo,
+        finca: l.finca.nombre,
+        lote: l.nombre,
+        areaTotal: hay(l.area) ? Number(l.area) : null,
+        areaProduccion: ultimo ? Number(ultimo.area) : null,
+      });
+    }
+    return { semanaActual: semanaActual ? semanaActual.codigo : null, filas };
+  },
+
+  async bulkActualizarAreas(file, { dryRun = false } = {}, actorId, user) {
+    const rows = parseBulkFile(file);
+    if (rows.length === 0) throw ApiError.badRequest('El archivo no tiene filas para procesar');
+    const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+    const semanaActual = await semanaRepository.findByFecha(hoy);
+    const fincaIdsPermitidas = getFincaIdsPermitidas(user);
+
+    const numero = (v) => {
+      if (v === undefined || v === null || String(v).trim() === '') return undefined;
+      const n = Number(String(v).replace(',', '.'));
+      return Number.isFinite(n) ? n : NaN;
+    };
+    // El nombre de la columna puede traer "_" (la plantilla lo usa): se ignora.
+    const dato = (row, ...claves) => {
+      for (const c of claves) if (row[c] !== undefined && row[c] !== '') return row[c];
+      for (const [k, v] of Object.entries(row)) if (claves.includes(k.replace(/_/g, '')) && v !== '') return v;
+      return undefined;
+    };
+
+    const errores = [];
+    const aplicar = [];
+    const vistaPrevia = [];
+    const fincasCache = new Map();
+    const semanasCache = new Map();
+    const vistos = new Set();
+
+    for (let i = 0; i < rows.length; i++) {
+      const fila = i + 2; // fila del Excel (1 = encabezados)
+      const row = rows[i];
+      const codigoFinca = String(dato(row, 'codigofinca') ?? '').trim();
+      const nombreLote = String(dato(row, 'lote', 'nombrelote') ?? '').trim();
+      const codigoSemana = String(dato(row, 'semana', 'codigosemana') ?? '').trim();
+      if (!codigoFinca && !nombreLote && !codigoSemana) continue; // fila vacía
+      if (!codigoFinca || !nombreLote) {
+        errores.push({ fila, error: 'Faltan el código de la finca o el lote' });
+        continue;
+      }
+      if (!codigoSemana) {
+        errores.push({ fila, error: 'Falta la semana a actualizar (ej. S41-2026): es obligatoria en cada fila' });
+        continue;
+      }
+
+      if (!semanasCache.has(codigoSemana.toUpperCase())) {
+        semanasCache.set(codigoSemana.toUpperCase(), await semanaRepository.findByCodigo(codigoSemana.toUpperCase()));
+      }
+      const semana = semanasCache.get(codigoSemana.toUpperCase());
+      if (!semana) {
+        errores.push({ fila, error: `No existe la semana ${codigoSemana}` });
+        continue;
+      }
+      if (semanaActual && semana.fechaInicio > semanaActual.fechaInicio) {
+        errores.push({ fila, error: `La semana ${semana.codigo} es futura: no se puede actualizar` });
+        continue;
+      }
+      const esActual = !semanaActual || semana.id === semanaActual.id;
+
+      if (!fincasCache.has(codigoFinca)) {
+        fincasCache.set(codigoFinca, await Finca.findOne({ where: { codigo: codigoFinca } }));
+      }
+      const finca = fincasCache.get(codigoFinca);
+      if (!finca) {
+        errores.push({ fila, error: `No existe la finca con código ${codigoFinca}` });
+        continue;
+      }
+      if (fincaIdsPermitidas && !fincaIdsPermitidas.includes(finca.id)) {
+        errores.push({ fila, error: `No tienes acceso a la finca ${codigoFinca}` });
+        continue;
+      }
+      const lote = await Lote.findOne({ where: { fincaId: finca.id, nombre: nombreLote } });
+      if (!lote) {
+        errores.push({ fila, error: `La finca ${codigoFinca} no tiene el lote ${nombreLote}` });
+        continue;
+      }
+      const clave = `${lote.id}|${semana.id}`;
+      if (vistos.has(clave)) {
+        errores.push({ fila, error: `El lote ${nombreLote} de la finca ${codigoFinca} está repetido para la semana ${semana.codigo}` });
+        continue;
+      }
+      vistos.add(clave);
+
+      const total = numero(dato(row, 'areatotal', 'total'));
+      const prod = numero(dato(row, 'areaenproduccion', 'areaproduccion', 'enproduccion', 'produccion'));
+      if (Number.isNaN(total) || Number.isNaN(prod) || (total !== undefined && total < 0) || (prod !== undefined && prod < 0)) {
+        errores.push({ fila, error: 'Las áreas deben ser números mayores o iguales a 0' });
+        continue;
+      }
+      if (total === undefined && prod === undefined) continue; // sin cambios en esta fila
+
+      // Un campo vacío conserva el valor vigente en esa semana.
+      const vig = await loteAreaProduccionRepository.areaVigenteEnSemana(lote.id, semana);
+      const prodFinal = prod !== undefined ? prod : vig ? Number(vig.area) : undefined;
+      if (prodFinal === undefined) {
+        errores.push({ fila, error: 'El lote no tiene área en producción registrada: escribe un valor' });
+        continue;
+      }
+      const totalFinal = total !== undefined ? total : esActual ? (hay(lote.area) ? Number(lote.area) : null) : hay(vig?.areaTotal) ? Number(vig.areaTotal) : null;
+
+      aplicar.push({ lote, semana, esActual, total: totalFinal, totalCambia: total !== undefined, prod: prodFinal });
+      vistaPrevia.push({ fila, semana: semana.codigo, codigoFinca, lote: nombreLote, areaTotal: totalFinal, areaProduccion: prodFinal });
+    }
+
+    if (!dryRun && aplicar.length > 0) {
+      await sequelize.transaction(async (transaction) => {
+        for (const a of aplicar) {
+          await LoteAreaProduccion.create(
+            {
+              loteId: a.lote.id,
+              area: a.prod,
+              areaTotal: a.total,
+              fechaRegistro: hoy,
+              semanaId: a.semana.id,
+              createdBy: actorId,
+            },
+            { transaction },
+          );
+          // El total del lote solo se actualiza al editar la semana actual.
+          if (a.esActual && a.totalCambia && a.total !== null) {
+            await a.lote.update({ area: a.total, updatedBy: actorId }, { transaction });
+          }
+        }
+      });
+    }
+
+    return {
+      totalFilas: rows.length,
+      actualizados: aplicar.length,
+      semanas: [...new Set(aplicar.map((a) => a.semana.codigo))],
+      errores,
+      vistaPrevia: vistaPrevia.slice(0, 200),
+      dryRun,
+    };
+  },
+
+  // Registra el área de un lote en una SEMANA: por defecto la actual; elegir una
+  // anterior exige el permiso area_lote.editar_semanas_anteriores (el
+  // Administrador ya los tiene todos). Una semana futura se rechaza.
   async registerAreaProduccion(uuid, payload, actorId, user) {
     const lote = await this.getLoteByUuid(uuid, user);
+    const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+    const semanaActual = await semanaRepository.findByFecha(hoy);
+
+    let semana = semanaActual;
+    if (payload.semanaUuid) {
+      semana = await semanaRepository.findByUuid(payload.semanaUuid);
+      if (!semana) throw ApiError.notFound('Semana no encontrada');
+    }
+    if (semana && semanaActual && semana.fechaInicio > semanaActual.fechaInicio) {
+      throw ApiError.badRequest('No se puede registrar el área de una semana futura');
+    }
+    const esAnterior = semana && semanaActual && semana.fechaInicio < semanaActual.fechaInicio;
+    if (esAnterior && !(user?.permissions || []).includes(PERMISSIONS.AREA_LOTE_EDITAR_SEMANAS_ANTERIORES)) {
+      throw ApiError.forbidden('No tienes permiso para editar el área de semanas anteriores');
+    }
+
     return loteAreaProduccionRepository.create({
       loteId: lote.id,
       area: payload.area,
-      fechaRegistro: payload.fecha || new Date().toISOString().slice(0, 10),
+      areaTotal: payload.areaTotal ?? null,
+      // Fecha real del guardado (no la de la semana editada).
+      fechaRegistro: hoy,
+      semanaId: semana ? semana.id : null,
       createdBy: actorId,
     });
   },

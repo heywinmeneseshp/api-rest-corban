@@ -49,6 +49,17 @@ export const loteController = {
     ApiResponse.send(res, { message: 'Cargue masivo de lotes procesado', data: resultado });
   }),
 
+  plantillaAreas: asyncHandler(async (req, res) => {
+    const data = await loteService.plantillaAreas(req.user);
+    ApiResponse.send(res, { message: 'Plantilla de áreas obtenida correctamente', data });
+  }),
+
+  bulkActualizarAreas: asyncHandler(async (req, res) => {
+    const dryRun = req.body?.dryRun === 'true';
+    const resultado = await loteService.bulkActualizarAreas(req.file, { dryRun }, req.user?.id, req.user);
+    ApiResponse.send(res, { message: dryRun ? 'Validación de la actualización masiva de áreas' : 'Actualización masiva de áreas aplicada', data: resultado });
+  }),
+
   listAreaProduccion: asyncHandler(async (req, res) => {
     const { items, meta } = await loteService.listAreaProduccion(req.params.uuid, req.query, req.user);
     ApiResponse.send(res, {

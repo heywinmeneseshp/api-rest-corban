@@ -14,6 +14,8 @@ export const listFincasSchema = Joi.object({
     // racimos, precipitación, etc.). Usado por esos selectores; el listado
     // de Maestros → Fincas y Programación de Corte siguen trayendo todas.
     soloOperativas: Joi.boolean(),
+    // Opt-in: agrega areaTotal y areaProduccion (suma de los lotes activos de cada finca).
+    incluirAreas: Joi.boolean(),
   }),
 });
 
@@ -36,6 +38,14 @@ export const listFincaLotesSchema = Joi.object({
     // Finca. Por defecto false para no romper la sincronización de la app
     // móvil, que asume que esta respuesta nunca trae lotes de otra finca.
     incluirGrupo: Joi.boolean(),
+  }),
+});
+
+export const listFincaAreaHistorialSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({ uuid: uuidParam }),
+  query: Joi.object({
+    limit: Joi.number().integer().min(1).max(1000),
   }),
 });
 

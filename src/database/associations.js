@@ -228,6 +228,7 @@ export const setupAssociations = () => {
   Lote.hasMany(LoteAreaProduccion, { foreignKey: 'loteId', as: 'areaProduccionHistorial' });
   LoteAreaProduccion.belongsTo(Lote, { foreignKey: 'loteId', as: 'lote' });
   LoteAreaProduccion.belongsTo(User, { foreignKey: 'createdBy', as: 'creadoPor' });
+  LoteAreaProduccion.belongsTo(Semana, { foreignKey: 'semanaId', as: 'semana' });
 
   // Configuración de campaña de Área de Lotes: qué rol debe confirmar el
   // área total y en producción de todos los lotes de una finca, a partir de
