@@ -1,4 +1,5 @@
 import { estacionMeteorologicaService } from '../../services/agricola/estacionMeteorologica.service.js';
+import { climaComparativaService } from '../../services/agricola/climaComparativa.service.js';
 import { openMeteoService } from '../../services/agricola/openMeteo.service.js';
 import { configuracionService } from '../../services/sistema/configuracion.service.js';
 import { ApiResponse } from '../../utils/ApiResponse.js';
@@ -21,6 +22,20 @@ export const estacionMeteorologicaController = {
   openMeteoFincas: asyncHandler(async (req, res) => {
     const data = await openMeteoService.fincasConCoordenadas(req.user);
     ApiResponse.send(res, { message: 'Fincas obtenidas correctamente', data });
+  }),
+
+  comparativaFuentes: asyncHandler(async (req, res) => {
+    const data = await climaComparativaService.fuentes(req.user);
+    ApiResponse.send(res, { message: 'Fuentes de clima obtenidas correctamente', data });
+  }),
+
+  comparativaDatos: asyncHandler(async (req, res) => {
+    const { fuentes, fechaDesde, fechaHasta } = req.query;
+    const items = await climaComparativaService.datos(
+      { fuentes: fuentes ? String(fuentes).split(',').filter(Boolean) : [], fechaDesde, fechaHasta },
+      req.user,
+    );
+    ApiResponse.send(res, { message: 'Datos de clima obtenidos correctamente', data: { items } });
   }),
 
   openMeteoActuales: asyncHandler(async (req, res) => {

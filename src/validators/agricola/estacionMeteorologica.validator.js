@@ -58,3 +58,13 @@ export const openMeteoConfigSchema = Joi.object({
   params: Joi.object({}),
   query: Joi.object({}),
 });
+
+export const comparativaSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({}),
+  query: Joi.object({
+    fuentes: Joi.string().allow(''), // ids separados por coma ('estacion', 'finca:<uuid>')
+    fechaDesde: Joi.date().iso(),
+    fechaHasta: Joi.date().iso(),
+  }),
+});

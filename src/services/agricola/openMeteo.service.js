@@ -7,7 +7,10 @@ import { ApiError } from '../../utils/ApiError.js';
 import { logger } from '../../utils/logger.js';
 
 const ZONA = 'America/Bogota';
-const DIAS_POR_DEFECTO = 30; // cada actualización trae los últimos 30 días
+const DIAS_POR_DEFECTO = 30; // rango por defecto de una actualización manual sin fechas
+// Actualización automática: desde la última fecha cargada de cada finca menos este
+// margen (los últimos días se corrigen cuando entra el dato definitivo).
+const DIAS_MARGEN_INCREMENTAL = 15;
 // El archivo histórico (ERA5) tiene unos días de retraso; los últimos días se
 // piden al endpoint de pronóstico (que no tiene datos útiles más atrás de eso).
 const DIAS_RECIENTES = 8;
@@ -275,9 +278,48 @@ export const openMeteoService = {
     return dias >= (DIAS_FRECUENCIA[frecuencia] || 1);
   },
 
+  // Actualización automática: por cada finca con coordenadas pide desde su
+  // última fecha cargada menos 15 días de margen, hasta ayer (así no quedan
+  // huecos aunque el servidor haya estado apagado, y se corrigen los últimos
+  // días). Una finca sin datos parte del 1 de enero del año actual.
+  async actualizarIncremental(actorId = null) {
+    const ayer = sumarDias(hoyIso(), -1);
+    const inicioAnio = `${ayer.slice(0, 4)}-01-01`;
+    const fincas = await Finca.findAll({
+      where: { estado: true, esExterna: false, latitud: { [Op.ne]: null }, longitud: { [Op.ne]: null } },
+      order: [['nombre', 'ASC']],
+    });
+
+    const ultimas = await OpenMeteoClimaDiaria.findAll({
+      attributes: ['fincaId', [fn('MAX', col('fecha')), 'ultima']],
+      where: { fincaId: { [Op.in]: fincas.map((f) => f.id) } },
+      group: ['fincaId'],
+      raw: true,
+    });
+    const ultimaPorFinca = new Map(
+      ultimas.map((u) => [u.fincaId, u.ultima instanceof Date ? u.ultima.toISOString().slice(0, 10) : String(u.ultima).slice(0, 10)]),
+    );
+
+    const resultado = { desde: null, hasta: ayer, fincas: [], errores: [] };
+    for (let i = 0; i < fincas.length; i++) {
+      const finca = fincas[i];
+      const ultima = ultimaPorFinca.get(finca.id);
+      const desde = ultima ? sumarDias(ultima, -DIAS_MARGEN_INCREMENTAL) : inicioAnio;
+      if (desde > ayer) continue;
+      if (!resultado.desde || desde < resultado.desde) resultado.desde = desde;
+      const r = await this.actualizar({ fechaDesde: desde, fechaHasta: ayer, fincaUuids: [finca.uuid] }, actorId);
+      resultado.fincas.push(...r.fincas);
+      resultado.errores.push(...r.errores);
+      if (i < fincas.length - 1) await dormir(PAUSA_ENTRE_FINCAS_MS);
+    }
+
+    await configuracionService.setOpenMeteoConfig({ ultimaActualizacion: new Date().toISOString() }, actorId);
+    return resultado;
+  },
+
   async actualizarSiCorresponde() {
     if (!(await this.debeActualizar())) return { actualizado: false };
-    const resultado = await this.actualizar({});
+    const resultado = await this.actualizarIncremental();
     return { actualizado: true, ...resultado };
   },
 };

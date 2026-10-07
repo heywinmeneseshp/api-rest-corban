@@ -5,7 +5,7 @@ import { permission } from '../../middlewares/permission.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
 import { requireAdmin } from '../../middlewares/requireAdmin.middleware.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
-import { historicoSchema, sincronizarSchema, sincronizarFaltantesSchema, ucBasesSchema, openMeteoListarSchema, openMeteoActualizarSchema, openMeteoConfigSchema } from '../../validators/agricola/estacionMeteorologica.validator.js';
+import { historicoSchema, sincronizarSchema, sincronizarFaltantesSchema, ucBasesSchema, openMeteoListarSchema, openMeteoActualizarSchema, openMeteoConfigSchema, comparativaSchema } from '../../validators/agricola/estacionMeteorologica.validator.js';
 
 const router = Router();
 
@@ -23,6 +23,15 @@ router.put('/uc-bases', auth, requireAdmin, validate(ucBasesSchema), estacionMet
 // actualizar: quien ve el módulo; la frecuencia de actualización la edita
 // solo el Administrador.
 router.get('/open-meteo/fincas', auth, permission(PERMISSIONS.ESTACION_METEOROLOGICA_VER), estacionMeteorologicaController.openMeteoFincas);
+// Pestaña "Gráficas": fuentes (estación + fincas Open-Meteo) y sus datos diarios.
+router.get('/comparativa/fuentes', auth, permission(PERMISSIONS.ESTACION_METEOROLOGICA_VER), estacionMeteorologicaController.comparativaFuentes);
+router.get(
+  '/comparativa',
+  auth,
+  permission(PERMISSIONS.ESTACION_METEOROLOGICA_VER),
+  validate(comparativaSchema),
+  estacionMeteorologicaController.comparativaDatos,
+);
 router.get('/open-meteo/actuales', auth, permission(PERMISSIONS.ESTACION_METEOROLOGICA_VER), estacionMeteorologicaController.openMeteoActuales);
 router.get('/open-meteo/configuracion', auth, permission(PERMISSIONS.ESTACION_METEOROLOGICA_VER), estacionMeteorologicaController.openMeteoGetConfig);
 router.put('/open-meteo/configuracion', auth, requireAdmin, validate(openMeteoConfigSchema), estacionMeteorologicaController.openMeteoSetConfig);
