@@ -43,7 +43,8 @@ export const registrarAreaLoteSchema = Joi.object({
         Joi.object({
           loteUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
           areaTotal: Joi.number().positive().precision(2).required(),
-          areaProduccion: Joi.number().positive().precision(2).required(),
+          // 0 es válido: lote sin área en producción por ahora.
+          areaProduccion: Joi.number().min(0).precision(2).required(),
         }),
       )
       .min(1)

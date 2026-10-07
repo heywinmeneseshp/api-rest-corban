@@ -73,7 +73,8 @@ export const listAreaProduccionSchema = Joi.object({
 
 export const createAreaProduccionSchema = Joi.object({
   body: Joi.object({
-    area: Joi.number().positive().precision(2).required(),
+    // El área en producción puede ser 0 (lote sin producción por ahora).
+    area: Joi.number().min(0).precision(2).required(),
     fecha: Joi.date().raw(),
   }),
   params: Joi.object({ uuid: uuidParam }),
