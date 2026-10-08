@@ -16,6 +16,16 @@ ComprobanteAspersion.init(
     hectareasAplicadas: { type: DataTypes.DECIMAL(10, 2), allowNull: true, field: 'hectareas_aplicadas' },
     galonesTotales: { type: DataTypes.DECIMAL(12, 2), allowNull: true, field: 'galones_totales' },
     observaciones: { type: DataTypes.TEXT, allowNull: true },
+    // Datos de la aplicación (hoja del comprobante): aeronave usada, volumen de
+    // aplicación por hectárea (galones/ha), condiciones climáticas y horario.
+    aeronave: { type: DataTypes.STRING(150), allowNull: true },
+    volumenAplicacionHa: { type: DataTypes.DECIMAL(10, 2), allowNull: true, field: 'volumen_aplicacion_ha' },
+    temperaturaInicial: { type: DataTypes.DECIMAL(5, 1), allowNull: true, field: 'temperatura_inicial' },
+    temperaturaFinal: { type: DataTypes.DECIMAL(5, 1), allowNull: true, field: 'temperatura_final' },
+    velocidadViento: { type: DataTypes.DECIMAL(6, 1), allowNull: true, field: 'velocidad_viento' },
+    humedadRelativaFinal: { type: DataTypes.DECIMAL(5, 1), allowNull: true, field: 'humedad_relativa_final' },
+    horaInicio: { type: DataTypes.STRING(5), allowNull: true, field: 'hora_inicio' },
+    horaFinal: { type: DataTypes.STRING(5), allowNull: true, field: 'hora_final' },
     ejecutadoPorId: { type: DataTypes.INTEGER, allowNull: true, field: 'ejecutado_por_id' },
     ejecutadoEn: { type: DataTypes.DATE, allowNull: true, field: 'ejecutado_en' },
     emitidoPorId: { type: DataTypes.INTEGER, allowNull: true, field: 'emitido_por_id' },

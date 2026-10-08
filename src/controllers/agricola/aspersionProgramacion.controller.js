@@ -77,8 +77,27 @@ export const aspersionProgramacionController = {
     }
     ApiResponse.send(res, {
       message: 'Aspersión ejecutada correctamente (salida de inventario generada)',
-      data: { requiereConfirmacion: false, advertencias: [], aspersion: resultado.aspersion, comprobante: resultado.comprobante },
+      data: { requiereConfirmacion: false, advertencias: [], aspersion: resultado.aspersion, comprobante: resultado.comprobante, parteRestante: resultado.parteRestante || null },
     });
+  }),
+
+  // Ciclo = una aplicación hecha en varias partes (días). Ver aspersionProgramacion.service.js.
+  getCiclo: asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { data: await aspersionProgramacionService.getCiclo(req.params.uuid, req.user) });
+  }),
+
+  candidatasCiclo: asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { data: await aspersionProgramacionService.candidatasCiclo(req.params.uuid, req.user) });
+  }),
+
+  unirCiclo: asyncHandler(async (req, res) => {
+    const data = await aspersionProgramacionService.unirCiclo(req.params.uuid, req.body.aspersionUuid, req.user?.id, req.user);
+    ApiResponse.send(res, { message: 'Aspersiones unidas en el mismo ciclo', data });
+  }),
+
+  separarCiclo: asyncHandler(async (req, res) => {
+    const data = await aspersionProgramacionService.separarCiclo(req.params.uuid, req.user?.id, req.user);
+    ApiResponse.send(res, { message: 'Aspersión separada de su ciclo', data });
   }),
 
   enviarCorreo: asyncHandler(async (req, res) => {

@@ -58,6 +58,7 @@ import rechazoCorteRoutes from './routes/agricola/rechazoCorte.routes.js';
 import aspersionProgramacionRoutes from './routes/agricola/aspersionProgramacion.routes.js';
 import comprobanteAspersionRoutes from './routes/agricola/comprobanteAspersion.routes.js';
 import ingredienteActivoRoutes from './routes/agricola/ingredienteActivo.routes.js';
+import fracLimiteRoutes from './routes/agricola/fracLimite.routes.js';
 import ingredienteActivoInsumoRoutes from './routes/agricola/ingredienteActivoInsumo.routes.js';
 
 import configuracionRoutes from './routes/sistema/configuracion.routes.js';
@@ -166,6 +167,7 @@ router.use('/comprobantes-aspersion', comprobanteAspersionRoutes);
 // "insumos" como si fuera un uuid y nunca llega acá.
 router.use('/ingredientes-activos/insumos', ingredienteActivoInsumoRoutes);
 router.use('/ingredientes-activos', ingredienteActivoRoutes);
+router.use('/frac-limites', fracLimiteRoutes);
 
 router.use('/configuraciones', configuracionRoutes);
 router.use('/comunicados', comunicadoRoutes);

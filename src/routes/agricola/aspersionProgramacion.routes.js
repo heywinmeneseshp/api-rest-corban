@@ -15,6 +15,7 @@ import {
   enviarCorreoAspersionSchema,
   listUsuariosFincaSchema,
   actualizarComponenteAspersionSchema,
+  unirCicloSchema,
 } from '../../validators/agricola/aspersionProgramacion.validator.js';
 
 const router = Router();
@@ -66,6 +67,10 @@ router.patch(
 );
 router.delete('/:uuid', auth, permission(PERMISSIONS.SANIDAD_ASPERSIONES_ELIMINAR), validate(getAspersionSchema), aspersionProgramacionController.remove);
 router.post('/:uuid/cancelar', auth, permission(PERMISSIONS.SANIDAD_ASPERSIONES_ELIMINAR), validate(getAspersionSchema), aspersionProgramacionController.cancelar);
+router.get('/:uuid/ciclo', auth, permission(PERMISSIONS.SANIDAD_ASPERSIONES_VER), validate(getAspersionSchema), aspersionProgramacionController.getCiclo);
+router.get('/:uuid/candidatas-ciclo', auth, permission(PERMISSIONS.SANIDAD_ASPERSIONES_VER), validate(getAspersionSchema), aspersionProgramacionController.candidatasCiclo);
+router.post('/:uuid/unir-ciclo', auth, permission(PERMISSIONS.SANIDAD_ASPERSIONES_EDITAR), validate(unirCicloSchema), aspersionProgramacionController.unirCiclo);
+router.post('/:uuid/separar-ciclo', auth, permission(PERMISSIONS.SANIDAD_ASPERSIONES_EDITAR), validate(getAspersionSchema), aspersionProgramacionController.separarCiclo);
 router.post('/:uuid/ejecutar', auth, permission(PERMISSIONS.SANIDAD_ASPERSIONES_EJECUTAR), validate(ejecutarAspersionSchema), aspersionProgramacionController.ejecutar);
 // Destinatarios sugeridos (resueltos de Configuración → Destinatarios para
 // la finca de esta programación) — para prellenar el modal de envío.

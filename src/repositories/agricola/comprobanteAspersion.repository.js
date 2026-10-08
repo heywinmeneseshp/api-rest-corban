@@ -26,6 +26,8 @@ const aspersionInclude = (aspersionWhere, { conInsumos = false } = {}) => ({
     {
       model: Mezcla,
       as: 'mezcla',
+      // Una mezcla eliminada (soft delete) debe seguir viéndose en aspersiones/comprobantes ya registrados.
+      paranoid: false,
       attributes: ['id', 'uuid', 'nombre', 'codigo', 'dosisPorHectarea'],
       include: [
         { model: UnidadMedida, as: 'unidadRendimiento', attributes: ['uuid', 'nombre', 'simbolo'] },

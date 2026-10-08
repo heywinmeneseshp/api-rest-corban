@@ -66,6 +66,10 @@ async function galonesDeAspersion(aspersion, { transaction } = {}) {
   return Math.round(Number(aspersion.cantidadCalculada) * factor * 100) / 100;
 }
 
+// Texto por defecto de las observaciones de un comprobante nuevo.
+export const OBSERVACION_COMPROBANTE_DEFECTO =
+  'Cuatro horas después de finalizada la aspersión, una vez cumplido el periodo de reentrada, se recorrió el área de la finca y se observó un buen cubrimiento de la mezcla asperjada.';
+
 export const comprobanteAspersionService = {
   // Se llama desde aspersionProgramacion.service.js#ejecutar, dentro de la
   // MISMA transacción: ejecutar la aspersión y crear su comprobante en
@@ -87,7 +91,15 @@ export const comprobanteAspersionService = {
         hectareasProgramadas: aspersion.hectareas,
         hectareasAplicadas: datos?.hectareasAplicadas ?? aspersion.hectareas,
         galonesTotales: datos?.galonesTotales ?? galonesAuto,
-        observaciones: datos?.observaciones?.trim() || null,
+        observaciones: datos?.observaciones?.trim() || OBSERVACION_COMPROBANTE_DEFECTO,
+        aeronave: datos?.aeronave?.trim() || null,
+        temperaturaInicial: datos?.temperaturaInicial ?? null,
+        temperaturaFinal: datos?.temperaturaFinal ?? null,
+        velocidadViento: datos?.velocidadViento ?? null,
+        humedadRelativaFinal: datos?.humedadRelativaFinal ?? null,
+        horaInicio: datos?.horaInicio || null,
+        horaFinal: datos?.horaFinal || null,
+        volumenAplicacionHa: datos?.volumenAplicacionHa ?? (galonesAuto && Number(aspersion.hectareas) > 0 ? Math.round((galonesAuto / Number(aspersion.hectareas)) * 100) / 100 : null),
         ejecutadoPorId: actorId,
         ejecutadoEn: new Date(),
         createdBy: actorId,
@@ -130,6 +142,13 @@ export const comprobanteAspersionService = {
     if (payload.hectareasAplicadas !== undefined) data.hectareasAplicadas = payload.hectareasAplicadas;
     if (payload.galonesTotales !== undefined) data.galonesTotales = payload.galonesTotales;
     if (payload.observaciones !== undefined) data.observaciones = payload.observaciones?.trim() || null;
+    if (payload.aeronave !== undefined) data.aeronave = payload.aeronave?.trim() || null;
+    for (const campo of ['volumenAplicacionHa', 'temperaturaInicial', 'temperaturaFinal', 'velocidadViento', 'humedadRelativaFinal']) {
+      if (payload[campo] !== undefined) data[campo] = payload[campo];
+    }
+    for (const campo of ['horaInicio', 'horaFinal']) {
+      if (payload[campo] !== undefined) data[campo] = payload[campo] || null;
+    }
 
     await comprobanteAspersionRepository.update(comprobante, data);
     return this.getByUuid(uuid, user);

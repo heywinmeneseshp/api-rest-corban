@@ -95,6 +95,20 @@ export const ejecutarAspersionSchema = Joi.object({
       hectareasAplicadas: Joi.number().positive(),
       galonesTotales: Joi.number().min(0),
       observaciones: Joi.string().allow(null, '').max(1000),
+      // Datos de la aplicación (todos opcionales): aeronave, volumen por
+      // hectárea (gal/ha), clima y horario (HH:MM).
+      // Ejecución parcial: fecha en que se hará la parte restante (por defecto, el día siguiente).
+      fechaParteRestante: Joi.date().iso(),
+      // Esta aspersión es del mismo ciclo que otra de la MISMA finca (aplicación en varios días).
+      cicloConAspersionUuid: Joi.string().guid({ version: 'uuidv4' }),
+      aeronave: Joi.string().trim().max(150).allow(null, ''),
+      volumenAplicacionHa: Joi.number().min(0).allow(null),
+      temperaturaInicial: Joi.number().min(-10).max(60).allow(null),
+      temperaturaFinal: Joi.number().min(-10).max(60).allow(null),
+      velocidadViento: Joi.number().min(0).allow(null),
+      humedadRelativaFinal: Joi.number().min(0).max(100).allow(null),
+      horaInicio: Joi.string().pattern(/^([01]\d|2[0-3]):[0-5]\d$/).allow(null, ''),
+      horaFinal: Joi.string().pattern(/^([01]\d|2[0-3]):[0-5]\d$/).allow(null, ''),
     }),
   }),
   params: Joi.object({ uuid: uuidParam }),
@@ -106,6 +120,12 @@ export const actualizarComponenteAspersionSchema = Joi.object({
     cantidad: Joi.number().positive().required(),
   }),
   params: Joi.object({ uuid: uuidParam, componenteUuid: Joi.string().guid({ version: 'uuidv4' }).required() }),
+  query: Joi.object({}),
+});
+
+export const unirCicloSchema = Joi.object({
+  body: Joi.object({ aspersionUuid: Joi.string().guid({ version: 'uuidv4' }).required() }),
+  params: Joi.object({ uuid: uuidParam }),
   query: Joi.object({}),
 });
 

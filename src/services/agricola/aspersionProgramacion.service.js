@@ -263,6 +263,13 @@ function parseFechaExcel(valor) {
 // listado como `galonesProgramados` para precargar el campo "Galones totales"
 // del modal de Ejecutar (editable). Null si no hay conversión.
 async function adjuntarGalonesProgramados(rows) {
+  // Cuántas partes tiene el ciclo de cada aspersión (para mostrar "Parte n/m" en el listado).
+  const ciclos = [...new Set(rows.map((r) => r.cicloUuid).filter(Boolean))];
+  if (ciclos.length) {
+    const conteo = await AspersionProgramacion.findAll({ attributes: ['cicloUuid', [sequelize.fn('COUNT', sequelize.col('id')), 'n']], where: { cicloUuid: ciclos }, group: ['cicloUuid'], raw: true });
+    const porCiclo = new Map(conteo.map((c) => [c.cicloUuid, Number(c.n)]));
+    for (const r of rows) r.setDataValue('partesCiclo', porCiclo.get(r.cicloUuid) || 1);
+  }
   const galon = await UnidadMedida.findOne({ where: { nombre: 'Galón' } });
   if (!galon) return rows;
   const uuids = [...new Set(rows.map((r) => r.mezcla?.unidadRendimiento?.uuid).filter(Boolean))];
@@ -274,6 +281,99 @@ async function adjuntarGalonesProgramados(rows) {
     r.setDataValue('galonesProgramados', factor === null || factor === undefined ? null : Math.round(Number(r.cantidadCalculada) * factor * 100) / 100);
   }
   return rows;
+}
+
+const redondear2 = (n) => Math.round(Number(n) * 100) / 100;
+
+function sumarDias(fechaIso, dias) {
+  const d = new Date(`${String(fechaIso).slice(0, 10)}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + dias);
+  return d.toISOString().slice(0, 10);
+}
+
+// Renumera las partes de un ciclo por fecha (y por id si coinciden).
+async function renumerarCiclo(cicloUuid, { transaction } = {}) {
+  const filas = await AspersionProgramacion.findAll({ where: { cicloUuid }, order: [['fecha', 'ASC'], ['id', 'ASC']], transaction });
+  let n = 1;
+  for (const f of filas) {
+    if (f.cicloParte !== n) await f.update({ cicloParte: n }, { transaction });
+    n += 1;
+  }
+}
+
+// Une dos aspersiones (y todas las partes de sus ciclos) en un solo ciclo: queda el ciclo de la más antigua.
+async function unirCicloInterno(a, b, actorId, { transaction } = {}) {
+  if (a.fincaId !== b.fincaId) throw ApiError.badRequest('Solo se pueden unir aspersiones de la misma finca en un ciclo');
+  if (a.cicloUuid === b.cicloUuid) return;
+  const filas = await AspersionProgramacion.findAll({
+    where: { cicloUuid: { [Op.in]: [a.cicloUuid, b.cicloUuid] } },
+    order: [['fecha', 'ASC'], ['id', 'ASC']],
+    transaction,
+  });
+  const base = filas[0].cicloUuid;
+  for (const f of filas) if (f.cicloUuid !== base) await f.update({ cicloUuid: base, updatedBy: actorId }, { transaction });
+  await renumerarCiclo(base, { transaction });
+}
+
+// Ejecución PARCIAL: la aspersión queda con las hectáreas realmente ejecutadas (insumos proporcionales) y se
+// crea la parte siguiente del mismo ciclo, PROGRAMADA, con las hectáreas que faltan.
+async function dividirParteParcial(fresh, aplicadas, fechaRestante, actorId, { transaction }) {
+  const programadas = Number(fresh.hectareas);
+  const ratio = aplicadas / programadas;
+  const restantes = redondear2(programadas - aplicadas);
+  if (!(restantes > 0)) return null;
+  const fecha = fechaRestante ? String(fechaRestante).slice(0, 10) : sumarDias(fresh.fecha, 1);
+  const semana = await semanaRepository.findByFecha(fecha);
+  const numero = await generarCorrelativo(AspersionProgramacion, { prefijo: MOTIVO_PREFIJO, columna: 'numero', transaction });
+  const maxParte = (await AspersionProgramacion.max('cicloParte', { where: { cicloUuid: fresh.cicloUuid }, transaction })) || fresh.cicloParte || 1;
+  const parte = await aspersionProgramacionRepository.create(
+    {
+      numero,
+      fincaId: fresh.fincaId,
+      fecha,
+      semanaId: semana?.id || null,
+      tipo: fresh.tipo,
+      medio: fresh.medio,
+      mezclaId: fresh.mezclaId,
+      almacenId: fresh.almacenId,
+      hectareas: restantes,
+      cantidadCalculada: Number(fresh.cantidadCalculada) * (1 - ratio),
+      estado: 'PROGRAMADA',
+      representanteCorbanaNombre: fresh.representanteCorbanaNombre,
+      administradorFincaNombre: fresh.administradorFincaNombre,
+      observaciones: `Parte restante de ${fresh.numero} (ejecución parcial)`,
+      usuarioId: actorId,
+      createdBy: actorId,
+      cicloUuid: fresh.cicloUuid || fresh.uuid,
+      cicloParte: maxParte + 1,
+    },
+    { transaction },
+  );
+  await aspersionProgramacionRepository.replaceComponentes(
+    parte.id,
+    fresh.componentes.map((c) => ({
+      articuloId: c.articuloId,
+      unidadId: c.unidadId,
+      cantidadCalculada: Number(c.cantidadCalculada) * (1 - ratio),
+      cantidad: Number(c.cantidad) * (1 - ratio),
+      createdBy: actorId,
+    })),
+    { transaction },
+  );
+  // La aspersión actual queda con lo ejecutado.
+  await aspersionProgramacionRepository.update(
+    fresh,
+    { hectareas: aplicadas, cantidadCalculada: Number(fresh.cantidadCalculada) * ratio, cicloUuid: fresh.cicloUuid || fresh.uuid, updatedBy: actorId },
+    { transaction },
+  );
+  for (const c of fresh.componentes) {
+    await aspersionProgramacionRepository.updateComponente(
+      c,
+      { cantidadCalculada: Number(c.cantidadCalculada) * ratio, cantidad: Number(c.cantidad) * ratio, updatedBy: actorId },
+      { transaction },
+    );
+  }
+  return parte;
 }
 
 function assertProgramada(aspersion) {
@@ -408,6 +508,7 @@ export const aspersionProgramacionService = {
           fincaId: finca.id,
           fecha: payload.fecha,
           semanaId: semana?.id || null,
+          cicloParte: 1,
           tipo: payload.tipo,
           medio: payload.medio,
           mezclaId: mezcla.id,
@@ -423,6 +524,9 @@ export const aspersionProgramacionService = {
         },
         { transaction: t },
       );
+
+      // Cada aspersión nace con su propio ciclo (puede unirse a otro después).
+      await aspersion.update({ cicloUuid: aspersion.uuid }, { transaction: t });
 
       // Snapshot de insumos: nace con la cantidad calculada de la receta,
       // salvo que el operador haya ajustado alguna línea al programar (ver
@@ -725,6 +829,83 @@ export const aspersionProgramacionService = {
   // usada (nunca el "saldo" del elaborado en sí — ver
   // stock.helper.js#consumirStockConReceta, mismo invariante que
   // Elaboraciones/Mezclas: "un elaborado nunca tiene saldo propio").
+  // ─── Ciclos (una aplicación en varias partes/días) ───
+
+  // Todas las partes del ciclo de una aspersión, en orden.
+  async getCiclo(uuid, user) {
+    const aspersion = await this.getByUuid(uuid, user);
+    const partes = await AspersionProgramacion.findAll({
+      where: { cicloUuid: aspersion.cicloUuid || aspersion.uuid },
+      include: [{ model: Mezcla, as: 'mezcla', paranoid: false, attributes: ['uuid', 'nombre', 'codigo'] }],
+      order: [['fecha', 'ASC'], ['id', 'ASC']],
+    });
+    return partes.map((p) => ({
+      uuid: p.uuid,
+      numero: p.numero,
+      fecha: p.fecha,
+      hectareas: Number(p.hectareas),
+      estado: p.estado,
+      cicloParte: p.cicloParte,
+      mezcla: p.mezcla?.nombre || p.mezcla?.codigo || '—',
+      actual: p.uuid === aspersion.uuid,
+    }));
+  },
+
+  // Aspersiones de la misma finca que se pueden unir al ciclo de esta (cercanas en el tiempo, de otro ciclo).
+  async candidatasCiclo(uuid, user) {
+    const aspersion = await this.getByUuid(uuid, user);
+    const desde = sumarDias(aspersion.fecha, -30);
+    const hasta = sumarDias(aspersion.fecha, 30);
+    const filas = await AspersionProgramacion.findAll({
+      where: {
+        fincaId: aspersion.fincaId,
+        estado: { [Op.ne]: 'CANCELADA' },
+        fecha: { [Op.between]: [desde, hasta] },
+        cicloUuid: { [Op.ne]: aspersion.cicloUuid || aspersion.uuid },
+      },
+      include: [{ model: Mezcla, as: 'mezcla', paranoid: false, attributes: ['uuid', 'nombre', 'codigo'] }],
+      order: [['fecha', 'DESC'], ['id', 'DESC']],
+    });
+    return filas.map((p) => ({
+      uuid: p.uuid,
+      numero: p.numero,
+      fecha: p.fecha,
+      hectareas: Number(p.hectareas),
+      estado: p.estado,
+      cicloParte: p.cicloParte,
+      mezcla: p.mezcla?.nombre || p.mezcla?.codigo || '—',
+    }));
+  },
+
+  // "Estas dos son del mismo ciclo": válido también para aspersiones ya EJECUTADAS (corrección posterior).
+  async unirCiclo(uuid, otraUuid, actorId, user) {
+    const a = await this.getByUuid(uuid, user);
+    const b = await this.getByUuid(otraUuid, user);
+    if (a.id === b.id) throw ApiError.badRequest('Elige otra aspersión');
+    await sequelize.transaction(async (t) => {
+      await unirCicloInterno(a, b, actorId, { transaction: t });
+    });
+    return this.getCiclo(uuid, user);
+  },
+
+  // "Esta no es del mismo ciclo": la aspersión queda con un ciclo propio y se renumera el que queda.
+  async separarCiclo(uuid, actorId, user) {
+    const aspersion = await this.getByUuid(uuid, user);
+    const cicloViejo = aspersion.cicloUuid || aspersion.uuid;
+    await sequelize.transaction(async (t) => {
+      const fila = await AspersionProgramacion.findOne({ where: { id: aspersion.id }, transaction: t });
+      // Si es la que da nombre al ciclo (ciclo_uuid = su uuid) y hay más partes, el ciclo viejo pasa a la más antigua restante.
+      const resto = await AspersionProgramacion.findAll({ where: { cicloUuid: cicloViejo, id: { [Op.ne]: fila.id } }, order: [['fecha', 'ASC'], ['id', 'ASC']], transaction: t });
+      await fila.update({ cicloUuid: fila.uuid, cicloParte: 1, updatedBy: actorId }, { transaction: t });
+      if (resto.length) {
+        const nuevoViejo = resto[0].uuid;
+        for (const r of resto) await r.update({ cicloUuid: nuevoViejo }, { transaction: t });
+        await renumerarCiclo(nuevoViejo, { transaction: t });
+      }
+    });
+    return this.getCiclo(uuid, user);
+  },
+
   // `forzarSaldoNegativo`: mismo patrón warn+force ya usado en todo el
   // módulo de inventario — si algún insumo no alcanza, no bloquea de una,
   // junta la advertencia y devuelve `{ requiereConfirmacion: true }` sin
@@ -739,8 +920,16 @@ export const aspersionProgramacionService = {
 
     try {
       return await sequelize.transaction(async (t) => {
-        const fresh = await aspersionProgramacionRepository.findByUuid(uuid, { transaction: t });
+        let fresh = await aspersionProgramacionRepository.findByUuid(uuid, { transaction: t });
         if (fresh.estado !== 'PROGRAMADA') throw ApiError.conflict('Esta aspersión ya fue procesada');
+
+        // Ejecución parcial: menos hectáreas que las programadas → parte restante pendiente en el mismo ciclo.
+        const aplicadas = Number(datosComprobante?.hectareasAplicadas);
+        let parteRestante = null;
+        if (Number.isFinite(aplicadas) && aplicadas > 0 && aplicadas < Number(fresh.hectareas)) {
+          parteRestante = await dividirParteParcial(fresh, aplicadas, datosComprobante?.fechaParteRestante, actorId, { transaction: t });
+          fresh = await aspersionProgramacionRepository.findByUuid(uuid, { transaction: t });
+        }
 
         const documento = fresh.numero;
         const advertencias = [];
@@ -798,11 +987,19 @@ export const aspersionProgramacionService = {
         // algo falla, no queda ejecutada una aspersión sin su comprobante.
         const comprobante = await comprobanteAspersionService.crearBorradorDesdeEjecucion(fresh, datosComprobante, actorId, { transaction: t });
 
+        // "Esta aspersión es del mismo ciclo que otra" (misma finca): se unen en un solo ciclo.
+        if (datosComprobante?.cicloConAspersionUuid) {
+          const otra = await AspersionProgramacion.findOne({ where: { uuid: datosComprobante.cicloConAspersionUuid }, transaction: t });
+          if (!otra) throw ApiError.notFound('La aspersión con la que se une el ciclo no existe');
+          await unirCicloInterno(fresh, otra, actorId, { transaction: t });
+        }
+
         return {
           requiereConfirmacion: false,
           advertencias: [],
           aspersion: await aspersionProgramacionRepository.findByUuid(uuid, { transaction: t }),
           comprobante: { uuid: comprobante.uuid, numero: comprobante.numero },
+          parteRestante: parteRestante ? { uuid: parteRestante.uuid, numero: parteRestante.numero, fecha: parteRestante.fecha, hectareas: Number(parteRestante.hectareas) } : null,
         };
       });
     } catch (err) {

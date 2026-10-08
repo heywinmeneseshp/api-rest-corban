@@ -296,6 +296,18 @@ export const mezclaRepository = {
         [ORDEN_PRIORIDAD_OPTIMA_SIN_ELABORAR, 'ASC'],
         ['nombre', 'ASC'],
       ],
+      // ultimoUsoEn: fecha de la aspersión más reciente que usó la mezcla (sirve
+      // para sugerir primero las usadas últimamente, ver Programar aspersión).
+      attributes: {
+        include: [
+          [
+            literal(
+              '(SELECT MAX(a.fecha) FROM aspersion_programaciones a WHERE a.mezcla_id = `Mezcla`.`id` AND a.deleted_at IS NULL)',
+            ),
+            'ultimoUsoEn',
+          ],
+        ],
+      },
       include: LIST_INCLUDE,
       distinct: true,
     });

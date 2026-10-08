@@ -19,6 +19,8 @@ const LIST_INCLUDE = [
   {
     model: Mezcla,
     as: 'mezcla',
+    // Una mezcla eliminada (soft delete) debe seguir viéndose en aspersiones/comprobantes ya registrados.
+    paranoid: false,
     attributes: ['uuid', 'nombre', 'codigo', 'dosisPorHectarea'],
     include: [
       { model: Articulo, as: 'articuloElaborado', attributes: ['uuid', 'nombre'] },
@@ -37,6 +39,8 @@ const DETAIL_INCLUDE = [
     // el aviso PDF (insumos) y para ejecutar() (descontar stock).
     model: Mezcla,
     as: 'mezcla',
+    // Una mezcla eliminada (soft delete) debe seguir viéndose en aspersiones/comprobantes ya registrados.
+    paranoid: false,
     // unidadRendimientoId/dosisPorHectareaUnidadId: los necesita
     // aspersionProgramacion.service.js#calcularCantidad para convertir entre
     // la unidad de la dosis y la de rendimiento (pueden ser distintas). 'id':

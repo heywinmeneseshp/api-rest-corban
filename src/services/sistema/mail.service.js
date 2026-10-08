@@ -239,7 +239,7 @@ export const mailService = {
   // también puede dispararse a mano desde el botón "Enviar ahora" del panel.
   // `destinatarios` ya viene resuelto a emails reales (roles/usuarios ya
   // expandidos — ver evaluacion.service.js#resolverDestinatariosAlertas).
-  async sendAlertasSemana({ destinatarios, semana, alertas }) {
+  async sendAlertasSemana({ destinatarios, semana, alertas, alertasFrac = [] }) {
     if (!destinatarios?.length) return;
 
     const { nombre: marca, nombreHtml: marcaHtml, from } = await obtenerMarca();
@@ -256,13 +256,8 @@ export const mailService = {
       )
       .join('');
 
-    const html = `
-      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 720px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.08);">
-        <div style="background: linear-gradient(135deg, #b45309 0%, #dc2626 100%); padding: 28px 32px; text-align: center;">
-          <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">${marcaHtml}</h1>
-          <p style="color: rgba(255,255,255,.9); margin: 4px 0 0; font-size: 13px;">Alertas de Sanidad Vegetal — Semana ${semana.codigo}</p>
-        </div>
-        <div style="padding: 32px;">
+    const bloqueSanidad = alertas.length
+      ? `
           <p style="margin: 0 0 20px; color: #374151; font-size: 14px; line-height: 1.5;">
             ${alertas.length} finca(s) superaron los umbrales de alerta (YLI por debajo de 8, Índice de
             Infección por encima de 33%, o Suma Bruta por Hoja por encima del umbral configurado) en la semana
@@ -278,7 +273,48 @@ export const mailService = {
               </tr>
             </thead>
             <tbody>${filas}</tbody>
-          </table>
+          </table>`
+      : '';
+
+    const filasFrac = alertasFrac
+      .map(
+        (a) => `
+          <tr>
+            <td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #374151; font-size: 13px; font-weight: 600;">${a.fincaNombre}</td>
+            <td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #374151; font-size: 13px;">FRAC ${a.fracCodigo}${a.ingredientes ? ` — ${a.ingredientes}` : ''}</td>
+            <td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #b91c1c; font-size: 13px;">${a.regla}: ${a.detalle}</td>
+          </tr>`,
+      )
+      .join('');
+    const bloqueFrac = alertasFrac.length
+      ? `
+          <p style="margin: 0 0 20px; color: #374151; font-size: 14px; line-height: 1.5;">
+            ${alertasFrac.length} caso(s) donde una finca superó el <strong>límite de aplicaciones de un grupo FRAC</strong>
+            en los últimos 12 meses (riesgo de resistencia).
+          </p>
+          <table role="presentation" style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+            <thead>
+              <tr style="background: #f9fafb;">
+                <th style="padding: 8px 12px; text-align: left; color: #6b7280; font-size: 11px; text-transform: uppercase;">Finca</th>
+                <th style="padding: 8px 12px; text-align: left; color: #6b7280; font-size: 11px; text-transform: uppercase;">Grupo FRAC</th>
+                <th style="padding: 8px 12px; text-align: left; color: #6b7280; font-size: 11px; text-transform: uppercase;">Regla incumplida (12 meses)</th>
+              </tr>
+            </thead>
+            <tbody>${filasFrac}</tbody>
+          </table>`
+      : '';
+
+    const subtitulo = semana ? `Alertas de Sanidad Vegetal — Semana ${semana.codigo}` : 'Alertas de Sanidad Vegetal';
+
+    const html = `
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 720px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.08);">
+        <div style="background: linear-gradient(135deg, #b45309 0%, #dc2626 100%); padding: 28px 32px; text-align: center;">
+          <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">${marcaHtml}</h1>
+          <p style="color: rgba(255,255,255,.9); margin: 4px 0 0; font-size: 13px;">${subtitulo}</p>
+        </div>
+        <div style="padding: 32px;">
+          ${bloqueSanidad}
+          ${bloqueFrac}
           <table role="presentation" style="width: 100%;"><tr><td align="center">
             <a href="${APP_URL}/sanidad-vegetal/alertas" style="background: linear-gradient(135deg, #b45309 0%, #dc2626 100%); color: #fff; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-size: 15px; font-weight: 600; display: inline-block;">Ver alertas en el sistema</a>
           </td></tr></table>
@@ -293,7 +329,7 @@ export const mailService = {
       console.log('═══════════════════════════════════════════════');
       console.log('📧  MAIL SERVICE (no configurado) — alertas de sanidad vegetal');
       console.log(`To:  ${destinatarios.join(', ')}`);
-      console.log(`Semana: ${semana.codigo} — ${alertas.length} finca(s) en alerta`);
+      console.log(`Semana: ${semana?.codigo || '—'} — ${alertas.length} finca(s) en alerta, ${alertasFrac.length} alerta(s) FRAC`);
       console.log('═══════════════════════════════════════════════');
       return;
     }
@@ -301,7 +337,7 @@ export const mailService = {
     await transporter.sendMail({
       from,
       to: destinatarios,
-      subject: `${marca} — Alertas de Sanidad Vegetal: ${alertas.length} finca(s) — semana ${semana.codigo} (enviado ${new Date().toISOString().slice(0, 10)})`,
+      subject: `${marca} — Alertas de Sanidad Vegetal: ${[alertas.length ? `${alertas.length} finca(s)${semana ? ` — semana ${semana.codigo}` : ''}` : null, alertasFrac.length ? `${alertasFrac.length} por límite FRAC` : null].filter(Boolean).join(' · ')} (enviado ${new Date().toISOString().slice(0, 10)})`,
       html,
     });
   },

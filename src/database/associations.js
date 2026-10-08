@@ -81,6 +81,8 @@ import { AspersionProgramacion } from './models/aspersionProgramacion.model.js';
 import { AspersionProgramacionComponente } from './models/aspersionProgramacionComponente.model.js';
 import { ComprobanteAspersion } from './models/comprobanteAspersion.model.js';
 import { IngredienteActivo } from './models/ingredienteActivo.model.js';
+import { FracCodigo } from './models/fracCodigo.model.js';
+import { GrupoQuimico } from './models/grupoQuimico.model.js';
 import { ArticuloAlmacen } from './models/articuloAlmacen.model.js';
 import { ArticuloIngredienteActivo } from './models/articuloIngredienteActivo.model.js';
 
@@ -501,6 +503,11 @@ export const setupAssociations = () => {
   });
   ArticuloIngredienteActivo.belongsTo(Articulo, { foreignKey: 'articuloId', as: 'articulo' });
   ArticuloIngredienteActivo.belongsTo(IngredienteActivo, { foreignKey: 'ingredienteActivoId', as: 'ingredienteActivo' });
+  // Clasificación FRAC: ingrediente → grupo químico → código FRAC.
+  GrupoQuimico.belongsTo(FracCodigo, { foreignKey: 'fracCodigoId', as: 'frac' });
+  FracCodigo.hasMany(GrupoQuimico, { foreignKey: 'fracCodigoId', as: 'grupos' });
+  IngredienteActivo.belongsTo(GrupoQuimico, { foreignKey: 'grupoQuimicoId', as: 'grupoQuimico' });
+  GrupoQuimico.hasMany(IngredienteActivo, { foreignKey: 'grupoQuimicoId', as: 'ingredientes' });
 
   withAuditAssociations(ArticuloCategoria);
   withAuditAssociations(Articulo);
@@ -805,6 +812,8 @@ export {
   AspersionProgramacionComponente,
   ComprobanteAspersion,
   IngredienteActivo,
+  FracCodigo,
+  GrupoQuimico,
   UsuarioAlmacen,
   ArticuloAlmacen,
   ArticuloIngredienteActivo,

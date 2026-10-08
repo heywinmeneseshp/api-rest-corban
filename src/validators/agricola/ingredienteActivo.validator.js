@@ -26,6 +26,8 @@ export const createIngredienteActivoSchema = Joi.object({
     // MySQL en `nombre` ya es case-insensitive, pero no ignora espacios).
     nombre: Joi.string().trim().min(2).max(150).required(),
     descripcion: Joi.string().max(255).allow('', null),
+    // Grupo químico del catálogo (que a su vez define el código FRAC y el modo de acción).
+    grupoQuimicoUuid: Joi.string().guid({ version: 'uuidv4' }).allow('', null),
     estado: Joi.boolean(),
   }),
   params: Joi.object({}),
@@ -36,6 +38,8 @@ export const updateIngredienteActivoSchema = Joi.object({
   body: Joi.object({
     nombre: Joi.string().trim().min(2).max(150),
     descripcion: Joi.string().max(255).allow('', null),
+    // Grupo químico del catálogo (que a su vez define el código FRAC y el modo de acción).
+    grupoQuimicoUuid: Joi.string().guid({ version: 'uuidv4' }).allow('', null),
     estado: Joi.boolean(),
   }).min(1),
   params: Joi.object({ uuid: uuidParam }),

@@ -1,5 +1,16 @@
 import { Op } from 'sequelize';
-import { IngredienteActivo } from '../../database/associations.js';
+import { IngredienteActivo, GrupoQuimico, FracCodigo } from '../../database/associations.js';
+
+// Clasificación FRAC del ingrediente: grupo químico → código FRAC (con modo de acción).
+const INCLUDE_FRAC = [
+  {
+    model: GrupoQuimico,
+    as: 'grupoQuimico',
+    attributes: ['uuid', 'nombre'],
+    required: false,
+    include: [{ model: FracCodigo, as: 'frac', attributes: ['uuid', 'codigo', 'modoAccion', 'maxAplicaciones'] }],
+  },
+];
 
 export const ingredienteActivoRepository = {
   async findAndCountAll({ limit, offset, search, estado }) {
@@ -9,17 +20,19 @@ export const ingredienteActivoRepository = {
             [Op.or]: [
               { nombre: { [Op.like]: `%${search}%` } },
               { descripcion: { [Op.like]: `%${search}%` } },
+              { '$grupoQuimico.nombre$': { [Op.like]: `%${search}%` } },
+              { '$grupoQuimico.frac.codigo$': { [Op.like]: `%${search}%` } },
             ],
           }
         : {}),
       ...(estado !== undefined ? { estado } : {}),
     };
 
-    return IngredienteActivo.findAndCountAll({ where, limit, offset, order: [['nombre', 'ASC']] });
+    return IngredienteActivo.findAndCountAll({ where, limit, offset, order: [['nombre', 'ASC']], include: INCLUDE_FRAC });
   },
 
   findByUuid(uuid) {
-    return IngredienteActivo.findOne({ where: { uuid } });
+    return IngredienteActivo.findOne({ where: { uuid }, include: INCLUDE_FRAC });
   },
 
   findById(id) {
@@ -66,7 +79,7 @@ export const ingredienteActivoRepository = {
         ? { [Op.or]: [{ nombre: { [Op.like]: `%${search}%` } }, { descripcion: { [Op.like]: `%${search}%` } }] }
         : {}),
     };
-    return IngredienteActivo.findAndCountAll({ where, limit, offset, order: [['deletedAt', 'DESC']], paranoid: false });
+    return IngredienteActivo.findAndCountAll({ where, limit, offset, order: [['deletedAt', 'DESC']], paranoid: false, include: INCLUDE_FRAC });
   },
 
   findByUuidIncludingDeleted(uuid) {

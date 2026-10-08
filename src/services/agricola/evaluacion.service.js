@@ -7,6 +7,7 @@ import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { getFincaIdsPermitidas, assertFincaPermitida, expandirFincaIds } from '../../utils/fincaScope.js';
 import { adjuntarTotales, adjuntarValoresPorHoja, calcularIndicadorHoja } from './sumaBrutaTotal.js';
 import { configuracionService } from '../sistema/configuracion.service.js';
+import { fracLimiteService } from './fracLimite.service.js';
 import { mailService } from '../sistema/mail.service.js';
 import { semanasEntre } from '../../utils/edadPlanta.js';
 import { resolverDestinatarios } from '../../utils/resolverDestinatarios.js';
@@ -505,17 +506,25 @@ export const evaluacionService = {
   // destinatarios configurados o si la semana no tuvo ninguna alerta.
   async enviarAlertasSemanaCerrada(query = {}) {
     const resultado = await this.alertasSemanaCerrada(query, null);
-    if (!resultado.semana || resultado.alertas.length === 0) {
-      return { ...resultado, destinatarios: [], enviado: false };
+    // Alertas por superar el límite de aplicaciones de un grupo FRAC (últimos 12 meses).
+    const alertasFrac = await fracLimiteService.alertas(null);
+    const hayAlertasSanidad = Boolean(resultado.semana) && resultado.alertas.length > 0;
+    if (!hayAlertasSanidad && alertasFrac.length === 0) {
+      return { ...resultado, alertasFrac, destinatarios: [], enviado: false };
     }
 
     const destinatarios = await this.resolverDestinatariosAlertas();
     if (destinatarios.length === 0) {
-      return { ...resultado, destinatarios: [], enviado: false };
+      return { ...resultado, alertasFrac, destinatarios: [], enviado: false };
     }
 
-    await mailService.sendAlertasSemana({ destinatarios, semana: resultado.semana, alertas: resultado.alertas });
-    return { ...resultado, destinatarios, enviado: true };
+    await mailService.sendAlertasSemana({
+      destinatarios,
+      semana: resultado.semana,
+      alertas: hayAlertasSanidad ? resultado.alertas : [],
+      alertasFrac,
+    });
+    return { ...resultado, alertasFrac, destinatarios, enviado: true };
   },
 
   // Indicadores de una semana puntual (o año, si no llega semanaUuid):

@@ -37,6 +37,10 @@ AspersionProgramacion.init(
     // para pintar el ícono de correo en verde y para ocultar "Eliminar"
     // una vez que el aviso ya salió a la finca.
     correoEnviadoEn: { type: DataTypes.DATE, allowNull: true, field: 'correo_enviado_en' },
+    // Ciclo (aplicación) al que pertenece y n.º de parte dentro de él: una aplicación puede
+    // hacerse en varios días; FRAC cuenta el ciclo como UNA aplicación.
+    cicloUuid: { type: DataTypes.UUID, allowNull: true, field: 'ciclo_uuid' },
+    cicloParte: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1, field: 'ciclo_parte' },
     usuarioId: { type: DataTypes.INTEGER, allowNull: true, field: 'usuario_id' },
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
     updatedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'updated_by' },

@@ -1,5 +1,6 @@
 import { ingredienteActivoRepository } from '../../repositories/agricola/ingredienteActivo.repository.js';
 import { ApiError } from '../../utils/ApiError.js';
+import { GrupoQuimico } from '../../database/associations.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { parseBulkFile } from '../../utils/bulkFileParser.js';
 
@@ -7,6 +8,14 @@ function parseEstado(valor) {
   if (valor === undefined || valor === '') return true;
   const texto = String(valor).trim().toLowerCase();
   return !['inactivo', 'false', '0', 'no'].includes(texto);
+}
+
+// uuid del grupo químico → id (null/'' = sin clasificación FRAC).
+async function resolverGrupoQuimicoId(uuid) {
+  if (!uuid) return null;
+  const grupo = await GrupoQuimico.findOne({ where: { uuid }, attributes: ['id'] });
+  if (!grupo) throw ApiError.notFound('Grupo químico no encontrado');
+  return grupo.id;
 }
 
 export const ingredienteActivoService = {
@@ -31,12 +40,14 @@ export const ingredienteActivoService = {
     const existing = await ingredienteActivoRepository.findByNombre(payload.nombre);
     if (existing) throw ApiError.conflict('Ya existe un ingrediente activo con ese nombre');
 
-    return ingredienteActivoRepository.create({
+    const creado = await ingredienteActivoRepository.create({
       nombre: payload.nombre,
       descripcion: payload.descripcion,
+      grupoQuimicoId: await resolverGrupoQuimicoId(payload.grupoQuimicoUuid),
       estado: payload.estado ?? true,
       createdBy: actorId,
     });
+    return ingredienteActivoRepository.findByUuid(creado.uuid);
   },
 
   async updateIngredienteActivo(uuid, payload, actorId) {
@@ -49,7 +60,11 @@ export const ingredienteActivoService = {
       }
     }
 
-    return ingredienteActivoRepository.update(ingrediente, { ...payload, updatedBy: actorId });
+    const { grupoQuimicoUuid, ...resto } = payload;
+    const cambios = { ...resto, updatedBy: actorId };
+    if (grupoQuimicoUuid !== undefined) cambios.grupoQuimicoId = await resolverGrupoQuimicoId(grupoQuimicoUuid);
+    await ingredienteActivoRepository.update(ingrediente, cambios);
+    return ingredienteActivoRepository.findByUuid(uuid);
   },
 
   async deleteIngredienteActivo(uuid, actorId) {
