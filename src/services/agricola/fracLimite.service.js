@@ -3,6 +3,7 @@ import { sequelize } from '../../database/connection.js';
 import { Finca, Mezcla, FracCodigo, GrupoQuimico } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getFincaIdsPermitidas } from '../../utils/fincaScope.js';
+import { parseBulkFile } from '../../utils/bulkFileParser.js';
 
 // La clasificación FRAC vive en sus propias tablas: ingrediente activo →
 // grupo químico (grupos_quimicos) → código FRAC (frac_codigos, que además
@@ -193,8 +194,9 @@ export const fracLimiteService = {
               fc.intervalo_minimo_dias AS intervaloMinimoDias, fc.solo_en_mezclas AS soloEnMezclas, fc.restricciones, fc.fuente,
               COUNT(ia.id) AS ingredientes, GROUP_CONCAT(ia.nombre ORDER BY ia.nombre SEPARATOR ', ') AS nombres
          FROM frac_codigos fc
-         LEFT JOIN grupos_quimicos g ON g.frac_codigo_id = fc.id
+         LEFT JOIN grupos_quimicos g ON g.frac_codigo_id = fc.id AND g.deleted_at IS NULL
          LEFT JOIN ingredientes_activos ia ON ia.grupo_quimico_id = g.id AND ia.deleted_at IS NULL
+        WHERE fc.deleted_at IS NULL
         GROUP BY fc.id, fc.codigo, fc.modo_accion, fc.max_aplicaciones, fc.max_porcentaje_aplicaciones, fc.max_consecutivas,
                  fc.intervalo_minimo_dias, fc.solo_en_mezclas, fc.restricciones, fc.fuente`,
       { type: QueryTypes.SELECT },
@@ -243,12 +245,93 @@ export const fracLimiteService = {
     return { fracCodigo: codigo };
   },
 
+  // Cargue masivo (también actualiza): una fila por grupo químico con su código FRAC. Columnas: frac (obligatoria),
+  // grupo_quimico, modo_accion, max_aplicaciones, max_porcentaje, max_consecutivas, intervalo_minimo_dias,
+  // solo_en_mezclas, restricciones. Una celda vacía NO borra el valor actual; una fila sin grupo_quimico solo
+  // actualiza el código FRAC (modo de acción y reglas de uso).
+  async bulkUpsert(file, actorId, { dryRun = false } = {}) {
+    const rows = parseBulkFile(file);
+    if (rows.length === 0) throw ApiError.badRequest('El archivo no tiene filas para procesar');
+    const val = (r, ...claves) => {
+      for (const k of claves) if (r[k] !== undefined && r[k] !== '') return r[k];
+      return '';
+    };
+    const num = (v) => (v === '' ? undefined : Number(String(v).replace(',', '.')));
+    const errores = [];
+    let codigosCreados = 0;
+    let codigosActualizados = 0;
+    let gruposCreados = 0;
+    let gruposActualizados = 0;
+    const codigosVistos = new Set();
+
+    for (let i = 0; i < rows.length; i += 1) {
+      const fila = i + 2;
+      const r = rows[i];
+      const codigo = String(val(r, 'frac', 'codigo', 'fraccodigo')).trim().toUpperCase();
+      if (!codigo) {
+        errores.push({ fila, mensaje: 'Falta la columna requerida: frac' });
+        continue;
+      }
+      const grupo = String(val(r, 'grupo_quimico', 'grupoquimico', 'grupo')).trim();
+      const modoAccion = String(val(r, 'modo_accion', 'modoaccion')).trim();
+      const campos = {
+        maxAplicaciones: num(val(r, 'max_aplicaciones', 'maxaplicaciones')),
+        maxPorcentaje: num(val(r, 'max_porcentaje', 'maxporcentaje')),
+        maxConsecutivas: num(val(r, 'max_consecutivas', 'maxconsecutivas')),
+        intervaloMinimoDias: num(val(r, 'intervalo_minimo_dias', 'intervalominimodias')),
+      };
+      if (Object.values(campos).some((v) => v !== undefined && !Number.isFinite(v))) {
+        errores.push({ fila, mensaje: 'Los límites deben ser números' });
+        continue;
+      }
+      const solo = String(val(r, 'solo_en_mezclas', 'soloenmezclas')).trim().toLowerCase();
+      const restricciones = String(val(r, 'restricciones')).trim();
+
+      let frac = await FracCodigo.findOne({ where: { codigo }, paranoid: false });
+      const nuevoCodigo = !frac || Boolean(frac.deletedAt);
+      if (!codigosVistos.has(codigo)) {
+        codigosVistos.add(codigo);
+        if (nuevoCodigo) codigosCreados += 1;
+        else codigosActualizados += 1;
+      }
+      if (!dryRun) {
+        if (!frac) frac = await FracCodigo.create({ codigo, createdBy: actorId });
+        else if (frac.deletedAt) await frac.restore();
+        const cambios = { updatedBy: actorId };
+        if (modoAccion) cambios.modoAccion = modoAccion;
+        if (campos.maxAplicaciones !== undefined) cambios.maxAplicaciones = campos.maxAplicaciones;
+        if (campos.maxPorcentaje !== undefined) cambios.maxPorcentajeAplicaciones = campos.maxPorcentaje;
+        if (campos.maxConsecutivas !== undefined) cambios.maxConsecutivas = campos.maxConsecutivas;
+        if (campos.intervaloMinimoDias !== undefined) cambios.intervaloMinimoDias = campos.intervaloMinimoDias;
+        if (solo) cambios.soloEnMezclas = ['si', 'sí', 'true', '1', 'x', 'yes'].includes(solo);
+        if (restricciones) cambios.restricciones = restricciones;
+        await frac.update(cambios);
+      }
+      if (grupo) {
+        const previo = frac ? await GrupoQuimico.findOne({ where: { nombre: grupo, fracCodigoId: frac.id }, paranoid: false }) : null;
+        if (previo && !previo.deletedAt) gruposActualizados += 1;
+        else gruposCreados += 1;
+        if (!dryRun) {
+          if (!previo) await GrupoQuimico.create({ nombre: grupo, fracCodigoId: frac.id, createdBy: actorId });
+          else if (previo.deletedAt) await previo.restore();
+        }
+      }
+    }
+    return { totalFilas: rows.length, codigosCreados, codigosActualizados, gruposCreados, gruposActualizados, errores };
+  },
+
   // ─── Catálogo: códigos FRAC y grupos químicos ───
 
   async createCodigo({ codigo, modoAccion }, actorId) {
     const limpio = String(codigo || '').trim().toUpperCase();
     if (!limpio) throw ApiError.badRequest('Indica el código FRAC');
-    if (await FracCodigo.findOne({ where: { codigo: limpio } })) throw ApiError.conflict('Ya existe ese código FRAC');
+    const existente = await FracCodigo.findOne({ where: { codigo: limpio }, paranoid: false });
+    if (existente && !existente.deletedAt) throw ApiError.conflict('Ya existe ese código FRAC');
+    if (existente) {
+      await existente.restore();
+      await existente.update({ modoAccion: String(modoAccion || '').trim() || existente.modoAccion, updatedBy: actorId });
+      return { uuid: existente.uuid, fracCodigo: existente.codigo };
+    }
     const creado = await FracCodigo.create({ codigo: limpio, modoAccion: String(modoAccion || '').trim() || null, createdBy: actorId });
     return { uuid: creado.uuid, fracCodigo: creado.codigo };
   },
@@ -266,7 +349,13 @@ export const fracLimiteService = {
     if (!limpio) throw ApiError.badRequest('Indica el nombre del grupo químico');
     const frac = await FracCodigo.findOne({ where: { codigo: fracCodigo } });
     if (!frac) throw ApiError.notFound('Código FRAC no encontrado');
-    if (await GrupoQuimico.findOne({ where: { nombre: limpio, fracCodigoId: frac.id } })) throw ApiError.conflict('Ya existe ese grupo químico en ese código FRAC');
+    const previo = await GrupoQuimico.findOne({ where: { nombre: limpio, fracCodigoId: frac.id }, paranoid: false });
+    if (previo && !previo.deletedAt) throw ApiError.conflict('Ya existe ese grupo químico en ese código FRAC');
+    if (previo) {
+      await previo.restore();
+      await previo.update({ updatedBy: actorId });
+      return { uuid: previo.uuid, nombre: previo.nombre, fracCodigo: frac.codigo };
+    }
     const creado = await GrupoQuimico.create({ nombre: limpio, fracCodigoId: frac.id, createdBy: actorId });
     return { uuid: creado.uuid, nombre: creado.nombre, fracCodigo: frac.codigo };
   },

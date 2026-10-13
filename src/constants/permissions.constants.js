@@ -300,6 +300,16 @@ export const PERMISSIONS = {
   MENU_CARGUE_MASIVO: 'menu.cargue_masivo',
   MENU_PROGRAMACION_CORTE: 'menu.programacion_corte',
   MENU_PRECALIBRACION: 'menu.precalibracion',
+  // Precalibración: registros por racimo apto tomados en campo (app móvil).
+  PRECALIBRACION_VER: 'precalibracion.ver',
+  PRECALIBRACION_CREAR: 'precalibracion.crear',
+  PRECALIBRACION_CONFIGURAR: 'precalibracion.configurar',
+  // Asistencia por reconocimiento facial. `marcar` = solo a sí mismo; `marcar_cuadrilla` = a cualquier colaborador de sus fincas.
+  ASISTENCIA_VER: 'asistencia.ver',
+  ASISTENCIA_MARCAR: 'asistencia.marcar',
+  ASISTENCIA_MARCAR_CUADRILLA: 'asistencia.marcar_cuadrilla',
+  ASISTENCIA_ELIMINAR: 'asistencia.eliminar',
+  MENU_ASISTENCIA: 'menu.asistencia',
   MENU_REPORTES: 'menu.reportes',
 
   // Inventarios - FASE 1: Catálogo
@@ -602,6 +612,14 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.MENU_CARGUE_MASIVO, nombre: 'Ver ítem de menú Cargue Masivo' },
   { codigo: PERMISSIONS.MENU_PROGRAMACION_CORTE, nombre: 'Ver ítem de menú Programación de Corte' },
   { codigo: PERMISSIONS.MENU_PRECALIBRACION, nombre: 'Ver ítem de menú Precalibración' },
+  { codigo: PERMISSIONS.PRECALIBRACION_VER, nombre: 'Ver precalibración' },
+  { codigo: PERMISSIONS.PRECALIBRACION_CREAR, nombre: 'Registrar precalibración (racimos aptos)' },
+  { codigo: PERMISSIONS.PRECALIBRACION_CONFIGURAR, nombre: 'Configurar precalibración (edades y calibres)' },
+  { codigo: PERMISSIONS.ASISTENCIA_VER, nombre: 'Ver asistencia' },
+  { codigo: PERMISSIONS.ASISTENCIA_MARCAR, nombre: 'Marcar mi propia asistencia' },
+  { codigo: PERMISSIONS.ASISTENCIA_MARCAR_CUADRILLA, nombre: 'Marcar asistencia de la cuadrilla' },
+  { codigo: PERMISSIONS.ASISTENCIA_ELIMINAR, nombre: 'Eliminar marcaciones de asistencia' },
+  { codigo: PERMISSIONS.MENU_ASISTENCIA, nombre: 'Ver ítem de menú Asistencia' },
   { codigo: PERMISSIONS.MENU_REPORTES, nombre: 'Ver ítem de menú Reportes' },
 
   { codigo: PERMISSIONS.INVENTARIO_DASHBOARD_VER, nombre: 'Ver dashboard de Inventarios' },

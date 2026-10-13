@@ -64,6 +64,14 @@ async function resolveUnidad(uuid) {
   return u;
 }
 
+// El volumen por hectárea de una mezcla tiene que estar en una unidad de VOLUMEN (L, Gal, ml): con una de peso (g, kg)
+// la cantidad a preparar y el Agua de Programar aspersión salen mal.
+function assertUnidadVolumen(unidad) {
+  if (unidad && unidad.tipo !== 'VOLUMEN') {
+    throw ApiError.badRequest('El volumen por hectárea debe estar en una unidad de volumen (L, Gal, ml…), no de peso');
+  }
+}
+
 async function resolveAlmacen(uuid) {
   if (!uuid) return null;
   const a = await Almacen.findOne({ where: { uuid } });
@@ -80,6 +88,22 @@ const REGULADOR_PH_UNIDAD_CODIGO = 'Kg';
 // primera vez que se usa en un servidor nuevo, antes de que corra el
 // seeder), se crea acá solo, sin pedirle al operador que lo haga a mano
 // desde Maestros → Artículos.
+// Regla de negocio: una mezcla que lleva AGUA siempre debe llevar también el ACONDICIONADOR (corrector de pH).
+// `nombres`: nombres de los insumos de la receta.
+function assertAguaConAcondicionador(nombres) {
+  const lista = nombres.map((n) => String(n || '').trim().toUpperCase());
+  if (lista.includes('AGUA') && !lista.includes(REGULADOR_PH_NOMBRE)) {
+    throw ApiError.badRequest('Una mezcla que lleva Agua debe llevar también el ACONDICIONADOR — agrégalo a la receta');
+  }
+}
+
+async function nombresDeInsumos(componentes) {
+  const uuids = (componentes || []).map((c) => c.articuloUuid).filter(Boolean);
+  if (!uuids.length) return [];
+  const arts = await Articulo.findAll({ where: { uuid: uuids }, attributes: ['nombre'] });
+  return arts.map((a) => a.nombre);
+}
+
 async function resolveOrCrearReguladorPh(actorId) {
   const existente = await Articulo.findOne({ where: { nombre: REGULADOR_PH_NOMBRE } });
   if (existente) return existente;
@@ -395,6 +419,7 @@ export const mezclaService = {
       if (!payload.dosisPorHectareaUnidadUuid) dosisPorHectareaUnidadId = null;
       else {
         const u = await resolveUnidad(payload.dosisPorHectareaUnidadUuid);
+        assertUnidadVolumen(u);
         dosisPorHectareaUnidadId = u.id;
       }
     }
@@ -418,6 +443,9 @@ export const mezclaService = {
     // aplica: rendimiento es un campo simple, igual que nombre — se
     // actualiza en el lugar, sin clonar componentes en una versión nueva.
     const necesitaNuevaVersion = payload.componentes !== undefined;
+    if (necesitaNuevaVersion && Array.isArray(payload.componentes) && payload.componentes.length) {
+      assertAguaConAcondicionador(await nombresDeInsumos(payload.componentes));
+    }
 
     const precioVentaFinal = payload.precioVenta !== undefined ? payload.precioVenta : mezcla.precioVenta;
 
@@ -708,17 +736,24 @@ export const mezclaService = {
     const listaActualizada = [];
     for (const c of version.componentes || []) {
       const base = await filaGuardadaAEdicion(c);
-      listaActualizada.push(
-        c.uuid === componenteUuid
-          ? { ...base, cantidad: payload.cantidad, unidadUuid: payload.unidadUuid ?? null }
-          : base,
-      );
+      let editada = { ...base, cantidad: payload.cantidad, unidadUuid: payload.unidadUuid ?? null };
+      if (payload.tipoDosis === 'FIJA') {
+        // Quita la regla relativa: la cantidad queda fija con el valor enviado.
+        editada = { ...editada, tipoDosis: 'FIJA', referenciaArticuloUuid: null, porcentajeReferencia: null };
+      } else if (payload.tipoDosis === 'PORCENTAJE') {
+        if (!payload.referenciaArticuloUuid || !payload.porcentajeReferencia) {
+          throw ApiError.badRequest('Indica de qué insumo es el porcentaje y cuánto');
+        }
+        editada = { ...editada, tipoDosis: 'PORCENTAJE', referenciaArticuloUuid: payload.referenciaArticuloUuid, porcentajeReferencia: payload.porcentajeReferencia };
+      }
+      listaActualizada.push(c.uuid === componenteUuid ? editada : base);
     }
     const { costoTotal, costoUnitario, detalles } = await calcularCostos(listaActualizada, rendimiento, {
       totalRef: await totalRefReceta(rendimiento, { unidadUuid: version.mezcla?.unidadRendimiento?.uuid }),
     });
     const idx = (version.componentes || []).findIndex((c) => c.uuid === componenteUuid);
     const detalle = detalles[idx];
+    const cambiaRegla = payload.tipoDosis !== undefined;
 
     return sequelize.transaction(async (t) => {
       await mezclaRepository.updateComponente(
@@ -728,6 +763,15 @@ export const mezclaService = {
           unidadId: detalle.unidadId,
           costoUnitarioSnapshot: detalle.costoUnitarioSnapshot,
           costoTotalSnapshot: detalle.costoTotalSnapshot,
+          ...(cambiaRegla
+            ? {
+                tipoDosis: detalle.tipoDosis || 'FIJA',
+                referenciaArticuloId: detalle.referenciaArticuloId ?? null,
+                porcentajeReferencia: detalle.porcentajeReferencia ?? null,
+                tasa: detalle.tasa ?? null,
+                tasaUnidadId: detalle.tasaUnidadId ?? null,
+              }
+            : {}),
         },
         { transaction: t },
       );
@@ -1165,6 +1209,7 @@ export const mezclaService = {
     const rendimiento = Number(payload.rendimiento);
     const componentes = payload.componentes || [];
     if (!componentes.length) throw ApiError.badRequest('Agrega al menos un insumo a la receta');
+    assertAguaConAcondicionador(await nombresDeInsumos(componentes));
     const { costoTotal, costoUnitario, detalles } = await calcularCostos(componentes, rendimiento, {
       totalRef: await totalRefReceta(rendimiento, { unidadUuid: payload.articuloUnidadMedidaUuid }),
     });
@@ -1174,6 +1219,7 @@ export const mezclaService = {
     let dosisPorHectareaUnidadId = null;
     if (payload.dosisPorHectareaUnidadUuid) {
       const u = await resolveUnidad(payload.dosisPorHectareaUnidadUuid);
+      assertUnidadVolumen(u);
       dosisPorHectareaUnidadId = u.id;
     }
 
@@ -1642,6 +1688,7 @@ export const mezclaService = {
     if (version.elaboracionId) {
       throw ApiError.conflict('Esta prueba ya generó un elaborado');
     }
+    assertAguaConAcondicionador((version.componentes || []).map((c) => c.articulo?.nombre));
 
     // El artículo elaborado (producto) nace acá, a partir de la prueba ya
     // finalizada y ÓPTIMA — no se elige uno existente (pedido explícito:

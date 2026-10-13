@@ -12,6 +12,9 @@ Colaborador.init(
     telefono: { type: DataTypes.STRING(30), allowNull: true },
     fincaId: { type: DataTypes.INTEGER, allowNull: true, field: 'finca_id' },
     estado: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+    // Autorización del tratamiento del dato biométrico (huella facial) y usuario vinculado (marca en su propio celular).
+    rostroConsentimientoAt: { type: DataTypes.DATE, allowNull: true, field: 'rostro_consentimiento_at' },
+    userId: { type: DataTypes.INTEGER, allowNull: true, unique: true, field: 'user_id' },
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
     updatedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'updated_by' },
     deletedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'deleted_by' },

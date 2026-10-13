@@ -5,6 +5,7 @@ import { permission } from '../../middlewares/permission.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import { fracLimiteService } from '../../services/agricola/fracLimite.service.js';
+import { uploadBulkFile } from '../../middlewares/upload.middleware.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { ApiResponse } from '../../utils/ApiResponse.js';
 
@@ -55,6 +56,10 @@ router.post('/grupos', auth, permission(PERMISSIONS.INGREDIENTE_ACTIVO_CREAR), v
 }));
 router.put('/grupos/:uuid', auth, permission(PERMISSIONS.INGREDIENTE_ACTIVO_EDITAR), validate(grupoUpdateSchema), asyncHandler(async (req, res) => {
   ApiResponse.send(res, { message: 'Grupo químico actualizado', data: await fracLimiteService.updateGrupo(req.params.uuid, req.body, req.user?.id) });
+}));
+router.post('/bulk-upload', auth, permission(PERMISSIONS.INGREDIENTE_ACTIVO_EDITAR), uploadBulkFile, asyncHandler(async (req, res) => {
+  const resultado = await fracLimiteService.bulkUpsert(req.file, req.user?.id, { dryRun: req.body?.dryRun === 'true' });
+  ApiResponse.send(res, { message: 'Cargue masivo de FRAC procesado', data: resultado });
 }));
 router.delete('/grupos/:uuid', auth, permission(PERMISSIONS.INGREDIENTE_ACTIVO_ELIMINAR), validate(grupoDeleteSchema), asyncHandler(async (req, res) => {
   await fracLimiteService.deleteGrupo(req.params.uuid);

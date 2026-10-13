@@ -24,7 +24,7 @@ FracCodigo.init(
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
     updatedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'updated_by' },
   },
-  { sequelize, modelName: 'FracCodigo', tableName: 'frac_codigos', underscored: true },
+  { sequelize, modelName: 'FracCodigo', tableName: 'frac_codigos', underscored: true, paranoid: true },
 );
 
 export default FracCodigo;

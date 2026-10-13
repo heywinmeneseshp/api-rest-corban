@@ -1,6 +1,6 @@
 import { ingredienteActivoRepository } from '../../repositories/agricola/ingredienteActivo.repository.js';
 import { ApiError } from '../../utils/ApiError.js';
-import { GrupoQuimico } from '../../database/associations.js';
+import { GrupoQuimico, FracCodigo, IngredienteActivo } from '../../database/associations.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { parseBulkFile } from '../../utils/bulkFileParser.js';
 
@@ -130,7 +130,22 @@ export const ingredienteActivoService = {
 
       const descripcion = row.descripcion ? String(row.descripcion).trim() : undefined;
       const estado = parseEstado(row.estado);
-      filasValidas.push({ nombre, descripcion, estado });
+      const grupoNombre = String(row.grupo_quimico || row.grupoquimico || '').trim();
+      const fracCodigo = String(row.frac || '').trim().toUpperCase();
+      let grupoQuimicoId;
+      if (grupoNombre) {
+        const fracs = fracCodigo ? await FracCodigo.findAll({ where: { codigo: fracCodigo }, attributes: ['id'] }) : [];
+        const grupos = await GrupoQuimico.findAll({
+          where: { nombre: grupoNombre, ...(fracCodigo ? { fracCodigoId: fracs.map((x) => x.id) } : {}) },
+        });
+        const g = fracCodigo ? grupos[0] : grupos.length === 1 ? grupos[0] : null;
+        if (!g) {
+          errores.push({ fila, mensaje: grupos.length > 1 && !fracCodigo ? `El grupo "${grupoNombre}" existe en varios códigos FRAC: indica la columna frac` : `No existe el grupo químico "${grupoNombre}"${fracCodigo ? ` en el FRAC ${fracCodigo}` : ''}` });
+          continue;
+        }
+        grupoQuimicoId = g.id;
+      }
+      filasValidas.push({ nombre, descripcion, estado, grupoQuimicoId });
     }
 
     // Si el mismo nombre aparece varias veces en el archivo, se procesa una
@@ -156,6 +171,12 @@ export const ingredienteActivoService = {
           updatedBy: actorId,
         })),
       );
+    }
+
+    if (!dryRun) {
+      for (const f of filasUnicas.filter((x) => x.grupoQuimicoId)) {
+        await IngredienteActivo.update({ grupoQuimicoId: f.grupoQuimicoId, updatedBy: actorId }, { where: { nombre: f.nombre } });
+      }
     }
 
     return { totalFilas: rows.length, ingredientesCreados: creados, ingredientesActualizados: actualizados, errores };

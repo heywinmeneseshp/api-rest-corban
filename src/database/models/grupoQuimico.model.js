@@ -13,7 +13,7 @@ GrupoQuimico.init(
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
     updatedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'updated_by' },
   },
-  { sequelize, modelName: 'GrupoQuimico', tableName: 'grupos_quimicos', underscored: true },
+  { sequelize, modelName: 'GrupoQuimico', tableName: 'grupos_quimicos', underscored: true, paranoid: true },
 );
 
 export default GrupoQuimico;

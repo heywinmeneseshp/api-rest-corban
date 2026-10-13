@@ -1,4 +1,5 @@
-import { Op, fn, col } from 'sequelize';
+import { Op, QueryTypes, fn, col } from 'sequelize';
+import { sequelize } from '../../database/connection.js';
 import { Finca, ProduccionSemanal, RacimoMovimiento, Semana } from '../../database/associations.js';
 import { semanaRepository } from '../../repositories/agricola/semana.repository.js';
 import { ApiError } from '../../utils/ApiError.js';
@@ -53,6 +54,44 @@ function sumarRacimosParaRatio(filas, fechaInicioPorSemanaId, claveDe) {
     totales.set(clave, (totales.get(clave) || 0) + Number(f.cantidad));
   }
   return totales;
+}
+
+// Hectáreas EN PRODUCCIÓN por semana: suma, por lote de las fincas dadas (incluye lotes ocultos: su historial cuenta en las semanas en que tuvieron área), del área vigente en cada semana (el último
+// registro de lote_area_produccion cuya semana no sea posterior; sin semana, por fecha de registro). Mismo criterio de
+// "área vigente" que lote.service.js / loteAreaProduccion.repository.js (areaVigenteEnSemana), pero para todas las semanas
+// de una vez. `semanas`: [{ id, fechaInicio, fechaFin }] del año, en cualquier orden.
+async function hectareasPorSemana(fincaIds, semanas) {
+  const mapa = new Map(semanas.map((s) => [s.id, 0]));
+  if (!fincaIds || fincaIds.length === 0 || semanas.length === 0) return mapa;
+  const filas = await sequelize.query(
+    `SELECT ap.lote_id AS loteId, ap.area AS area, ap.id AS id,
+            COALESCE(s.fecha_inicio, ap.fecha_registro) AS fecha
+       FROM lote_area_produccion ap
+       JOIN lotes l ON l.id = ap.lote_id AND l.deleted_at IS NULL
+       LEFT JOIN semanas s ON s.id = ap.semana_id
+      WHERE l.finca_id IN (:fincaIds)
+      ORDER BY ap.lote_id, fecha, ap.id`,
+    { replacements: { fincaIds }, type: QueryTypes.SELECT },
+  );
+  const porLote = new Map();
+  for (const f of filas) {
+    if (!porLote.has(f.loteId)) porLote.set(f.loteId, []);
+    porLote.get(f.loteId).push({ fecha: String(f.fecha).slice(0, 10), area: Number(f.area) });
+  }
+  for (const semana of semanas) {
+    const limite = String(semana.fechaInicio).slice(0, 10);
+    let total = 0;
+    for (const registros of porLote.values()) {
+      let vigente = null;
+      for (const r of registros) {
+        if (r.fecha <= limite) vigente = r.area;
+        else break;
+      }
+      if (vigente !== null) total += vigente;
+    }
+    mapa.set(semana.id, Math.round(total * 100) / 100);
+  }
+  return mapa;
 }
 
 export const dashboardService = {
@@ -586,6 +625,25 @@ export const dashboardService = {
       };
     });
 
+    // Hectáreas en producción por semana y lo que se produce por cada una (embolses y cajas por hectárea). Las semanas
+    // futuras y las que no tienen área registrada quedan en null (no es "0", es que falta el dato).
+    const hectareasMap = await hectareasPorSemana(fincaIdsInternasFiltradas, semanasAnio);
+    const hectareasAnual = semanasAnio.map((semana) => {
+      const ha = hectareasMap.get(semana.id) || 0;
+      const esFutura = new Date(semana.fechaInicio) > hoy;
+      const valido = !esFutura && ha > 0;
+      const emb = embolseAnualMap.get(semana.id) || 0;
+      const cajas = cajasAnualMap.get(semana.id) || 0;
+      const redondear2 = (n) => Math.round(n * 100) / 100;
+      return {
+        numeroSemana: semana.numeroSemana,
+        semanaCodigo: semana.codigo,
+        hectareas: valido ? ha : null,
+        embolsesPorHa: valido && emb > 0 ? redondear2(emb / ha) : null,
+        cajasPorHa: valido && cajas > 0 ? redondear2(cajas / ha) : null,
+      };
+    });
+
     // Ranking de fincas del AÑO seleccionado (no de una semana puntual, a
     // diferencia de `fincasActivas`) — uno para Cajas/Ratio (cruzando cajas
     // y racimos por finca+semana, mismo criterio que el ratio del gráfico) y
@@ -669,6 +727,7 @@ export const dashboardService = {
       semanasRegistro,
       ratioAnual,
       embolseAnual,
+      hectareasAnual,
       aprovechamientoAnual,
       rankingCajasRatio,
       rankingAprovechamiento,

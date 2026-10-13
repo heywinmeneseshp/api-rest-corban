@@ -2,7 +2,8 @@ import { colaboradorRepository } from '../../repositories/agricola/colaborador.r
 import { laborRepository } from '../../repositories/agricola/labor.repository.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
-import { Finca } from '../../database/associations.js';
+import { Op, fn, col } from 'sequelize';
+import { Finca, ColaboradorRostro } from '../../database/associations.js';
 import { sequelize } from '../../database/connection.js';
 
 const CALIFICACION_MIN = 1;
@@ -47,7 +48,18 @@ export const colaboradorService = {
       fincaId,
       estado,
     });
-    return { items: rows, meta: buildPaginationMeta({ page, limit, total: count }) };
+    // Cuántas muestras faciales tiene cada uno (la pantalla muestra "Rostro: enrolado / sin enrolar").
+    const conteos = rows.length
+      ? await ColaboradorRostro.findAll({
+          attributes: ['colaboradorId', [fn('COUNT', col('id')), 'n']],
+          where: { colaboradorId: { [Op.in]: rows.map((r) => r.id) } },
+          group: ['colaboradorId'],
+          raw: true,
+        })
+      : [];
+    const muestras = new Map(conteos.map((c) => [c.colaboradorId, Number(c.n)]));
+    const items = rows.map((r) => ({ ...r.toJSON(), rostroMuestras: muestras.get(r.id) || 0, rostroEnrolado: (muestras.get(r.id) || 0) > 0 }));
+    return { items, meta: buildPaginationMeta({ page, limit, total: count }) };
   },
 
   async getColaboradorByUuid(uuid) {

@@ -29,6 +29,8 @@ import { OpenMeteoClimaDiaria } from './models/openMeteoClimaDiaria.model.js';
 import { MotivoRepique } from './models/motivoRepique.model.js';
 import { MotivoRecuse } from './models/motivoRecuse.model.js';
 import { RacimoMovimiento } from './models/racimoMovimiento.model.js';
+import { PrecalibracionRegistro } from './models/precalibracionRegistro.model.js';
+import { PrecalibracionEstimacion } from './models/precalibracionEstimacion.model.js';
 import { ProduccionSemanal } from './models/produccionSemanal.model.js';
 import { EstimacionFinca } from './models/estimacionFinca.model.js';
 import { CategoriaLabor } from './models/categoriaLabor.model.js';
@@ -39,6 +41,8 @@ import { LaborOcurrencia } from './models/laborOcurrencia.model.js';
 import { EstadioSigatoka } from './models/estadioSigatoka.model.js';
 import { Colaborador } from './models/colaborador.model.js';
 import { ColaboradorLabor } from './models/colaboradorLabor.model.js';
+import { ColaboradorRostro } from './models/colaboradorRostro.model.js';
+import { AsistenciaMarcacion } from './models/asistenciaMarcacion.model.js';
 import { ProgramacionCorte } from './models/programacionCorte.model.js';
 import { Producto } from './models/producto.model.js';
 import { RechazoCorte } from './models/rechazoCorte.model.js';
@@ -349,6 +353,8 @@ export const setupAssociations = () => {
   withAuditAssociations(MotivoRepique);
   withAuditAssociations(MotivoRecuse);
   withAuditAssociations(RacimoMovimiento);
+  withAuditAssociations(PrecalibracionRegistro);
+  withAuditAssociations(PrecalibracionEstimacion);
   withAuditAssociations(ProduccionSemanal);
   withAuditAssociations(EstimacionFinca);
 
@@ -401,7 +407,17 @@ export const setupAssociations = () => {
   Labor.hasMany(ColaboradorLabor, { foreignKey: 'laborId', as: 'colaboradorLabores' });
   ColaboradorLabor.belongsTo(Labor, { foreignKey: 'laborId', as: 'labor' });
 
+  Colaborador.hasMany(ColaboradorRostro, { foreignKey: 'colaboradorId', as: 'rostros' });
+  ColaboradorRostro.belongsTo(Colaborador, { foreignKey: 'colaboradorId', as: 'colaborador' });
+  Colaborador.belongsTo(User, { foreignKey: 'userId', as: 'usuario' });
+
+  Colaborador.hasMany(AsistenciaMarcacion, { foreignKey: 'colaboradorId', as: 'marcaciones' });
+  AsistenciaMarcacion.belongsTo(Colaborador, { foreignKey: 'colaboradorId', as: 'colaborador' });
+  Finca.hasMany(AsistenciaMarcacion, { foreignKey: 'fincaId', as: 'marcacionesAsistencia' });
+  AsistenciaMarcacion.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+
   withAuditAssociations(Colaborador);
+  withAuditAssociations(AsistenciaMarcacion);
 
   // Programación de Corte (cargue masivo de cuándo se espera cortar cada
   // finca y cuántas cajas se programan) — mismo patrón que ProduccionSemanal.
@@ -761,6 +777,8 @@ export {
   MotivoRepique,
   MotivoRecuse,
   RacimoMovimiento,
+  PrecalibracionRegistro,
+  PrecalibracionEstimacion,
   ProduccionSemanal,
   EstimacionFinca,
   CategoriaLabor,
@@ -771,6 +789,8 @@ export {
   EstadioSigatoka,
   Colaborador,
   ColaboradorLabor,
+  ColaboradorRostro,
+  AsistenciaMarcacion,
   ProgramacionCorte,
   Producto,
   RechazoCorte,

@@ -182,6 +182,11 @@ export const actualizarComponenteSchema = Joi.object({
   body: Joi.object({
     cantidad: Joi.number().positive().required(),
     unidadUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
+    // Dosis relativa del renglón: "este insumo es el X % de OTRO insumo de la receta" (ej. AL 100 = 1 % del
+    // ACEITE BANOLE). FIJA quita la regla. Sin estos campos la regla actual no cambia.
+    tipoDosis: Joi.string().valid('FIJA', 'PORCENTAJE'),
+    referenciaArticuloUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
+    porcentajeReferencia: Joi.number().positive().allow(null),
   }),
   params: Joi.object({ uuid: uuidParam, versionUuid: uuidParam, componenteUuid: uuidParam }),
   query: Joi.object({}),
