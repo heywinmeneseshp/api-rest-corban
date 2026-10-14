@@ -484,6 +484,11 @@ export const loteService = {
       }
       const totalFinal = total !== undefined ? total : esActual ? (hay(lote.area) ? Number(lote.area) : null) : hay(vig?.areaTotal) ? Number(vig.areaTotal) : null;
 
+      if (totalFinal !== null && prodFinal > totalFinal + 0.005) {
+        errores.push({ fila, error: `El área en producción (${prodFinal}) no puede ser mayor que el área total (${totalFinal})` });
+        continue;
+      }
+
       const ocultoLote = !nuevoLote && (!lote.estado || !!lote.deletedAt);
       aplicar.push({ lote, nuevoLote, semana, esActual, total: totalFinal, totalCambia: total !== undefined, prod: prodFinal });
       vistaPrevia.push({ fila, semana: semana.codigo, codigoFinca, lote: lote.nombre, nuevoLote, ocultoLote, areaTotal: totalFinal, areaProduccion: prodFinal });
@@ -560,6 +565,13 @@ export const loteService = {
     const esAnterior = semana && semanaActual && semana.fechaInicio < semanaActual.fechaInicio;
     if (esAnterior && !(user?.permissions || []).includes(PERMISSIONS.AREA_LOTE_EDITAR_SEMANAS_ANTERIORES)) {
       throw ApiError.forbidden('No tienes permiso para editar el área de semanas anteriores');
+    }
+
+    // Regla: el área total siempre es mayor o igual que el área en producción. Se compara con el total que viene en la
+    // misma operación o, al editar la semana actual, con el total vigente del lote.
+    const totalReferencia = payload.areaTotal ?? (!esAnterior && lote.area !== null && lote.area !== undefined ? Number(lote.area) : null);
+    if (totalReferencia !== null && Number(payload.area) > Number(totalReferencia) + 0.005) {
+      throw ApiError.badRequest(`El área en producción (${Number(payload.area)} ha) no puede ser mayor que el área total (${Number(totalReferencia)} ha)`);
     }
 
     return loteAreaProduccionRepository.create({

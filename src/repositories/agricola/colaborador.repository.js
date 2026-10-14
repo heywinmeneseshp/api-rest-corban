@@ -1,15 +1,16 @@
 import { Op } from 'sequelize';
-import { Colaborador, ColaboradorLabor, Finca, Labor } from '../../database/associations.js';
+import { Colaborador, ColaboradorLabor, Finca, Labor, User } from '../../database/associations.js';
 
 const includeLabores = [
   { model: ColaboradorLabor, as: 'labores', include: [{ model: Labor, as: 'labor', attributes: ['id', 'uuid', 'nombre', 'color'] }] },
   { model: Finca, as: 'finca', attributes: ['id', 'uuid', 'nombre'] },
+  { model: User, as: 'usuario', attributes: ['uuid', 'usuario', 'email', 'estado'] },
 ];
 
 export const colaboradorRepository = {
   async findAndCountAll({ limit, offset, search, fincaId, estado }) {
     const where = {};
-    if (search) where.nombre = { [Op.like]: `%${search}%` };
+    if (search) where[Op.or] = [{ nombre: { [Op.like]: `%${search}%` } }, { apellido: { [Op.like]: `%${search}%` } }, { documento: { [Op.like]: `%${search}%` } }];
     if (fincaId) where.fincaId = fincaId;
     if (estado !== undefined) where.estado = estado;
 
@@ -18,7 +19,7 @@ export const colaboradorRepository = {
       limit,
       offset,
       include: includeLabores,
-      order: [['nombre', 'ASC']],
+      order: [['nombre', 'ASC'], ['apellido', 'ASC']],
       distinct: true,
     });
   },

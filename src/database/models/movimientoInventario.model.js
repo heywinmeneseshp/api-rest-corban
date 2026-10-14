@@ -23,6 +23,7 @@ MovimientoInventario.init(
     lote: { type: DataTypes.STRING(50), allowNull: true },
     fechaVencimiento: { type: DataTypes.DATEONLY, allowNull: true, field: 'fecha_vencimiento' },
     motivoId: { type: DataTypes.INTEGER, allowNull: true, field: 'motivo_id' },
+    proveedorId: { type: DataTypes.INTEGER, allowNull: true, field: 'proveedor_id' },
     observaciones: { type: DataTypes.TEXT, allowNull: true },
     usuarioId: { type: DataTypes.INTEGER, allowNull: true, field: 'usuario_id' },
     origenMovimientoId: { type: DataTypes.INTEGER, allowNull: true, field: 'origen_movimiento_id' },

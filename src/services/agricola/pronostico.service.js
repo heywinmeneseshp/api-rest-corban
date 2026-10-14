@@ -910,9 +910,29 @@ async function computeForecast(query, user, asOfDate = new Date()) {
       const serieHW = construirSerieRatioSemanal(grupo.idList);
       modeloHW = ajustarHoltWintersOptimo(serieHW);
     }
+    // Ratio semana a semana: promedio histórico de cajas/racimo de ESA semana del año (±1 semana) en las semanas
+    // reales de años anteriores. Si el grupo no tiene historial de esa semana, cae al ratio fijo de arriba.
+    const ratioHistoricoPorSemana = new Map();
+    function ratioHistoricoSemana(numeroSemana) {
+      if (ratioHistoricoPorSemana.has(numeroSemana)) return ratioHistoricoPorSemana.get(numeroSemana);
+      const lista = [];
+      for (let i = 0; i < semanas.length; i++) {
+        if (!esReal(i) || distanciaCircular(semanas[i].numeroSemana, numeroSemana) > TOLERANCIA_SEMANA_ESTACIONAL) continue;
+        let rr = 0;
+        let cc = 0;
+        for (const fincaId of grupo.idList) {
+          rr += cosechado(fincaId, i);
+          cc += cajas(fincaId, i);
+        }
+        if (rr > 0 && cc > 0) lista.push(cc / rr);
+      }
+      const valor = promedio(lista);
+      ratioHistoricoPorSemana.set(numeroSemana, valor);
+      return valor;
+    }
     function ratioParaOffset(offset, idx) {
       if (modeloHW) return proyectarHoltWinters(modeloHW, offset, faseSemana(semanas[idx].numeroSemana));
-      return ratioProyectado;
+      return ratioHistoricoSemana(semanas[idx].numeroSemana) ?? ratioProyectado;
     }
 
     // Réplicas de bootstrap para el intervalo de confianza: mismo respaldo
@@ -1016,7 +1036,8 @@ async function computeForecast(query, user, asOfDate = new Date()) {
           const rateB = rateReplicas[b];
           let racimosB = 0;
           for (let ei = 0; ei < EDADES.length; ei++) racimosB += embolsePorEdad[ei] * rateB[EDADES[ei]] * scaleFactor;
-          cajasReplicas[b] = racimosB * ratioReplicas[b];
+          // Las réplicas del ratio giran en torno al ratio fijo: se reescalan al ratio de esta semana.
+          cajasReplicas[b] = racimosB * ratioReplicas[b] * (ratioProyectado > 0 ? ratioUsado / ratioProyectado : 1);
         }
         cajasReplicas.sort((a, b) => a - b);
         const ciEstimador = percentilesCi(cajasReplicas);
@@ -1044,8 +1065,12 @@ async function computeForecast(query, user, asOfDate = new Date()) {
 
       const detalle = real
         ? 'Semana con datos reales registrados'
-        : (modeloHW ? 'Ratio proyectado con tendencia y estacionalidad (Holt-Winters)' : `Ratio basado en ${semanasRealesGrupo.length} semana(s) real(es)`) +
-          (usoEstacionalRatio && !modeloHW ? ' + misma semana de años anteriores' : '') +
+        : (modeloHW
+            ? 'Ratio proyectado con tendencia y estacionalidad (Holt-Winters)'
+            : ratioHistoricoSemana(semanas[idx].numeroSemana) !== null
+              ? 'Ratio: promedio histórico de esta semana del año'
+              : `Ratio basado en ${semanasRealesGrupo.length} semana(s) real(es)`) +
+          (usoEstacionalRatio && !modeloHW && ratioHistoricoSemana(semanas[idx].numeroSemana) === null ? ' + misma semana de años anteriores' : '') +
           (usaFallbackGlobal ? ` · edades ${EDADES[0]}-${EDAD_MAX} sin historial propio suficiente, usando promedio global` : '') +
           (usoEstacionalTasa && !usaFallbackGlobal ? ' · aprovechamiento combinado con la misma temporada de años anteriores' : '') +
           (embolseFuturoUsado ? ` · embolse de semanas futuras estimado (${usoEstacionalEmbolse ? 'reciente + misma temporada de años anteriores' : 'promedio reciente'})` : '') +

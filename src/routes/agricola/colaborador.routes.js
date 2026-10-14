@@ -9,6 +9,8 @@ import {
   getColaboradorSchema,
   createColaboradorSchema,
   updateColaboradorSchema,
+  vincularUsuarioSchema,
+  crearUsuarioDeColaboradorSchema,
 } from '../../validators/agricola/colaborador.validator.js';
 
 const router = Router();
@@ -56,6 +58,9 @@ router.post('/', auth, permission(PERMISSIONS.COLABORADOR_CREAR), validate(creat
  */
 router.get('/:uuid', auth, permission(PERMISSIONS.COLABORADOR_VER), validate(getColaboradorSchema), colaboradorController.getByUuid);
 router.put('/:uuid', auth, permission(PERMISSIONS.COLABORADOR_EDITAR), validate(updateColaboradorSchema), colaboradorController.update);
+router.put('/:uuid/usuario', auth, permission(PERMISSIONS.COLABORADOR_EDITAR), permission(PERMISSIONS.MENU_MAESTROS_USUARIOS), validate(vincularUsuarioSchema), colaboradorController.vincularUsuario);
+router.delete('/:uuid/usuario', auth, permission(PERMISSIONS.COLABORADOR_EDITAR), validate(getColaboradorSchema), colaboradorController.desvincularUsuario);
+router.post('/:uuid/usuario', auth, permission(PERMISSIONS.COLABORADOR_EDITAR), permission(PERMISSIONS.MENU_MAESTROS_USUARIOS), validate(crearUsuarioDeColaboradorSchema), colaboradorController.crearUsuario);
 router.delete('/:uuid', auth, permission(PERMISSIONS.COLABORADOR_ELIMINAR), validate(getColaboradorSchema), colaboradorController.remove);
 
 export default router;

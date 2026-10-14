@@ -28,6 +28,21 @@ export const colaboradorController = {
     ApiResponse.send(res, { message: 'Colaborador actualizado correctamente', data: colaborador });
   }),
 
+  vincularUsuario: asyncHandler(async (req, res) => {
+    const data = await colaboradorService.vincularUsuario(req.params.uuid, req.body.userUuid, req.user?.id);
+    ApiResponse.send(res, { message: 'Usuario vinculado correctamente', data });
+  }),
+
+  desvincularUsuario: asyncHandler(async (req, res) => {
+    const data = await colaboradorService.desvincularUsuario(req.params.uuid, req.user?.id);
+    ApiResponse.send(res, { message: 'Usuario desvinculado correctamente', data });
+  }),
+
+  crearUsuario: asyncHandler(async (req, res) => {
+    const data = await colaboradorService.crearUsuario(req.params.uuid, req.body, req.user?.id);
+    ApiResponse.send(res, { statusCode: HTTP_STATUS.CREATED, message: 'Usuario creado y vinculado correctamente', data });
+  }),
+
   remove: asyncHandler(async (req, res) => {
     await colaboradorService.deleteColaborador(req.params.uuid, req.user?.id);
     ApiResponse.send(res, { message: 'Colaborador eliminado correctamente' });

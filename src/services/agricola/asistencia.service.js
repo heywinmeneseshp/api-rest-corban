@@ -41,16 +41,16 @@ const finDiaBogota = (fecha) => new Date(`${fecha}T23:59:59.999-05:00`);
 
 // Colaboradores enrolados que pueden aparecer en una finca (los de esa finca y los que no tienen finca asignada),
 // con todos sus vectores.
-async function cargarCandidatos(fincaId) {
+async function cargarCandidatos() {
   const colaboradores = await Colaborador.findAll({
-    where: { estado: true, [Op.or]: [{ fincaId }, { fincaId: null }] },
-    attributes: ['id', 'uuid', 'nombre', 'documento', 'userId'],
+    where: { estado: true }, // la finca del colaborador es solo su predeterminada: puede marcar en cualquier finca
+    attributes: ['id', 'uuid', 'nombre', 'apellido', 'documento', 'userId'],
     include: [{ model: ColaboradorRostro, as: 'rostros', attributes: ['descriptor'], required: true }],
   });
   return colaboradores.map((c) => ({
     id: c.id,
     uuid: c.uuid,
-    nombre: c.nombre,
+    nombre: nombreCompleto(c),
     documento: c.documento,
     userId: c.userId,
     vectores: c.rostros.map((r) => (typeof r.descriptor === 'string' ? JSON.parse(r.descriptor) : r.descriptor)),
@@ -71,7 +71,9 @@ export function identificar(descriptor, candidatos) {
   return { estado: 'VERIFICADA', mejor, segundo, umbral: u };
 }
 
-const resumenCandidato = (r) => (r ? { uuid: r.candidato.uuid, nombre: r.candidato.nombre, distancia: redondear(r.distancia) } : null);
+const nombreCompleto = (c) => `${c.nombre} ${c.apellido || ''}`.trim();
+
+const resumenCandidato = (r) => (r ? { uuid: r.candidato.uuid, nombre: nombreCompleto(r.candidato), distancia: redondear(r.distancia) } : null);
 
 async function findColaboradorOrFail(uuid) {
   const colaborador = await Colaborador.findOne({ where: { uuid } });
@@ -127,17 +129,14 @@ export const asistenciaService = {
   async rostrosEstado(query, user) {
     const fincaIds = getFincaIdsPermitidas(user);
     const where = { estado: true };
-    if (query.fincaUuid) {
-      const finca = await findFincaOrFail(query.fincaUuid);
-      assertFincaPermitida(user, finca.id);
-      where[Op.or] = [{ fincaId: finca.id }, { fincaId: null }];
-    } else if (fincaIds) {
-      where[Op.or] = [{ fincaId: { [Op.in]: fincaIds } }, { fincaId: null }];
-    }
+    if (query.fincaUuid) assertFincaPermitida(user, (await findFincaOrFail(query.fincaUuid)).id);
     const colaboradores = await Colaborador.findAll({
       where,
-      attributes: ['id', 'uuid', 'nombre', 'documento', 'fincaId', 'rostroConsentimientoAt'],
-      include: [{ model: Finca, as: 'finca', attributes: ['uuid', 'nombre'] }],
+      attributes: ['id', 'uuid', 'nombre', 'apellido', 'documento', 'fincaId', 'userId', 'rostroConsentimientoAt'],
+      include: [
+        { model: Finca, as: 'finca', attributes: ['uuid', 'nombre'] },
+        { model: User, as: 'usuario', attributes: ['uuid'] },
+      ],
       order: [['nombre', 'ASC']],
     });
     const conteos = await ColaboradorRostro.findAll({
@@ -156,8 +155,9 @@ export const asistenciaService = {
       fincas: fincas.map((f) => ({ uuid: f.uuid, nombre: f.nombre })),
       colaboradores: colaboradores.map((c) => ({
         uuid: c.uuid,
-        nombre: c.nombre,
+        nombre: nombreCompleto(c),
         documento: c.documento,
+        userUuid: c.usuario?.uuid ?? null,
         finca: c.finca ? { uuid: c.finca.uuid, nombre: c.finca.nombre } : null,
         muestras: porId.get(c.id) || 0,
         enrolado: (porId.get(c.id) || 0) > 0,
@@ -168,10 +168,10 @@ export const asistenciaService = {
 
   // Prueba de reconocimiento (piloto): identifica sin guardar nada y devuelve los dos mejores candidatos con su distancia.
   async probar({ fincaUuid, descriptor }, user) {
-    const finca = await findFincaOrFail(fincaUuid);
-    assertFincaPermitida(user, finca.id);
+    // La finca es opcional: el reconocimiento compara contra todos los colaboradores con rostro registrado.
+    if (fincaUuid) assertFincaPermitida(user, (await findFincaOrFail(fincaUuid)).id);
     if (!descriptorValido(descriptor)) throw ApiError.badRequest('El vector facial no es válido (128 números)');
-    const candidatos = await cargarCandidatos(finca.id);
+    const candidatos = await cargarCandidatos();
     if (candidatos.length === 0) return { estado: 'SIN_ENROLADOS', umbral: umbral(), mejor: null, segundo: null };
     const r = identificar(descriptor, candidatos);
     return { estado: r.estado, umbral: r.umbral, margen: MARGEN_AMBIGUEDAD, mejor: resumenCandidato(r.mejor), segundo: resumenCandidato(r.segundo) };
@@ -186,7 +186,8 @@ export const asistenciaService = {
 
     const fincas = await Finca.findAll({ where: { uuid: { [Op.in]: [...new Set(items.map((i) => i.fincaUuid))] } }, attributes: ['id', 'uuid'] });
     const fincaPorUuid = new Map(fincas.map((f) => [f.uuid, f]));
-    const candidatosPorFinca = new Map();
+    // Cualquier colaborador con rostro registrado puede marcar en cualquier finca: se cargan una sola vez.
+    const candidatos = await cargarCandidatos();
     const ya = await AsistenciaMarcacion.findAll({ where: { uuid: { [Op.in]: items.map((i) => i.uuid) } }, attributes: ['uuid'], paranoid: false, raw: true });
     const yaRegistradas = new Set(ya.map((m) => m.uuid));
 
@@ -212,10 +213,8 @@ export const asistenciaService = {
         res('ERROR', { mensaje: 'Vector facial inválido' });
         continue;
       }
-      if (!candidatosPorFinca.has(finca.id)) candidatosPorFinca.set(finca.id, await cargarCandidatos(finca.id));
-      const candidatos = candidatosPorFinca.get(finca.id);
       if (candidatos.length === 0) {
-        res('ERROR', { mensaje: 'No hay colaboradores con rostro registrado en esta finca' });
+        res('ERROR', { mensaje: 'No hay colaboradores con rostro registrado' });
         continue;
       }
 
@@ -242,7 +241,7 @@ export const asistenciaService = {
         attributes: ['id'],
       });
       if (cercana) {
-        res('DUPLICADA', { colaborador: { uuid: colaborador.uuid, nombre: colaborador.nombre }, mensaje: 'Ya hay una marcación igual hace menos de 2 minutos' });
+        res('DUPLICADA', { colaborador: { uuid: colaborador.uuid, nombre: nombreCompleto(colaborador) }, mensaje: 'Ya hay una marcación igual hace menos de 2 minutos' });
         continue;
       }
 
@@ -258,7 +257,7 @@ export const asistenciaService = {
         createdBy: actorId,
       });
       yaRegistradas.add(item.uuid);
-      res('CREADA', { colaborador: { uuid: colaborador.uuid, nombre: colaborador.nombre }, distancia: redondear(r.mejor.distancia) });
+      res('CREADA', { colaborador: { uuid: colaborador.uuid, nombre: nombreCompleto(colaborador) }, distancia: redondear(r.mejor.distancia) });
     }
 
     const cuenta = (e) => resultados.filter((x) => x.estado === e).length;
@@ -302,7 +301,7 @@ export const asistenciaService = {
       offset,
       order: [['fechaHora', 'DESC']],
       include: [
-        { model: Colaborador, as: 'colaborador', attributes: ['uuid', 'nombre', 'documento'] },
+        { model: Colaborador, as: 'colaborador', attributes: ['uuid', 'nombre', 'apellido', 'documento'] },
         { model: Finca, as: 'finca', attributes: ['uuid', 'nombre'] },
       ],
     });
@@ -315,7 +314,7 @@ export const asistenciaService = {
 
     const items = rows.map((m) => ({
       uuid: m.uuid,
-      colaborador: m.colaborador ? { uuid: m.colaborador.uuid, nombre: m.colaborador.nombre, documento: m.colaborador.documento } : null,
+      colaborador: m.colaborador ? { uuid: m.colaborador.uuid, nombre: nombreCompleto(m.colaborador), documento: m.colaborador.documento } : null,
       finca: m.finca ? { uuid: m.finca.uuid, nombre: m.finca.nombre } : null,
       tipo: m.tipo,
       fechaHora: m.fechaHora,

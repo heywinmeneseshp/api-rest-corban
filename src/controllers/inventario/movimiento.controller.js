@@ -14,17 +14,13 @@ export const movimientoController = {
     ApiResponse.send(res, { message: 'Movimiento obtenido correctamente', data: mov });
   }),
 
-  create: asyncHandler(async (req, res) => {
-    const resultado = await movimientoService.create(req.body, req.user?.id, req.user);
-    // Salida de un artículo ELABORADO con algún insumo insuficiente: el
-    // servicio no escribió nada y devuelve el mismo patrón de confirmación
-    // que ya usa el resto de la app (mezcla/elaboracion/racimo) en vez del
-    // movimiento creado.
-    if (resultado?.requiereConfirmacion) {
-      ApiResponse.send(res, { message: 'Confirmación requerida', data: resultado });
+  createLote: asyncHandler(async (req, res) => {
+    const result = await movimientoService.createLote(req.body, req.user?.id, req.user);
+    if (result?.requiereConfirmacion) {
+      ApiResponse.send(res, { message: 'Confirmación requerida', data: result });
       return;
     }
-    ApiResponse.send(res, { statusCode: HTTP_STATUS.CREATED, message: 'Movimiento creado correctamente', data: resultado });
+    ApiResponse.send(res, { statusCode: HTTP_STATUS.CREATED, message: 'Movimientos registrados correctamente', data: result });
   }),
 
   createTransferencia: asyncHandler(async (req, res) => {

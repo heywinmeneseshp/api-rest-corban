@@ -1,11 +1,12 @@
 import { Op } from 'sequelize';
-import { MovimientoInventario, Existencia, Almacen, Articulo, UnidadMedida, Motivo, User } from '../../database/associations.js';
+import { MovimientoInventario, Existencia, Almacen, Articulo, UnidadMedida, Motivo, Proveedor, User } from '../../database/associations.js';
 
 const INCLUDE = [
   { model: Almacen, as: 'almacen', attributes: ['uuid', 'nombre'] },
   { model: Articulo, as: 'articulo', attributes: ['uuid', 'nombre', 'codigo'] },
   { model: UnidadMedida, as: 'unidad', attributes: ['uuid', 'nombre', 'simbolo'] },
   { model: Motivo, as: 'motivo', attributes: ['uuid', 'nombre'] },
+  { model: Proveedor, as: 'proveedor', attributes: ['uuid', 'nombre'], required: false },
   { model: User, as: 'usuario', attributes: ['uuid', 'usuario'] },
 ];
 
@@ -57,13 +58,15 @@ export const movimientoRepository = {
       where,
       include: [
         { model: Almacen, as: 'almacen', attributes: ['uuid', 'nombre'] },
-        { model: Articulo, as: 'articulo', attributes: ['uuid', 'nombre', 'codigo'] },
+        // El saldo está expresado en la unidad de medida del artículo.
+        { model: Articulo, as: 'articulo', attributes: ['uuid', 'nombre', 'codigo'], include: [{ model: UnidadMedida, as: 'unidadMedida', attributes: ['uuid', 'nombre', 'simbolo'] }] },
       ],
     });
 
     return filas.map((f) => ({
       almacen: f.almacen,
       articulo: f.articulo,
+      unidad: f.articulo?.unidadMedida ? { uuid: f.articulo.unidadMedida.uuid, nombre: f.articulo.unidadMedida.nombre, simbolo: f.articulo.unidadMedida.simbolo } : null,
       saldo: Number(f.saldo),
     }));
   },

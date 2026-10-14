@@ -31,7 +31,7 @@ export const rostrosEstadoSchema = Joi.object({
 });
 
 export const probarRostroSchema = Joi.object({
-  body: Joi.object({ fincaUuid: uuidRef.required(), descriptor: descriptor.required() }),
+  body: Joi.object({ fincaUuid: uuidRef, descriptor: descriptor.required() }),
   params: Joi.object({}),
   query: Joi.object({}),
 });

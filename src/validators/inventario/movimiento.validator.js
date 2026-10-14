@@ -2,23 +2,32 @@ import Joi from 'joi';
 
 const tipos = ['ENTRADA', 'SALIDA', 'AJUSTE_ENTRADA', 'AJUSTE_SALIDA', 'TRANSFERENCIA_SALIDA', 'TRANSFERENCIA_ENTRADA', 'ELABORACION_SALIDA', 'ELABORACION_ENTRADA'];
 
-export const createMovimientoSchema = Joi.object({
+// Varios artículos en un solo movimiento (recepción de una factura, salida de varios insumos, ajustes): mismo tipo,
+// documento, fecha, almacén y motivo; cada renglón es un artículo.
+export const createLoteSchema = Joi.object({
   body: Joi.object({
     documento: Joi.string().trim().max(50).required(),
-    tipo: Joi.string().valid(...tipos).required(),
+    tipo: Joi.string().valid('ENTRADA', 'SALIDA', 'AJUSTE_ENTRADA', 'AJUSTE_SALIDA').required(),
     fecha: Joi.date().iso().required(),
     almacenUuid: Joi.string().uuid().required(),
-    articuloUuid: Joi.string().uuid().required(),
-    cantidad: Joi.number().positive().required(),
-    unidadUuid: Joi.string().uuid().allow(null),
-    costoUnitario: Joi.number().min(0).default(0),
-    lote: Joi.string().max(50).allow(null, ''),
-    fechaVencimiento: Joi.date().iso().allow(null),
-    motivoUuid: Joi.string().uuid().allow(null),
-    observaciones: Joi.string().allow(null, '').max(500),
-    // Solo aplica a la salida de un artículo ELABORADO cuando algún insumo
-    // de su receta queda insuficiente — mismo patrón que mezcla/elaboracion.
     forzarSaldoNegativo: Joi.boolean().default(false),
+    proveedorUuid: Joi.string().uuid().allow(null, ''),
+    motivoUuid: Joi.string().uuid().allow(null, ''),
+    observaciones: Joi.string().allow(null, '').max(500),
+    renglones: Joi.array()
+      .items(
+        Joi.object({
+          articuloUuid: Joi.string().uuid().required(),
+          cantidad: Joi.number().positive().required(),
+          unidadUuid: Joi.string().uuid().allow(null, ''),
+          costoUnitario: Joi.number().min(0).default(0),
+          lote: Joi.string().max(50).allow(null, ''),
+          fechaVencimiento: Joi.date().iso().allow(null, ''),
+        }),
+      )
+      .min(1)
+      .max(200)
+      .required(),
   }),
   params: Joi.object({}),
   query: Joi.object({}),

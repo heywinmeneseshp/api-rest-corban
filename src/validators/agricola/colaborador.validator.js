@@ -31,9 +31,13 @@ export const getColaboradorSchema = Joi.object({
 export const createColaboradorSchema = Joi.object({
   body: Joi.object({
     nombre: Joi.string().min(2).max(150).required(),
+    apellido: Joi.string().allow('', null).max(150),
     documento: Joi.string().allow('', null).max(30),
     telefono: Joi.string().allow('', null).max(30),
+    email: Joi.string().email().allow('', null).max(150),
+    cargo: Joi.string().allow('', null).max(100),
     fincaUuid: uuidRef.allow(null),
+    userUuid: uuidRef.allow(null),
     estado: Joi.boolean(),
     labores: laboresSchema,
   }),
@@ -44,12 +48,32 @@ export const createColaboradorSchema = Joi.object({
 export const updateColaboradorSchema = Joi.object({
   body: Joi.object({
     nombre: Joi.string().min(2).max(150),
+    apellido: Joi.string().allow('', null).max(150),
     documento: Joi.string().allow('', null).max(30),
     telefono: Joi.string().allow('', null).max(30),
+    email: Joi.string().email().allow('', null).max(150),
+    cargo: Joi.string().allow('', null).max(100),
     fincaUuid: uuidRef.allow(null),
     estado: Joi.boolean(),
     labores: laboresSchema,
   }).min(1),
+  params: Joi.object({ uuid: uuidParam }),
+  query: Joi.object({}),
+});
+
+export const vincularUsuarioSchema = Joi.object({
+  body: Joi.object({ userUuid: uuidRef.required() }),
+  params: Joi.object({ uuid: uuidParam }),
+  query: Joi.object({}),
+});
+
+// Crea un usuario nuevo a partir del colaborador (nombre, apellido, correo y cargo salen de él).
+export const crearUsuarioDeColaboradorSchema = Joi.object({
+  body: Joi.object({
+    usuario: Joi.string().alphanum().min(3).max(50).required(),
+    password: Joi.string().min(8).max(100).pattern(/^(?=.*[A-Za-z])(?=.*\d).+$/, 'letras y números').required(),
+    email: Joi.string().email().max(150),
+  }),
   params: Joi.object({ uuid: uuidParam }),
   query: Joi.object({}),
 });

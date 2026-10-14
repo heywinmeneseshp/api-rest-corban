@@ -3,11 +3,21 @@ import { laborRepository } from '../../repositories/agricola/labor.repository.js
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { Op, fn, col } from 'sequelize';
-import { Finca, ColaboradorRostro } from '../../database/associations.js';
+import { Finca, ColaboradorRostro, User, Colaborador } from '../../database/associations.js';
 import { sequelize } from '../../database/connection.js';
+import { userService } from '../seguridad/user.service.js';
 
 const CALIFICACION_MIN = 1;
 const CALIFICACION_MAX = 5;
+
+// Un usuario solo puede estar vinculado a un colaborador.
+const userLibreOrFail = async (userUuid, colaboradorId = null) => {
+  const user = await User.findOne({ where: { uuid: userUuid } });
+  if (!user) throw ApiError.notFound('Usuario no encontrado');
+  const otro = await Colaborador.findOne({ where: { userId: user.id } });
+  if (otro && otro.id !== colaboradorId) throw ApiError.conflict('Ese usuario ya está vinculado a otro colaborador');
+  return user;
+};
 
 const findFincaOrFail = async (uuid) => {
   const finca = await Finca.findOne({ where: { uuid } });
@@ -71,15 +81,21 @@ export const colaboradorService = {
   async createColaborador(payload, actorId) {
     const fincaId = payload.fincaUuid ? (await findFincaOrFail(payload.fincaUuid)).id : null;
     const labores = await resolverLabores(payload.labores);
+    // Colaborador creado desde un usuario existente: queda vinculado a él.
+    const user = payload.userUuid ? await userLibreOrFail(payload.userUuid) : null;
 
     return sequelize.transaction(async (transaction) => {
       const colaborador = await colaboradorRepository.create(
         {
           nombre: payload.nombre,
+          apellido: payload.apellido || null,
           documento: payload.documento || null,
           telefono: payload.telefono || null,
+          email: payload.email || null,
+          cargo: payload.cargo || null,
           fincaId,
           estado: payload.estado ?? true,
+          userId: user?.id ?? null,
           createdBy: actorId,
         },
         { transaction },
@@ -98,8 +114,11 @@ export const colaboradorService = {
 
     const data = { updatedBy: actorId };
     if (payload.nombre !== undefined) data.nombre = payload.nombre;
+    if (payload.apellido !== undefined) data.apellido = payload.apellido || null;
     if (payload.documento !== undefined) data.documento = payload.documento || null;
     if (payload.telefono !== undefined) data.telefono = payload.telefono || null;
+    if (payload.email !== undefined) data.email = payload.email || null;
+    if (payload.cargo !== undefined) data.cargo = payload.cargo || null;
     if (payload.estado !== undefined) data.estado = payload.estado;
     if (payload.fincaUuid !== undefined) {
       data.fincaId = payload.fincaUuid ? (await findFincaOrFail(payload.fincaUuid)).id : null;
@@ -114,6 +133,44 @@ export const colaboradorService = {
       }
       return colaboradorRepository.findByUuid(uuid, { transaction });
     });
+  },
+
+  // Vincula un colaborador existente con un usuario existente.
+  async vincularUsuario(uuid, userUuid, actorId) {
+    const colaborador = await this.getColaboradorByUuid(uuid);
+    const user = await userLibreOrFail(userUuid, colaborador.id);
+    await colaboradorRepository.update(colaborador, { userId: user.id, updatedBy: actorId });
+    return colaboradorRepository.findByUuid(uuid);
+  },
+
+  async desvincularUsuario(uuid, actorId) {
+    const colaborador = await this.getColaboradorByUuid(uuid);
+    await colaboradorRepository.update(colaborador, { userId: null, updatedBy: actorId });
+    return colaboradorRepository.findByUuid(uuid);
+  },
+
+  // Crea un usuario del sistema a partir del colaborador y los deja vinculados.
+  async crearUsuario(uuid, payload, actorId) {
+    const colaborador = await this.getColaboradorByUuid(uuid);
+    if (colaborador.userId) throw ApiError.conflict('El colaborador ya tiene un usuario');
+    const email = payload.email || colaborador.email;
+    if (!email) throw ApiError.badRequest('El colaborador no tiene correo: indica uno para crear el usuario');
+    if (!colaborador.apellido) throw ApiError.badRequest('El colaborador no tiene apellido: edítalo antes de crear su usuario');
+    const user = await userService.createUser(
+      {
+        usuario: payload.usuario,
+        nombre: colaborador.nombre,
+        apellido: colaborador.apellido,
+        email,
+        password: payload.password,
+        cargo: colaborador.cargo,
+        estado: colaborador.estado,
+      },
+      actorId,
+    );
+    const creado = await User.findOne({ where: { usuario: user.usuario }, attributes: ['id'] });
+    await colaboradorRepository.update(colaborador, { userId: creado.id, updatedBy: actorId });
+    return colaboradorRepository.findByUuid(uuid);
   },
 
   async deleteColaborador(uuid, actorId) {

@@ -1,6 +1,6 @@
 import { sequelize } from '../../database/connection.js';
 import { movimientoRepository } from '../../repositories/inventario/movimiento.repository.js';
-import { Almacen, Articulo, UnidadMedida, Motivo } from '../../database/associations.js';
+import { Almacen, Articulo, UnidadMedida, Motivo, Proveedor } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import {
@@ -14,6 +14,7 @@ import {
 } from './stock.helper.js';
 import { convertirACantidadBase } from '../../utils/unidadConversion.js';
 import { assertAlmacenPermitido } from '../../utils/almacenScope.js';
+import { ROLES } from '../../constants/roles.constants.js';
 
 // Convierte cantidad a unidad base del artículo — delega en
 // unidadConversion.js#convertirACantidadBase, que resuelve la conversión
@@ -48,7 +49,9 @@ export const movimientoService = {
     return mov;
   },
 
-  async create(payload, actorId, user) {
+  // Registra UN movimiento dentro de la transacción `transaction` (la abre createLote para guardar varios renglones de forma
+  // atómica). La confirmación de stock de un artículo elaborado se propaga como RequiereConfirmacionStockError.
+  async create(payload, actorId, user, { transaction }) {
     const almacen = await Almacen.findOne({ where: { uuid: payload.almacenUuid } });
     if (!almacen) throw ApiError.notFound('Almacén no encontrado');
     assertAlmacenPermitido(user, almacen.id);
@@ -102,8 +105,7 @@ export const movimientoService = {
       );
     }
 
-    try {
-      return await sequelize.transaction(async (t) => {
+    const ejecutar = async (t) => {
         if (recetaElaborado) {
           // Salida de un elaborado: se descuentan sus insumos, no su propia
           // Existencia (que nunca se toca). Igual se guarda el movimiento
@@ -168,6 +170,7 @@ export const movimientoService = {
             lote: payload.lote || null,
             fechaVencimiento: payload.fechaVencimiento || null,
             motivoId,
+            proveedorId: payload.proveedorId ?? null,
             observaciones: payload.observaciones || null,
             usuarioId: actorId,
           },
@@ -182,11 +185,69 @@ export const movimientoService = {
         }
 
         return movimiento;
+    };
+
+    return ejecutar(transaction);
+  },
+
+  // Varios renglones (artículos) con el mismo tipo, documento, fecha, almacén, motivo y proveedor, en UNA sola
+  // transacción: si un renglón falla (stock insuficiente, artículo elaborado, etc.) no se guarda ninguno. Cada renglón pasa
+  // por la misma lógica de create(), así que valida stock en salidas y cuenta lo ya descontado por renglones anteriores.
+  // Si algún elaborado deja insumos insuficientes se devuelve la confirmación (todo revertido) y se reenvía con
+  // forzarSaldoNegativo=true.
+  async createLote(payload, actorId, user) {
+    // La recepción (entrada) la puede registrar quien tenga el permiso; salidas y ajustes en bloque, solo Administrador.
+    if (payload.tipo !== 'ENTRADA' && !(user?.roles || []).includes(ROLES.ADMINISTRADOR)) {
+      throw ApiError.forbidden('Solo un Administrador puede registrar movimientos que no sean entradas por recepción');
+    }
+    let proveedorId = null;
+    if (payload.proveedorUuid) {
+      const proveedor = await Proveedor.findOne({ where: { uuid: payload.proveedorUuid } });
+      if (!proveedor) throw ApiError.notFound('Proveedor no encontrado');
+      proveedorId = proveedor.id;
+    }
+    try {
+      return await sequelize.transaction(async (t) => {
+        const advertencias = [];
+        let costoTotal = 0;
+        for (const [i, r] of payload.renglones.entries()) {
+          try {
+            await this.create(
+              {
+                documento: payload.documento,
+                tipo: payload.tipo,
+                fecha: payload.fecha,
+                almacenUuid: payload.almacenUuid,
+                articuloUuid: r.articuloUuid,
+                cantidad: r.cantidad,
+                unidadUuid: r.unidadUuid || null,
+                costoUnitario: r.costoUnitario || 0,
+                lote: r.lote || null,
+                fechaVencimiento: r.fechaVencimiento || null,
+                motivoUuid: payload.motivoUuid || null,
+                observaciones: payload.observaciones || null,
+                forzarSaldoNegativo: payload.forzarSaldoNegativo === true,
+                proveedorId,
+              },
+              actorId,
+              user,
+              { transaction: t },
+            );
+            costoTotal += Number(r.costoUnitario || 0) * Number(r.cantidad);
+          } catch (err) {
+            if (err instanceof RequiereConfirmacionStockError) {
+              advertencias.push(...err.advertencias.map((a) => ({ ...a, mensaje: `Renglón ${i + 1}: ${a.mensaje}` })));
+              continue;
+            }
+            if (err instanceof ApiError) err.message = `Renglón ${i + 1}: ${err.message}`;
+            throw err;
+          }
+        }
+        if (advertencias.length > 0) throw new RequiereConfirmacionStockError(advertencias);
+        return { documento: payload.documento, tipo: payload.tipo, total: payload.renglones.length, costoTotal };
       });
     } catch (err) {
-      if (err instanceof RequiereConfirmacionStockError) {
-        return { requiereConfirmacion: true, advertencias: err.advertencias };
-      }
+      if (err instanceof RequiereConfirmacionStockError) return { requiereConfirmacion: true, advertencias: err.advertencias };
       throw err;
     }
   },

@@ -31,6 +31,8 @@ import { MotivoRecuse } from './models/motivoRecuse.model.js';
 import { RacimoMovimiento } from './models/racimoMovimiento.model.js';
 import { PrecalibracionRegistro } from './models/precalibracionRegistro.model.js';
 import { PrecalibracionEstimacion } from './models/precalibracionEstimacion.model.js';
+import { ProyeccionEscenario } from './models/proyeccionEscenario.model.js';
+import { ProyeccionArea } from './models/proyeccionArea.model.js';
 import { ProduccionSemanal } from './models/produccionSemanal.model.js';
 import { EstimacionFinca } from './models/estimacionFinca.model.js';
 import { CategoriaLabor } from './models/categoriaLabor.model.js';
@@ -355,6 +357,13 @@ export const setupAssociations = () => {
   withAuditAssociations(RacimoMovimiento);
   withAuditAssociations(PrecalibracionRegistro);
   withAuditAssociations(PrecalibracionEstimacion);
+
+  // Proyección anual: escenarios y su plan de hectáreas nuevas por finca y semana de entrada.
+  withAuditAssociations(ProyeccionEscenario);
+  ProyeccionEscenario.hasMany(ProyeccionArea, { foreignKey: 'escenarioId', as: 'areas' });
+  ProyeccionArea.belongsTo(ProyeccionEscenario, { foreignKey: 'escenarioId', as: 'escenario' });
+  ProyeccionArea.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+  ProyeccionArea.belongsTo(Semana, { foreignKey: 'semanaId', as: 'semana' });
   withAuditAssociations(ProduccionSemanal);
   withAuditAssociations(EstimacionFinca);
 
@@ -400,6 +409,8 @@ export const setupAssociations = () => {
   // (1-5) por Labor — de acá sale la lista de responsables sugeridos.
   Finca.hasMany(Colaborador, { foreignKey: 'fincaId', as: 'colaboradores' });
   Colaborador.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+  // Un colaborador puede tener (o no) un usuario del sistema.
+  User.hasOne(Colaborador, { foreignKey: 'userId', as: 'colaborador' });
 
   Colaborador.hasMany(ColaboradorLabor, { foreignKey: 'colaboradorId', as: 'labores' });
   ColaboradorLabor.belongsTo(Colaborador, { foreignKey: 'colaboradorId', as: 'colaborador' });
@@ -541,6 +552,7 @@ export const setupAssociations = () => {
   MovimientoInventario.belongsTo(UnidadMedida, { foreignKey: 'unidadId', as: 'unidad' });
   Motivo.hasMany(MovimientoInventario, { foreignKey: 'motivoId', as: 'movimientos' });
   MovimientoInventario.belongsTo(Motivo, { foreignKey: 'motivoId', as: 'motivo' });
+  MovimientoInventario.belongsTo(Proveedor, { foreignKey: 'proveedorId', as: 'proveedor' });
   User.hasMany(MovimientoInventario, { foreignKey: 'usuarioId', as: 'movimientosInventario' });
   MovimientoInventario.belongsTo(User, { foreignKey: 'usuarioId', as: 'usuario' });
 
@@ -779,6 +791,8 @@ export {
   RacimoMovimiento,
   PrecalibracionRegistro,
   PrecalibracionEstimacion,
+  ProyeccionEscenario,
+  ProyeccionArea,
   ProduccionSemanal,
   EstimacionFinca,
   CategoriaLabor,

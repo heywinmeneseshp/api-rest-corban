@@ -128,6 +128,9 @@ export const PERMISSIONS = {
   PRODUCCION_ACTUALIZAR_MASIVO: 'produccion.actualizar_masivo',
 
   PRONOSTICO_VER: 'pronostico.ver',
+  // Proyección anual de embolses y cajas (escenarios con hectáreas nuevas): ver y crear/editar escenarios.
+  PROYECCION_VER: 'proyeccion.ver',
+  PROYECCION_EDITAR: 'proyeccion.editar',
 
   // Estimaciones de cajas por finca para las próximas semanas. Un usuario ve
   // solo las estimaciones de las fincas que tiene habilitadas y propias.
@@ -508,6 +511,8 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.PRODUCCION_ACTUALIZAR_MASIVO, nombre: 'Actualizar en bloque producción semanal ya cargada' },
 
   { codigo: PERMISSIONS.PRONOSTICO_VER, nombre: 'Ver pronóstico de cajas' },
+  { codigo: PERMISSIONS.PROYECCION_VER, nombre: 'Ver proyecciones anuales' },
+  { codigo: PERMISSIONS.PROYECCION_EDITAR, nombre: 'Crear y editar escenarios de proyección anual' },
 
   { codigo: PERMISSIONS.ESTIMACION_VER, nombre: 'Ver estimaciones de fincas' },
   { codigo: PERMISSIONS.ESTIMACION_CREAR, nombre: 'Crear estimaciones de fincas' },
