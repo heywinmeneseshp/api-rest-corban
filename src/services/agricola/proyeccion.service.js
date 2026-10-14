@@ -17,6 +17,8 @@ import { assertFincaPermitida, getFincaIdsPermitidas } from '../../utils/fincaSc
 const EDADES = [8, 9, 10, 11, 12];
 const EDAD_MAX = EDADES[EDADES.length - 1];
 const MIN_COHORTES_FINCA = 5;
+// Edad mínima de corte 8: el primer racimo se corta 7 semanas después de empezar a embolsar (semana de entrada).
+const SEMANAS_A_PRIMER_CORTE = EDADES[0] - 1;
 const TOLERANCIA_SEMANA = 1;
 const MS_DIA = 24 * 60 * 60 * 1000;
 
@@ -271,11 +273,15 @@ export async function calcularProyeccion({ anio, params, areas }, user, { fincaU
     }
     // Una entrada con 0 hectáreas es un CIERRE: desde esa semana la finca no embolsa ni cosecha (racimos y cajas en 0; lo ya
     // embolsado tampoco se cosecha). Lo que se sume después parte de cero. Las demás son altas (positivas, con rampa) o bajas.
-    entradasPorFinca.get(a.fincaId).push({ eIdx, ha: Number(a.hectareas), cierre: Number(a.hectareas) === 0 });
+    entradasPorFinca.get(a.fincaId).push({ eIdx, ha: Number(a.hectareas), cierre: Number(a.hectareas) === 0, rampaPct: a.rampaPct, rampaSemanas: a.rampaSemanas });
   }
-  const rampa = (k) => {
-    if (p.rampaSemanas <= 0) return 1;
-    return Math.min(1, p.rampaPct / 100 + (1 - p.rampaPct / 100) * (k / p.rampaSemanas));
+  // Rampa de una entrada: arranca en rampaPct % del embolse por hectárea y sube lineal al 100 % en rampaSemanas. Cada entrada
+  // trae la suya; si no la tiene, usa la del escenario.
+  const rampa = (k, e) => {
+    const pct = e.rampaPct !== null && e.rampaPct !== undefined ? Number(e.rampaPct) : p.rampaPct;
+    const semanasRampa = e.rampaSemanas !== null && e.rampaSemanas !== undefined ? Number(e.rampaSemanas) : p.rampaSemanas;
+    if (semanasRampa <= 0) return 1;
+    return Math.min(1, pct / 100 + (1 - pct / 100) * (k / semanasRampa));
   };
 
   const filas = []; // por finca y semana del año
@@ -364,7 +370,7 @@ export async function calcularProyeccion({ anio, params, areas }, user, { fincaU
     const haEfectiva = semanas.map((_, i) => {
       if (i <= hoyIdx) return HA[i];
       const { base, vigentes } = nivelEn(i);
-      return Math.max(0, base + vigentes.reduce((a, e) => a + (e.ha > 0 ? e.ha * rampa(i - e.eIdx) : e.ha), 0));
+      return Math.max(0, base + vigentes.reduce((a, e) => a + (e.ha > 0 ? e.ha * rampa(i - e.eIdx, e) : e.ha), 0));
     });
 
     // Series de embolse (base/bajo/alto): real hasta hoy, proyectado después.
@@ -604,6 +610,8 @@ const mapEscenario = (e, areas) => ({
     semanaUuid: a.semana?.uuid,
     semanaCodigo: a.semana?.codigo,
     hectareas: Number(a.hectareas),
+    rampaPct: a.rampaPct === null || a.rampaPct === undefined ? null : Number(a.rampaPct),
+    rampaSemanas: a.rampaSemanas === null || a.rampaSemanas === undefined ? null : Number(a.rampaSemanas),
     nota: a.nota,
   })),
 });
@@ -639,7 +647,7 @@ export const proyeccionService = {
     }
     const creado = await ProyeccionEscenario.create({ nombre, anio, descripcion: descripcion || null, params: paramsFinales, createdBy: actorId });
     if (areasCopia.length) {
-      await ProyeccionArea.bulkCreate(areasCopia.map((a) => ({ escenarioId: creado.id, fincaId: a.fincaId, semanaId: a.semanaId, hectareas: a.hectareas, nota: a.nota, createdBy: actorId })));
+      await ProyeccionArea.bulkCreate(areasCopia.map((a) => ({ escenarioId: creado.id, fincaId: a.fincaId, semanaId: a.semanaId, hectareas: a.hectareas, rampaPct: a.rampaPct, rampaSemanas: a.rampaSemanas, nota: a.nota, createdBy: actorId })));
     }
     return this.getEscenario(creado.uuid);
   },
@@ -673,7 +681,7 @@ export const proyeccionService = {
       if (!f) throw ApiError.badRequest('Finca no encontrada en el plan de hectáreas');
       if (!s) throw ApiError.badRequest('Semana no encontrada en el plan de hectáreas');
       assertFincaPermitida(user, f.id);
-      return { escenarioId: e.id, fincaId: f.id, semanaId: s.id, hectareas: a.hectareas, nota: a.nota || null, createdBy: actorId };
+      return { escenarioId: e.id, fincaId: f.id, semanaId: s.id, hectareas: a.hectareas, rampaPct: a.rampaPct ?? null, rampaSemanas: a.rampaSemanas ?? null, nota: a.nota || null, createdBy: actorId };
     });
     await sequelize.transaction(async (transaction) => {
       await ProyeccionArea.destroy({ where: { escenarioId: e.id }, transaction });
@@ -688,7 +696,7 @@ export const proyeccionService = {
     const e = await cargarEscenario(uuid);
     const filasArchivo = parseBulkFile(file);
     const fincas = await Finca.findAll({ attributes: ['id', 'uuid', 'codigo', 'nombre'], raw: true });
-    const semanas = await Semana.findAll({ where: { anio: { [Op.gte]: e.anio - 1, [Op.lte]: e.anio + 1 } }, attributes: ['id', 'uuid', 'codigo'], raw: true });
+    const semanas = await Semana.findAll({ where: { anio: { [Op.gte]: e.anio - 1, [Op.lte]: e.anio + 1 } }, attributes: ['id', 'uuid', 'codigo', 'fechaInicio'], order: [['fechaInicio', 'ASC']], raw: true });
     const norm = (t) => String(t ?? '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
     const fincaPor = new Map();
     for (const f of fincas) {
@@ -711,7 +719,20 @@ export const proyeccionService = {
       } catch {
         return errores.push({ fila: n, error: 'No tienes acceso a esa finca' });
       }
-      validas.push({ fincaUuid: f.uuid, semanaUuid: s.uuid, hectareas: ha, nota: fila.nota ? String(fila.nota) : null });
+      // Altas (hectáreas positivas): la semana del archivo es la de PRIMERA COSECHA; la entrada (embolse) es 7 semanas antes.
+      let semanaEntrada = s;
+      if (ha > 0) {
+        const idx = semanas.findIndex((x) => x.uuid === s.uuid);
+        semanaEntrada = semanas[idx - SEMANAS_A_PRIMER_CORTE];
+        if (!semanaEntrada) return errores.push({ fila: n, error: `La primera cosecha en ${s.codigo} exigiría embolsar ${SEMANAS_A_PRIMER_CORTE} semanas antes, fuera del calendario` });
+      }
+      const numOpcional = (v) => (v === '' || v === undefined || v === null ? null : Number(String(v).replace(',', '.')));
+      const rampaPct = numOpcional(fila.arranque);
+      const rampaSemanas = numOpcional(fila.semanas100);
+      if ((rampaPct !== null && !(rampaPct >= 0 && rampaPct <= 100)) || (rampaSemanas !== null && !(Number.isInteger(rampaSemanas) && rampaSemanas >= 0 && rampaSemanas <= 104))) {
+        return errores.push({ fila: n, error: 'Arranque debe estar entre 0 y 100, y semanas100 ser un entero entre 0 y 104' });
+      }
+      validas.push({ fincaUuid: f.uuid, semanaUuid: semanaEntrada.uuid, hectareas: ha, rampaPct, rampaSemanas, nota: fila.nota ? String(fila.nota) : null });
     });
     if (!dryRun && errores.length === 0 && validas.length) await this.guardarAreas(uuid, validas, actorId, user);
     return { total: filasArchivo.length, validas: validas.length, errores, aplicado: !dryRun && errores.length === 0 && validas.length > 0 };
@@ -719,7 +740,7 @@ export const proyeccionService = {
 
   async resultado(uuid, query, user) {
     const e = await cargarEscenario(uuid);
-    const areas = e.areas.map((a) => ({ fincaId: a.fincaId, semanaId: a.semanaId, hectareas: a.hectareas }));
+    const areas = e.areas.map((a) => ({ fincaId: a.fincaId, semanaId: a.semanaId, hectareas: a.hectareas, rampaPct: a.rampaPct, rampaSemanas: a.rampaSemanas }));
     return calcularProyeccion({ anio: e.anio, params: e.params, areas }, user, { fincaUuids: query.fincaUuids });
   },
 
@@ -763,7 +784,7 @@ export const proyeccionService = {
     );
     hoja(
       'Hectáreas nuevas',
-      e.areas.map((a) => ({ Finca: a.finca?.nombre, 'Semana de entrada': a.semana?.codigo, Hectáreas: Number(a.hectareas), Nota: a.nota })),
+      e.areas.map((a) => ({ Finca: a.finca?.nombre, 'Semana de embolse': a.semana?.codigo, Hectáreas: Number(a.hectareas), 'Arranque %': a.rampaPct ?? res.meta.params.rampaPct, 'Semanas hasta el 100 %': a.rampaSemanas ?? res.meta.params.rampaSemanas, Nota: a.nota })),
     );
     hoja(
       'Comparativo',

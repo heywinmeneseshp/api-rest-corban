@@ -12,6 +12,8 @@ ProyeccionArea.init(
     fincaId: { type: DataTypes.INTEGER, allowNull: false, field: 'finca_id' },
     semanaId: { type: DataTypes.INTEGER, allowNull: false, field: 'semana_id' },
     hectareas: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
+    rampaPct: { type: DataTypes.DECIMAL(5, 2), allowNull: true, field: 'rampa_pct' },
+    rampaSemanas: { type: DataTypes.INTEGER, allowNull: true, field: 'rampa_semanas' },
     nota: { type: DataTypes.STRING(255), allowNull: true },
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
     updatedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'updated_by' },

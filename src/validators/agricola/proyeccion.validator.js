@@ -50,6 +50,8 @@ export const guardarAreasSchema = Joi.object({
           fincaUuid: uuidParam,
           semanaUuid: uuidParam,
           hectareas: Joi.number().min(-10000).max(10000).required(),
+          rampaPct: Joi.number().min(0).max(100).allow(null),
+          rampaSemanas: Joi.number().integer().min(0).max(104).allow(null),
           nota: Joi.string().allow('', null).max(255),
         }),
       )
