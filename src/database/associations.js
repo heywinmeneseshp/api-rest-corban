@@ -33,6 +33,7 @@ import { PrecalibracionRegistro } from './models/precalibracionRegistro.model.js
 import { PrecalibracionEstimacion } from './models/precalibracionEstimacion.model.js';
 import { ProyeccionEscenario } from './models/proyeccionEscenario.model.js';
 import { ProyeccionArea } from './models/proyeccionArea.model.js';
+import { ProyeccionProducto } from './models/proyeccionProducto.model.js';
 import { ProduccionSemanal } from './models/produccionSemanal.model.js';
 import { EstimacionFinca } from './models/estimacionFinca.model.js';
 import { CategoriaLabor } from './models/categoriaLabor.model.js';
@@ -364,6 +365,9 @@ export const setupAssociations = () => {
   ProyeccionArea.belongsTo(ProyeccionEscenario, { foreignKey: 'escenarioId', as: 'escenario' });
   ProyeccionArea.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
   ProyeccionArea.belongsTo(Semana, { foreignKey: 'semanaId', as: 'semana' });
+  ProyeccionEscenario.hasMany(ProyeccionProducto, { foreignKey: 'escenarioId', as: 'productos' });
+  ProyeccionProducto.belongsTo(ProyeccionEscenario, { foreignKey: 'escenarioId', as: 'escenario' });
+  ProyeccionProducto.belongsTo(Producto, { foreignKey: 'productoId', as: 'producto' });
   withAuditAssociations(ProduccionSemanal);
   withAuditAssociations(EstimacionFinca);
 
@@ -793,6 +797,7 @@ export {
   PrecalibracionEstimacion,
   ProyeccionEscenario,
   ProyeccionArea,
+  ProyeccionProducto,
   ProduccionSemanal,
   EstimacionFinca,
   CategoriaLabor,

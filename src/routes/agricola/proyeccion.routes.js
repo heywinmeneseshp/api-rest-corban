@@ -14,6 +14,7 @@ import {
   crearEscenarioSchema,
   actualizarEscenarioSchema,
   guardarAreasSchema,
+  guardarProductosSchema,
   resultadoSchema,
 } from '../../validators/agricola/proyeccion.validator.js';
 
@@ -95,6 +96,21 @@ router.delete('/escenarios/:uuid', ...editar, validate(escenarioUuidSchema), asy
 router.put('/escenarios/:uuid/areas', ...editar, validate(guardarAreasSchema), asyncHandler(async (req, res) => {
   const data = await proyeccionService.guardarAreas(req.params.uuid, req.body.areas, req.user?.id, req.user);
   ApiResponse.send(res, { message: 'Plan de hectáreas guardado correctamente', data });
+}));
+
+/**
+ * @openapi
+ * /proyeccion/escenarios/{uuid}/productos:
+ *   put:
+ *     tags: [Proyección]
+ *     summary: Reemplaza los productos del reparto de cajas (producto y % de los kilos; deben sumar 100)
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.put('/escenarios/:uuid/productos', ...editar, validate(guardarProductosSchema), asyncHandler(async (req, res) => {
+  const data = await proyeccionService.guardarProductos(req.params.uuid, req.body.productos, req.user?.id);
+  ApiResponse.send(res, { message: 'Productos del reparto guardados correctamente', data });
 }));
 
 /**

@@ -60,6 +60,27 @@ export const guardarAreasSchema = Joi.object({
   }),
 });
 
+export const guardarProductosSchema = Joi.object({
+  ...vacio,
+  params: Joi.object({ uuid: uuidParam }),
+  body: Joi.object({
+    productos: Joi.array()
+      .items(
+        Joi.object({
+          productoUuid: uuidParam,
+          modo: Joi.string().valid('PORCENTAJE', 'CONTENEDORES', 'RESTO').default('PORCENTAJE'),
+          porcentaje: Joi.number().greater(0).max(100).allow(null),
+          contenedores: Joi.number().greater(0).max(1000).allow(null),
+          cajasContenedor: Joi.number().greater(0).max(100000).allow(null),
+          cadaSemanas: Joi.number().integer().min(1).max(52).default(1),
+          desdeSemana: Joi.number().integer().min(1).max(53).default(1),
+        }),
+      )
+      .max(50)
+      .required(),
+  }),
+});
+
 export const resultadoSchema = Joi.object({
   ...vacio,
   params: Joi.object({ uuid: uuidParam }),
