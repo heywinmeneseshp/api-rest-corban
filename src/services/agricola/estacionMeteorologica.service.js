@@ -1,6 +1,6 @@
 import { Op } from 'sequelize';
 import { EstacionClimaDiaria } from '../../database/associations.js';
-import { weatherlinkClient } from './weatherlink.client.js';
+import { weatherlinkClient, ESTACIONES, estacionValida } from './weatherlink.client.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { configuracionService } from '../sistema/configuracion.service.js';
 import { mailService } from '../sistema/mail.service.js';
@@ -8,7 +8,9 @@ import { resolverDestinatarios } from '../../utils/resolverDestinatarios.js';
 import { logger } from '../../utils/logger.js';
 
 const HORAS_LIMITE_SIN_DATOS = 24;
-const SENSOR_EXTERIOR = 43; // sensor_type del sensor exterior (lluvia/temp/hum/viento)
+// sensor_type del sensor exterior (lluvia/temp/hum/viento): 43 en la estación 1, 50 en la 2.
+const SENSORES_EXTERIOR = [43, 50];
+const sensorExterior = (data) => data?.sensors?.find((s) => SENSORES_EXTERIOR.includes(s.sensor_type));
 
 const aCelsius = (f) => (f === null || f === undefined ? null : ((Number(f) - 32) * 5) / 9);
 const round2 = (n) => (n === null || n === undefined || Number.isNaN(n) ? null : Math.round(n * 100) / 100);
@@ -55,9 +57,9 @@ export const estacionMeteorologicaService = {
   // Condiciones actuales — mapea el sensor exterior a campos simples, en
   // unidades métricas (la API ya entrega lluvia en mm; temperatura llega
   // en °F y se convierte).
-  async obtenerActual() {
-    const data = await weatherlinkClient.current();
-    const sensor = data.sensors?.find((s) => s.sensor_type === SENSOR_EXTERIOR);
+  async obtenerActual(estacion = 1) {
+    const data = await weatherlinkClient.current(estacionValida(estacion));
+    const sensor = sensorExterior(data);
     const d = sensor?.data?.[0];
     if (!d) throw ApiError.badRequest('La estación no reportó datos actuales');
 
@@ -80,10 +82,11 @@ export const estacionMeteorologicaService = {
   // máximos/mínimos = el mayor/menor hi/lo reportado en cualquier registro
   // del día (cada registro ya trae su propio hi/lo del intervalo). Guarda
   // (o actualiza) la fila de `estacion_clima_diaria` para esa fecha.
-  async sincronizarFecha(fechaIso) {
+  async sincronizarFecha(fechaIso, estacion = 1) {
+    estacion = estacionValida(estacion);
     const { start, end } = rangoDiaBogota(fechaIso);
-    const data = await weatherlinkClient.historic(start, end);
-    const sensor = data.sensors?.find((s) => s.sensor_type === SENSOR_EXTERIOR);
+    const data = await weatherlinkClient.historic(start, end, estacion);
+    const sensor = sensorExterior(data);
     const registros = sensor?.data || [];
 
     let sumaMm = 0;
@@ -134,33 +137,43 @@ export const estacionMeteorologicaService = {
       vientoMax: round2(vientoMax),
     };
 
-    const existente = await EstacionClimaDiaria.findOne({ where: { fecha: fechaIso } });
+    const existente = await EstacionClimaDiaria.findOne({ where: { fecha: fechaIso, estacion } });
     if (existente) {
       await existente.update(valores);
       return existente;
     }
-    return EstacionClimaDiaria.create({ fecha: fechaIso, ...valores });
+    return EstacionClimaDiaria.create({ fecha: fechaIso, estacion, ...valores });
   },
 
   // Llamado por el cron diario (ver cron.controller.js) — sincroniza el
   // día que recién cerró.
+  // Sincroniza todas las estaciones configuradas; una que falle no corta a las demás.
   async sincronizarDiaAnterior() {
     const fecha = fechaAyerBogota();
-    const fila = await this.sincronizarFecha(fecha);
-    return { fecha, registrado: Boolean(fila) };
+    const estaciones = [];
+    for (const id of Object.keys(ESTACIONES).map(Number)) {
+      try {
+        const fila = await this.sincronizarFecha(fecha, id);
+        estaciones.push({ estacion: id, registrado: Boolean(fila) });
+      } catch (error) {
+        logger.warn('Sincronización diaria de estación falló', { estacion: id, message: error.message });
+        estaciones.push({ estacion: id, registrado: false, error: error.message });
+      }
+    }
+    return { fecha, registrado: estaciones.some((e) => e.registrado), estaciones };
   },
 
   // Sincroniza cada día entre fechaDesde y fechaHasta (inclusive), uno por
   // uno (la API de WeatherLink no admite pedir varios días en un solo
   // request — ver rangoDiaBogota). No corta el rango si un día falla —
   // sigue con los demás y reporta cuáles fallaron.
-  async sincronizarRango(fechaDesde, fechaHasta) {
+  async sincronizarRango(fechaDesde, fechaHasta, estacion = 1) {
     const dias = rangoFechas(fechaDesde, fechaHasta);
     const sincronizados = [];
     const errores = [];
     for (const fecha of dias) {
       try {
-        await this.sincronizarFecha(fecha);
+        await this.sincronizarFecha(fecha, estacion);
         sincronizados.push(fecha);
       } catch (error) {
         errores.push({ fecha, error: error.message });
@@ -172,7 +185,7 @@ export const estacionMeteorologicaService = {
 
   // Días del último mes (desde hoy-1mes hasta ayer, sin incluir hoy —
   // todavía no cierra) que NO tienen fila en estacion_clima_diaria.
-  async diasFaltantesUltimoMes() {
+  async diasFaltantesUltimoMes(estacion = 1) {
     const ayer = fechaAyerBogota();
     const hoy = new Date().toISOString().slice(0, 10);
     const desde = new Date(`${hoy}T00:00:00Z`);
@@ -180,7 +193,7 @@ export const estacionMeteorologicaService = {
     const fechaDesde = desde.toISOString().slice(0, 10);
 
     const registrados = await EstacionClimaDiaria.findAll({
-      where: { fecha: { [Op.between]: [fechaDesde, ayer] } },
+      where: { estacion, fecha: { [Op.between]: [fechaDesde, ayer] } },
       attributes: ['fecha'],
     });
     const registradosSet = new Set(registrados.map((r) => (r.fecha instanceof Date ? r.fecha.toISOString().slice(0, 10) : String(r.fecha))));
@@ -191,15 +204,16 @@ export const estacionMeteorologicaService = {
   // Rellena, uno por uno y espaciados, los días del último mes que todavía
   // no tienen dato — pensado para llamarse al abrir el módulo (ver
   // estacionMeteorologica.controller.js#sincronizarFaltantes), no por cron.
-  async sincronizarFaltantes() {
-    const faltantes = await this.diasFaltantesUltimoMes();
+  async sincronizarFaltantes(estacion = 1) {
+    estacion = estacionValida(estacion);
+    const faltantes = await this.diasFaltantesUltimoMes(estacion);
     if (!faltantes.length) return { sincronizados: [], errores: [] };
 
     const sincronizados = [];
     const errores = [];
     for (const fecha of faltantes) {
       try {
-        await this.sincronizarFecha(fecha);
+        await this.sincronizarFecha(fecha, estacion);
         sincronizados.push(fecha);
       } catch (error) {
         errores.push({ fecha, error: error.message });
@@ -213,12 +227,12 @@ export const estacionMeteorologicaService = {
   // dato del sensor exterior en WeatherLink; si la API no devuelve datos o
   // falla la consulta, también cuenta como "sin datos" (con el motivo en
   // `detalle`).
-  async verificarSinDatos() {
+  async verificarSinDatos(estacion = 1) {
     let ultimoDato = null;
     let detalle = null;
     try {
-      const data = await weatherlinkClient.current();
-      const sensor = data.sensors?.find((s) => s.sensor_type === SENSOR_EXTERIOR);
+      const data = await weatherlinkClient.current(estacion);
+      const sensor = sensorExterior(data);
       const ts = sensor?.data?.[0]?.ts;
       if (ts) ultimoDato = new Date(ts * 1000);
       else detalle = 'La estación no reportó datos actuales';
@@ -264,8 +278,8 @@ export const estacionMeteorologicaService = {
     return { ...estado, enviado: true, destinatarios };
   },
 
-  async listarHistorico({ fechaDesde, fechaHasta } = {}) {
-    const where = {};
+  async listarHistorico({ fechaDesde, fechaHasta, estacion } = {}) {
+    const where = { estacion: estacionValida(estacion) };
     if (fechaDesde || fechaHasta) {
       where.fecha = {};
       if (fechaDesde) where.fecha[Op.gte] = fechaDesde;

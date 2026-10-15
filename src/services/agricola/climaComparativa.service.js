@@ -7,7 +7,9 @@ import { getFincaIdsPermitidas } from '../../utils/fincaScope.js';
 // formato diario, para graficarlas juntas. Más estaciones a futuro = más
 // fuentes de tipo 'estacion'.
 const ESTACION_ID = 'estacion';
+const ESTACION_2_ID = 'estacion2';
 const ESTACION_NOMBRE = 'Estación Pantoja 01 Norte';
+const ESTACION_2_NOMBRE = 'Estación San Francisco Consola';
 const PREFIJO_FINCA = 'finca:';
 
 const num = (v) => (v === null || v === undefined ? null : Number(v));
@@ -33,6 +35,7 @@ export const climaComparativaService = {
     const fincas = await Finca.findAll({ where, attributes: ['uuid', 'codigo', 'nombre'], order: [['nombre', 'ASC']] });
     return [
       { id: ESTACION_ID, tipo: 'estacion', nombre: ESTACION_NOMBRE },
+      { id: ESTACION_2_ID, tipo: 'estacion', nombre: ESTACION_2_NOMBRE },
       ...fincas.map((f) => ({ id: `${PREFIJO_FINCA}${f.uuid}`, tipo: 'openmeteo', nombre: f.nombre, codigo: f.codigo })),
     ];
   },
@@ -45,9 +48,10 @@ export const climaComparativaService = {
     const whereFecha = fechaDesde || fechaHasta ? { fecha: rango } : {};
 
     const items = [];
-    if (fuentes.includes(ESTACION_ID)) {
-      const rows = await EstacionClimaDiaria.findAll({ where: whereFecha, order: [['fecha', 'ASC']] });
-      for (const r of rows) items.push({ fuente: ESTACION_ID, ...normalizar(r) });
+    for (const [fuente, estacion] of [[ESTACION_ID, 1], [ESTACION_2_ID, 2]]) {
+      if (!fuentes.includes(fuente)) continue;
+      const rows = await EstacionClimaDiaria.findAll({ where: { ...whereFecha, estacion }, order: [['fecha', 'ASC']] });
+      for (const r of rows) items.push({ fuente, ...normalizar(r) });
     }
 
     const fincaUuids = fuentes.filter((f) => f.startsWith(PREFIJO_FINCA)).map((f) => f.slice(PREFIJO_FINCA.length));

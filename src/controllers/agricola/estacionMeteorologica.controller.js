@@ -7,7 +7,7 @@ import { asyncHandler } from '../../utils/asyncHandler.js';
 
 export const estacionMeteorologicaController = {
   actual: asyncHandler(async (req, res) => {
-    const data = await estacionMeteorologicaService.obtenerActual();
+    const data = await estacionMeteorologicaService.obtenerActual(req.query.estacion);
     ApiResponse.send(res, { message: 'Condiciones actuales obtenidas correctamente', data });
   }),
 
@@ -105,9 +105,10 @@ export const estacionMeteorologicaController = {
   // de ayer. El cron diario (ver cron.controller.js) usa el default.
   sincronizar: asyncHandler(async (req, res) => {
     const { fecha, fechaDesde, fechaHasta } = req.body || {};
+    const estacion = req.body?.estacion ?? req.query.estacion;
 
     if (fechaDesde && fechaHasta) {
-      const resultado = await estacionMeteorologicaService.sincronizarRango(fechaDesde, fechaHasta);
+      const resultado = await estacionMeteorologicaService.sincronizarRango(fechaDesde, fechaHasta, estacion);
       ApiResponse.send(res, {
         message: `Sincronizados ${resultado.sincronizados.length} día(s)${resultado.errores.length ? `, ${resultado.errores.length} con error` : ''}`,
         data: resultado,
@@ -116,14 +117,14 @@ export const estacionMeteorologicaController = {
     }
 
     const fechaFinal = fecha || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const fila = await estacionMeteorologicaService.sincronizarFecha(fechaFinal);
+    const fila = await estacionMeteorologicaService.sincronizarFecha(fechaFinal, estacion);
     ApiResponse.send(res, { message: `Estación sincronizada para ${fechaFinal}`, data: fila });
   }),
 
   // Llamado al abrir el módulo (ver estacion-meteorologica/page.js) — rellena
   // en silencio los días del último mes que todavía no tienen dato.
   sincronizarFaltantes: asyncHandler(async (req, res) => {
-    const resultado = await estacionMeteorologicaService.sincronizarFaltantes();
+    const resultado = await estacionMeteorologicaService.sincronizarFaltantes(req.body?.estacion ?? req.query.estacion);
     ApiResponse.send(res, {
       message: resultado.sincronizados.length
         ? `Se rellenaron ${resultado.sincronizados.length} día(s) faltante(s)`

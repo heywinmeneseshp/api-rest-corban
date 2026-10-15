@@ -10,7 +10,9 @@ EstacionClimaDiaria.init(
   {
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     uuid: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, allowNull: false, unique: true },
-    fecha: { type: DataTypes.DATEONLY, allowNull: false, unique: true },
+    // 1 = Pantoja 01 Norte, 2 = San Francisco Consola (ver weatherlink.client.js).
+    estacion: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 1 },
+    fecha: { type: DataTypes.DATEONLY, allowNull: false },
     mm: { type: DataTypes.DECIMAL(8, 2), allowNull: true },
     temperatura: { type: DataTypes.DECIMAL(5, 2), allowNull: true },
     temperaturaMaxima: { type: DataTypes.DECIMAL(5, 2), allowNull: true, field: 'temperatura_maxima' },
@@ -25,6 +27,7 @@ EstacionClimaDiaria.init(
     modelName: 'EstacionClimaDiaria',
     tableName: 'estacion_clima_diaria',
     underscored: true,
+    indexes: [{ unique: true, fields: ['fecha', 'estacion'], name: 'estacion_clima_diaria_fecha_estacion' }],
     timestamps: true,
     createdAt: 'created_at',
     updatedAt: 'updated_at',
