@@ -11,6 +11,9 @@ Lote.init(
     codigo: { type: DataTypes.STRING(20), allowNull: false },
     nombre: { type: DataTypes.STRING(150), allowNull: false },
     area: { type: DataTypes.DECIMAL(10, 2), allowNull: true },
+    // Perímetro para el mapa — array de pares [lat, lng] (importado desde un
+    // .kml/.kmz). Null = sin perímetro cargado.
+    perimetro: { type: DataTypes.JSON, allowNull: true },
     estado: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
     updatedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'updated_by' },

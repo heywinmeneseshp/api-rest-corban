@@ -1,0 +1,36 @@
+'use strict';
+
+/** @type {import('sequelize-cli').Migration} */
+module.exports = {
+  async up(queryInterface, Sequelize) {
+    await queryInterface.createTable('emision_foliar', {
+      id: { type: Sequelize.INTEGER, autoIncrement: true, primaryKey: true, allowNull: false },
+      uuid: { type: Sequelize.UUID, allowNull: false, unique: true, defaultValue: Sequelize.UUIDV4 },
+      evaluacion_id: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+        unique: true,
+        references: { model: 'evaluaciones', key: 'id' },
+        onUpdate: 'CASCADE',
+        onDelete: 'CASCADE',
+      },
+      hojas_totales: { type: Sequelize.INTEGER, allowNull: false, defaultValue: 0 },
+      candela: { type: Sequelize.DECIMAL(6, 2), allowNull: true },
+      estado: { type: Sequelize.BOOLEAN, allowNull: false, defaultValue: true },
+      created_by: {
+        type: Sequelize.INTEGER, allowNull: true,
+        references: { model: 'users', key: 'id' }, onUpdate: 'CASCADE', onDelete: 'SET NULL',
+      },
+      updated_by: {
+        type: Sequelize.INTEGER, allowNull: true,
+        references: { model: 'users', key: 'id' }, onUpdate: 'CASCADE', onDelete: 'SET NULL',
+      },
+      created_at: { type: Sequelize.DATE, allowNull: false, defaultValue: Sequelize.fn('NOW') },
+      updated_at: { type: Sequelize.DATE, allowNull: false, defaultValue: Sequelize.fn('NOW') },
+    });
+  },
+
+  async down(queryInterface) {
+    await queryInterface.dropTable('emision_foliar');
+  },
+};

@@ -43,10 +43,17 @@ const findAlmacenByUuidOrFail = async (almacenUuid) => {
 export const userService = {
   async listUsers(query) {
     const { page, limit, offset } = getPagination(query);
+    let fincaId;
+    if (query.fincaUuid) {
+      const finca = await Finca.findOne({ where: { uuid: query.fincaUuid }, attributes: ['id'] });
+      if (!finca) throw ApiError.notFound('Finca no encontrada');
+      fincaId = finca.id;
+    }
     const { rows, count } = await userRepository.findAndCountAll({
       limit,
       offset,
       search: query.search,
+      fincaId,
     });
     return { items: rows, meta: buildPaginationMeta({ page, limit, total: count }) };
   },

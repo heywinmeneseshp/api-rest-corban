@@ -8,6 +8,7 @@ import {
   Infeccion,
   ConteoHojas,
   SumaBruta,
+  EmisionFoliar,
   Lote,
   Finca,
 } from '../../database/associations.js';
@@ -49,6 +50,7 @@ const buildIncludes = ({ fincaId, fincaIds, loteId } = {}) => {
     { model: Semana, as: 'semana', attributes: ['id', 'uuid', 'codigo'] },
     { model: Infeccion, as: 'infeccion', include: [{ association: 'hojas' }] },
     { model: ConteoHojas, as: 'conteoHojas' },
+    { model: EmisionFoliar, as: 'emisionFoliar' },
     { model: SumaBruta, as: 'sumaBruta', include: [{ association: 'estadios' }] },
   ];
 };

@@ -423,33 +423,39 @@ export const precalibracionService = {
       },
       tabla: { filas, totales, agrupadoPor: agrupadoPorFinca ? 'finca' : 'lote' },
       distribucion,
-      ratio: await this._ratio(cal, conEdad),
+      ratio: await this._ratio(cal, filtros),
       potencial: await this._potencial(cal, conEdad, filtros, semanaFiltro),
     };
   },
 
-  // Aptos por hectárea (de los lotes evaluados) por semana: línea del año actual + promedio de la misma semana
-  // en otros años (con los datos propios de precalibración).
-  async _ratio(cal, conEdad) {
-    const porSemana = new Map();
-    for (const r of conEdad) {
-      const e = porSemana.get(r.semanaId) || { aptos: 0, lotes: new Set() };
-      e.aptos += 1;
-      e.lotes.add(r.loteId);
-      porSemana.set(r.semanaId, e);
-    }
-    const loteIds = [...new Set(conEdad.map((r) => r.loteId))];
-    const lotes = loteIds.length ? await Lote.findAll({ where: { id: { [Op.in]: loteIds } }, attributes: ['id', 'area'] }) : [];
-    const areaDe = new Map(lotes.map((l) => [l.id, Number(l.area) || 0]));
-    const ratioDe = (semanaId) => {
-      const e = porSemana.get(semanaId);
-      if (!e) return null;
-      let ha = 0;
-      for (const id of e.lotes) ha += areaDe.get(id) || 0;
-      return ha > 0 ? redondear(e.aptos / ha) : null;
-    };
+  // Ratio histórico (cajas producidas ÷ racimos cosechados) por semana: línea del año actual + promedio de la
+  // misma semana del calendario en otros años. Sale de Producción Semanal (cajas) y de los movimientos de racimos
+  // (PROCESADO + RECUSE por semana de registro) — el mismo ratio de Estimaciones de Fincas, NO de lo precalibrado:
+  // así hay histórico aunque todavía no se haya precalibrado nada. Con varias fincas en el alcance, por semana solo
+  // cuentan las que tienen cajas Y racimos ese mismo período (igual que el ratio del Dashboard).
+  async _ratio(cal, filtros) {
+    const fincaIds = filtros.fincaIds || (await Finca.findAll({ attributes: ['id'], raw: true })).map((f) => f.id);
     const actualIdx = cal.actual ? cal.idx.get(cal.actual.id) : cal.semanas.length - 1;
     const ventana = cal.semanas.slice(Math.max(0, actualIdx - VENTANA_RATIO), actualIdx + VENTANA_RATIO + 1);
+    const numeros = new Set(ventana.map((s) => s.numeroSemana));
+    const semanaIds = cal.semanas.filter((s) => numeros.has(s.numeroSemana)).map((s) => s.id);
+    const [cajas, cosechado] = await Promise.all([
+      produccionSemanalRepository.getCajasPorFincaYSemana({ fincaIds, semanaIds }),
+      racimoMovimientoRepository.getCosechadoPorFincaYSemana({ fincaIds, semanaRegistroIds: semanaIds }),
+    ]);
+    const ratioDe = (semanaId) => {
+      let c = 0;
+      let r = 0;
+      for (const fincaId of fincaIds) {
+        const cj = cajas.get(`${fincaId}-${semanaId}`);
+        const co = cosechado.get(`${fincaId}-${semanaId}`);
+        if (cj > 0 && co > 0) {
+          c += cj;
+          r += co;
+        }
+      }
+      return r > 0 ? redondear(c / r) : null;
+    };
     return ventana.map((s) => {
       const otras = cal.semanas.filter((x) => x.numeroSemana === s.numeroSemana && x.anio !== s.anio).map((x) => ratioDe(x.id)).filter((v) => v !== null);
       return {

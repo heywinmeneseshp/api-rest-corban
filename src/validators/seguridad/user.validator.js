@@ -10,6 +10,7 @@ export const listUsersSchema = Joi.object({
     page: Joi.number().integer().min(1),
     limit: Joi.number().integer().min(1).max(100),
     search: Joi.string().allow('').max(150),
+    fincaUuid: Joi.string().guid({ version: 'uuidv4' }),
   }),
 });
 

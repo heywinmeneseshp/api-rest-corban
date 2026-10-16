@@ -59,6 +59,8 @@ export const updateLoteSchema = Joi.object({
     // El área total puede ser 0.
     area: Joi.number().min(0).precision(2),
     estado: Joi.boolean(),
+    // Perímetro para el mapa — pares [lat, lng] (mín. 3 puntos); null lo limpia.
+    perimetro: Joi.array().items(Joi.array().length(2).items(Joi.number())).min(3).allow(null),
   }).min(1),
   params: Joi.object({ uuid: uuidParam }),
   query: Joi.object({}),

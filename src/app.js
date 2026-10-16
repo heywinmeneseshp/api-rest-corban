@@ -23,6 +23,7 @@ import permisoRoutes from './routes/seguridad/permiso.routes.js';
 import menuRoutes from './routes/seguridad/menuItem.routes.js';
 
 import fincaRoutes from './routes/agricola/finca.routes.js';
+import fincaCapaMapaRoutes from './routes/agricola/fincaCapaMapa.routes.js';
 import productoRoutes from './routes/agricola/producto.routes.js';
 import grupoFincaRoutes from './routes/agricola/grupoFinca.routes.js';
 import zonaRoutes from './routes/agricola/zona.routes.js';
@@ -34,6 +35,7 @@ import semanaRoutes from './routes/agricola/semana.routes.js';
 import evaluacionRoutes from './routes/agricola/evaluacion.routes.js';
 import infeccionRoutes from './routes/agricola/infeccion.routes.js';
 import conteoHojasRoutes from './routes/agricola/conteoHojas.routes.js';
+import emisionFoliarRoutes from './routes/agricola/emisionFoliar.routes.js';
 import sumaBrutaRoutes from './routes/agricola/sumaBruta.routes.js';
 import motivoRepiqueRoutes from './routes/agricola/motivoRepique.routes.js';
 import motivoRecuseRoutes from './routes/agricola/motivoRecuse.routes.js';
@@ -95,7 +97,7 @@ app.use(
 );
 app.use(cors(corsConfig));
 app.use(compression());
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, '../public')));
 app.use(
@@ -124,6 +126,7 @@ router.use('/permisos', permisoRoutes);
 router.use('/menu', menuRoutes);
 
 router.use('/fincas', fincaRoutes);
+router.use('/fincas', fincaCapaMapaRoutes);
 router.use('/productos', productoRoutes);
 router.use('/grupos-finca', grupoFincaRoutes);
 router.use('/zonas', zonaRoutes);
@@ -138,6 +141,7 @@ router.use('/semanas', semanaRoutes);
 router.use('/evaluaciones', evaluacionRoutes);
 router.use('/evaluaciones', infeccionRoutes);
 router.use('/evaluaciones', conteoHojasRoutes);
+router.use('/evaluaciones', emisionFoliarRoutes);
 router.use('/evaluaciones', sumaBrutaRoutes);
 
 router.use('/motivos-repique', motivoRepiqueRoutes);

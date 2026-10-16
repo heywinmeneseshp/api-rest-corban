@@ -19,6 +19,8 @@ import { Infeccion } from './models/infeccion.model.js';
 import { HojaInfectada } from './models/hojaInfectada.model.js';
 import { ConteoHojas } from './models/conteoHojas.model.js';
 import { SumaBruta } from './models/sumaBruta.model.js';
+import { EmisionFoliar } from './models/emisionFoliar.model.js';
+import { FincaCapaMapa } from './models/fincaCapaMapa.model.js';
 import { EstadioHoja } from './models/estadioHoja.model.js';
 import { Configuracion } from './models/configuracion.model.js';
 import { LoteAreaProduccion } from './models/loteAreaProduccion.model.js';
@@ -289,6 +291,14 @@ export const setupAssociations = () => {
   ConteoHojas.belongsTo(Semana, { foreignKey: 'semanaEmbolseId', as: 'semanaEmbolse' });
 
   // Suma bruta (1:1 con evaluación) + estadios por hoja (1:N con suma bruta)
+  Finca.hasMany(FincaCapaMapa, { foreignKey: 'fincaId', as: 'capasMapa' });
+  FincaCapaMapa.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+  Lote.hasMany(FincaCapaMapa, { foreignKey: 'loteId', as: 'capasMapa' });
+  FincaCapaMapa.belongsTo(Lote, { foreignKey: 'loteId', as: 'lote' });
+
+  Evaluacion.hasOne(EmisionFoliar, { foreignKey: 'evaluacionId', as: 'emisionFoliar' });
+  EmisionFoliar.belongsTo(Evaluacion, { foreignKey: 'evaluacionId', as: 'evaluacion' });
+
   Evaluacion.hasOne(SumaBruta, { foreignKey: 'evaluacionId', as: 'sumaBruta' });
   SumaBruta.belongsTo(Evaluacion, { foreignKey: 'evaluacionId', as: 'evaluacion' });
 
@@ -352,6 +362,8 @@ export const setupAssociations = () => {
   withAuditAssociationsNoDelete(HojaInfectada);
   withAuditAssociationsNoDelete(ConteoHojas);
   withAuditAssociationsNoDelete(SumaBruta);
+  withAuditAssociationsNoDelete(EmisionFoliar);
+  withAuditAssociations(FincaCapaMapa);
   withAuditAssociationsNoDelete(EstadioHoja);
   withAuditAssociations(MotivoRepique);
   withAuditAssociations(MotivoRecuse);
@@ -783,6 +795,8 @@ export {
   HojaInfectada,
   ConteoHojas,
   SumaBruta,
+  EmisionFoliar,
+  FincaCapaMapa,
   EstadioHoja,
   Configuracion,
   LoteAreaProduccion,

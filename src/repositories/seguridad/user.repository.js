@@ -3,7 +3,7 @@ import { User, Role, Finca, Almacen } from '../../database/associations.js';
 import { UsuarioRol, UsuarioFinca, UsuarioAlmacen } from '../../database/models/pivotModels.js';
 
 export const userRepository = {
-  async findAndCountAll({ limit, offset, search }) {
+  async findAndCountAll({ limit, offset, search, fincaId }) {
     const where = search
       ? {
           [Op.or]: [
@@ -13,7 +13,13 @@ export const userRepository = {
             { email: { [Op.like]: `%${search}%` } },
           ],
         }
-      : undefined;
+      : {};
+    // Solo usuarios con esa finca asignada explícitamente (sin restringir las
+    // fincas que se listan de cada uno).
+    if (fincaId) {
+      const filas = await UsuarioFinca.findAll({ where: { fincaId }, attributes: ['userId'], raw: true });
+      where.id = { [Op.in]: filas.length ? filas.map((f) => f.userId) : [0] };
+    }
 
     return User.findAndCountAll({
       where,
