@@ -3,6 +3,7 @@ import { sequelize } from '../../database/connection.js';
 import { Finca, Lote, Semana, MotivoRepique, MotivoRecuse, User, FincaSemanaLiquidacion } from '../../database/associations.js';
 import { racimoMovimientoRepository } from '../../repositories/agricola/racimoMovimiento.repository.js';
 import { semanaRepository } from '../../repositories/agricola/semana.repository.js';
+import { hectareasPorFincaYSemana } from './dashboard.service.js';
 import { calcularColorSemana } from '../../utils/semanaColor.js';
 import { parseBulkFile } from '../../utils/bulkFileParser.js';
 import { ApiError } from '../../utils/ApiError.js';
@@ -1343,6 +1344,10 @@ export const racimoMovimientoService = {
       ? query.anios.split(',').map(Number).filter(Boolean)
       : [query.anio ? Number(query.anio) : hoy.getFullYear()];
 
+    // Fincas sobre las que se calculan las hectáreas (sin restricción de usuario = todas).
+    const fincaIdsParaHa = fincaIdsFiltro || (await Finca.findAll({ attributes: ['id'], raw: true })).map((f) => f.id);
+    const redondear = (n, d) => Math.round(n * 10 ** d) / 10 ** d;
+
     const resultados = await Promise.all(
       anios.map(async (anio) => {
         const semanas = await semanaRepository.findAllByAnio(anio);
@@ -1357,11 +1362,50 @@ export const racimoMovimientoService = {
           edadSemanas: edadesSeleccionadas,
         });
 
+        // Por hectárea: por cada semana, embolsado de las fincas con área ÷ hectáreas vigentes de esas fincas. En el año, por finca:
+        // suma de los embolses por hectárea semanales.
+        const porFincaSemana = await racimoMovimientoRepository.getEmbolsePorFincaYSemana({
+          fincaIds: fincaIdsFiltro,
+          semanaEmbolseIds: semanas.map((s) => s.id),
+          tipo,
+          campo,
+          motivoRepiqueId,
+          edadSemanas: edadesSeleccionadas,
+        });
+        const haPorFinca = await hectareasPorFincaYSemana(fincaIdsParaHa, semanas);
+        const numDen = new Map(); // semanaId -> { num, den }
+        // Promedio semanal del año por finca: media de (embolsado ÷ hectáreas) desde la S1 hasta la última semana con
+        // registros del año (las semanas futuras no cuentan; las intermedias sin embolse cuentan como 0).
+        const ultimaSemanaConRegistro = Math.max(0, ...semanas.filter((s) => (totalesPorSemana.get(s.id) || 0) > 0).map((s) => s.numeroSemana));
+        const acumAnual = new Map(); // fincaId -> { suma, n }
+        for (const [fincaId, haSemanas] of haPorFinca) {
+          for (const s of semanas) {
+            const ha = haSemanas.get(s.id) || 0;
+            if (ha <= 0) continue;
+            const e = porFincaSemana.get(`${fincaId}-${s.id}`) || 0;
+            const acc = numDen.get(s.id) || { num: 0, den: 0 };
+            acc.num += e;
+            acc.den += ha;
+            numDen.set(s.id, acc);
+            if (s.numeroSemana <= ultimaSemanaConRegistro) {
+              const a = acumAnual.get(fincaId) || { suma: 0, n: 0 };
+              a.suma += e / ha;
+              a.n += 1;
+              acumAnual.set(fincaId, a);
+            }
+          }
+        }
+        const porFincaAnual = new Map(); // fincaId -> promedio semanal de embolse por ha del año
+        for (const [fincaId, a] of acumAnual) if (a.n > 0) porFincaAnual.set(fincaId, a.suma / a.n);
+
         const puntos = semanas.map((s) => {
           const total = totalesPorSemana.get(s.id);
+          const nd = numDen.get(s.id);
           return {
             numeroSemana: s.numeroSemana,
             totalEmbolsado: total ?? null,
+            hectareas: nd ? redondear(nd.den, 2) : null,
+            porHectarea: nd && nd.den > 0 && total !== undefined && total !== null ? redondear(nd.num / nd.den, 2) : null,
             codigo: s.codigo,
             color: s.color,
             fechaInicio: s.fechaInicio,
@@ -1377,6 +1421,7 @@ export const racimoMovimientoService = {
           totalAnual: puntos.reduce((acc, p) => acc + (p.totalEmbolsado || 0), 0),
           puntos,
           semanaIds: semanas.map((s) => s.id),
+          porFincaAnual,
         };
       }),
     );
@@ -1409,6 +1454,10 @@ export const racimoMovimientoService = {
       codigo: f.codigo,
       nombre: f.nombre,
       totalEmbolsado: totalPorFinca.get(f.id) || 0,
+      // Embolse por hectárea de cada año seleccionado: { [anio]: valor | null }.
+      porHectareaAnual: Object.fromEntries(
+        aniosValidos.map((a) => [a.anio, a.porFincaAnual.has(f.id) ? redondear(a.porFincaAnual.get(f.id), 1) : null]),
+      ),
     }));
 
     // Ranking semana vs. semana anterior: la semana de embolse elegida
@@ -1483,7 +1532,7 @@ export const racimoMovimientoService = {
     return {
       finca: fincasSeleccionadas.length === 1 ? { uuid: fincasSeleccionadas[0].uuid, codigo: fincasSeleccionadas[0].codigo, nombre: fincasSeleccionadas[0].nombre } : null,
       fincasSeleccionadas: fincasSeleccionadas.map((f) => ({ uuid: f.uuid, codigo: f.codigo, nombre: f.nombre })),
-      anios: aniosValidos.map(({ semanaIds: _semanaIds, ...resto }) => resto),
+      anios: aniosValidos.map(({ semanaIds: _semanaIds, porFincaAnual: _porFincaAnual, ...resto }) => resto),
       rankingFincas,
       rankingSemanal,
       motivosRepique,

@@ -60,6 +60,47 @@ function sumarRacimosParaRatio(filas, fechaInicioPorSemanaId, claveDe) {
 // registro de lote_area_produccion cuya semana no sea posterior; sin semana, por fecha de registro). Mismo criterio de
 // "área vigente" que lote.service.js / loteAreaProduccion.repository.js (areaVigenteEnSemana), pero para todas las semanas
 // de una vez. `semanas`: [{ id, fechaInicio, fechaFin }] del año, en cualquier orden.
+// Igual que hectareasPorSemana pero separado por finca: Map<fincaId, Map<semanaId, hectáreas>>, con UNA sola consulta.
+export async function hectareasPorFincaYSemana(fincaIds, semanas) {
+  const resultado = new Map();
+  if (!fincaIds || fincaIds.length === 0 || semanas.length === 0) return resultado;
+  const filas = await sequelize.query(
+    `SELECT l.finca_id AS fincaId, ap.lote_id AS loteId, ap.area AS area, ap.id AS id,
+            COALESCE(s.fecha_inicio, ap.fecha_registro) AS fecha
+       FROM lote_area_produccion ap
+       JOIN lotes l ON l.id = ap.lote_id AND l.deleted_at IS NULL
+       LEFT JOIN semanas s ON s.id = ap.semana_id
+      WHERE l.finca_id IN (:fincaIds)
+      ORDER BY ap.lote_id, fecha, ap.id`,
+    { replacements: { fincaIds }, type: QueryTypes.SELECT },
+  );
+  const porFinca = new Map();
+  for (const f of filas) {
+    if (!porFinca.has(f.fincaId)) porFinca.set(f.fincaId, new Map());
+    const lotes = porFinca.get(f.fincaId);
+    if (!lotes.has(f.loteId)) lotes.set(f.loteId, []);
+    lotes.get(f.loteId).push({ fecha: String(f.fecha).slice(0, 10), area: Number(f.area) });
+  }
+  for (const [fincaId, lotes] of porFinca) {
+    const mapa = new Map();
+    for (const semana of semanas) {
+      const limite = String(semana.fechaInicio).slice(0, 10);
+      let total = 0;
+      for (const registros of lotes.values()) {
+        let vigente = null;
+        for (const r of registros) {
+          if (r.fecha <= limite) vigente = r.area;
+          else break;
+        }
+        if (vigente !== null) total += vigente;
+      }
+      mapa.set(semana.id, Math.round(total * 100) / 100);
+    }
+    resultado.set(fincaId, mapa);
+  }
+  return resultado;
+}
+
 async function hectareasPorSemana(fincaIds, semanas) {
   const mapa = new Map(semanas.map((s) => [s.id, 0]));
   if (!fincaIds || fincaIds.length === 0 || semanas.length === 0) return mapa;

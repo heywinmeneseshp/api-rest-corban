@@ -277,6 +277,14 @@ async function filaGuardadaAEdicion(c, transaction) {
   };
 }
 
+// ¿Es Administrador? Se mira el token y, si el token no lo trae (sesión vieja o roles sin refrescar), también la BD:
+// una receta creada por un administrador no debe quedar "pendiente de aprobación" solo por eso.
+async function esAdministrador(user, actorId) {
+  if ((user?.roles || []).includes('Administrador')) return true;
+  if (!actorId) return false;
+  return (await mezclaRepository.findRolNombresByUserId(actorId)).includes('Administrador');
+}
+
 export const mezclaService = {
   async list(query) {
     const { page, limit, offset } = getPagination(query);
@@ -1228,7 +1236,7 @@ export const mezclaService = {
       dosisPorHectareaUnidadId = u.id;
     }
 
-    const esAdmin = (user?.roles || []).includes('Administrador');
+    const esAdmin = await esAdministrador(user, actorId);
 
     // `articuloNombre` es el nombre COMERCIAL de la mezcla (Mezcla.nombre). El
     // artículo elaborado es un registro interno de inventario: se nombra solo
@@ -1781,7 +1789,7 @@ export const mezclaService = {
       throw ApiError.badRequest('Esta prueba no está pendiente de aprobación');
     }
 
-    const esAdmin = (user?.roles || []).includes('Administrador');
+    const esAdmin = await esAdministrador(user, actorId);
     if (!esAdmin) {
       const { aprobadoresRolesUuids = [] } = await configuracionService.getMezclaParametros();
       const rolesUsuario = await mezclaRepository.findRolUuidsByUserId(actorId);

@@ -453,6 +453,13 @@ export const mezclaRepository = {
 
   // UUIDs de los roles de un usuario — para el chequeo de aprobación de
   // pruebas de mezcla (roles autorizados en Configuración → Parámetros).
+  async findRolNombresByUserId(userId) {
+    const u = await User.findByPk(userId, {
+      include: [{ model: Role, as: 'roles', attributes: ['nombre'], through: { attributes: [] } }],
+    });
+    return (u?.roles || []).map((r) => r.nombre);
+  },
+
   async findRolUuidsByUserId(userId) {
     const u = await User.findByPk(userId, {
       include: [{ model: Role, as: 'roles', attributes: ['uuid'], through: { attributes: [] } }],

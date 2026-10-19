@@ -24,6 +24,7 @@ import menuRoutes from './routes/seguridad/menuItem.routes.js';
 
 import fincaRoutes from './routes/agricola/finca.routes.js';
 import fincaCapaMapaRoutes from './routes/agricola/fincaCapaMapa.routes.js';
+import ucEmbolseRoutes from './routes/agricola/ucEmbolse.routes.js';
 import productoRoutes from './routes/agricola/producto.routes.js';
 import grupoFincaRoutes from './routes/agricola/grupoFinca.routes.js';
 import zonaRoutes from './routes/agricola/zona.routes.js';
@@ -161,6 +162,7 @@ router.use('/clima', climaRoutes);
 router.use('/precipitaciones', climaRoutes);
 router.use('/precipitacion-diaria', precipitacionDiariaRoutes);
 router.use('/estacion-meteorologica', estacionMeteorologicaRoutes);
+router.use('/reportes/uc-embolse', ucEmbolseRoutes);
 router.use('/lote-area-config', loteAreaConfigRoutes);
 router.use('/categorias-labor', categoriaLaborRoutes);
 router.use('/labores', laborRoutes);
