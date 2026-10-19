@@ -456,6 +456,11 @@ export const mezclaService = {
       if (payload.codigo) {
         await assertSinDuplicado(Mezcla, { codigo: payload.codigo }, t, 'Ya existe una mezcla con ese código', mezcla.id);
       }
+      // Nombre interno del artículo elaborado: se edita aparte del nombre comercial de la mezcla.
+      if (payload.articuloNombre && mezcla.articuloElaboradoId) {
+        await assertSinDuplicado(Articulo, { nombre: payload.articuloNombre }, t, 'Ya existe un artículo con ese nombre', mezcla.articuloElaboradoId);
+        await Articulo.update({ nombre: payload.articuloNombre, updatedBy: actorId }, { where: { id: mezcla.articuloElaboradoId }, transaction: t });
+      }
 
       await mezclaRepository.update(mezcla, data, { transaction: t });
 
@@ -1225,12 +1230,22 @@ export const mezclaService = {
 
     const esAdmin = (user?.roles || []).includes('Administrador');
 
+    // `articuloNombre` es el nombre COMERCIAL de la mezcla (Mezcla.nombre). El
+    // artículo elaborado es un registro interno de inventario: se nombra solo
+    // con el consecutivo de la mezcla ("Mezcla MEZ-0001"), no con el nombre
+    // comercial.
+    const codigo = await generarCorrelativo(Mezcla, { prefijo: 'MEZ', columna: 'codigo', padding: 4 });
+    // Se valida ANTES de crear el artículo para no dejar uno huérfano si el nombre comercial ya existe.
+    if (payload.articuloNombre && (await Mezcla.findOne({ where: { nombre: payload.articuloNombre } }))) {
+      throw ApiError.conflict('Ya existe una mezcla con ese nombre');
+    }
+
     // articuloService.create() maneja su propia transacción interna (mismo
     // patrón ya usado en crearElaborado()) — se llama antes de abrir la de
     // acá abajo.
     const nuevoArticulo = await articuloService.create(
       {
-        nombre: payload.articuloNombre,
+        nombre: `Mezcla ${codigo}`,
         codigo: payload.articuloCodigo || null,
         categoriaUuid: payload.articuloCategoriaUuid,
         unidadMedidaUuid: payload.articuloUnidadMedidaUuid || null,
@@ -1244,11 +1259,6 @@ export const mezclaService = {
     );
 
     return sequelize.transaction(async (t) => {
-      if (payload.articuloNombre) {
-        await assertSinDuplicado(Mezcla, { nombre: payload.articuloNombre }, t, 'Ya existe una mezcla con ese nombre');
-      }
-      const codigo = await generarCorrelativo(Mezcla, { prefijo: 'MEZ', columna: 'codigo', padding: 4, transaction: t });
-
       const mezcla = await mezclaRepository.create(
         {
           codigo,

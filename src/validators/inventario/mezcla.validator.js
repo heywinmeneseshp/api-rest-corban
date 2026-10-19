@@ -86,6 +86,8 @@ export const updateMezclaSchema = Joi.object({
   body: Joi.object({
     codigo: Joi.string().trim().max(50).allow(null, ''),
     nombre: Joi.string().trim().max(150),
+    // Nombre interno del artículo elaborado (distinto al nombre comercial de la mezcla).
+    articuloNombre: Joi.string().trim().max(150),
     descripcion: Joi.string().allow(null, '').max(1000),
     unidadRendimientoUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
     rendimiento: Joi.number().positive(),
