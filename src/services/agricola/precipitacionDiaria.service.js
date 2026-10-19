@@ -275,6 +275,26 @@ export const precipitacionDiariaService = {
     return resultados;
   },
 
+  // Serie para la gráfica: mismos filtros que `list`, sin paginar y en orden
+  // cronológico (tope de seguridad de 5000 registros).
+  async serie(query, user) {
+    const where = {};
+    await aplicarFiltroFinca(where, query, user);
+    if (query.fechaDesde || query.fechaHasta) {
+      where.fecha = {};
+      if (query.fechaDesde) where.fecha[Op.gte] = query.fechaDesde;
+      if (query.fechaHasta) where.fecha[Op.lte] = query.fechaHasta;
+    }
+    if (query.usuarioId) where.usuarioId = query.usuarioId;
+    const rows = await PrecipitacionDiaria.findAll({
+      where,
+      include: [{ model: Finca, as: 'finca', attributes: ['nombre'] }],
+      order: [['fecha', 'ASC']],
+      limit: 5000,
+    });
+    return { items: rows.map((r) => ({ fecha: r.fecha, fincaNombre: r.finca?.nombre ?? '—', mm: Number(r.mm) })) };
+  },
+
   async list(query, user) {
     const page = Math.max(1, parseInt(query.page) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(query.limit) || 50));

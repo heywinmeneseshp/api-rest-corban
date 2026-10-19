@@ -9,7 +9,7 @@ import { parseBulkFile } from '../../utils/bulkFileParser.js';
 // mezclarse con el resto del catálogo de Inventarios. Se resuelve/crea la
 // primera vez que hace falta (mismo patrón que
 // mezcla.service.js#resolveOrCrearReguladorPh).
-const CATEGORIA_SANIDAD_VEGETAL_NOMBRE = 'Sanidad Vegetal';
+const CATEGORIA_SANIDAD_VEGETAL_NOMBRE = 'Insumo Sanidad Vegetal';
 
 async function resolveOrCrearCategoriaSanidadVegetal(actorId) {
   const existente = await ArticuloCategoria.findOne({ where: { nombre: CATEGORIA_SANIDAD_VEGETAL_NOMBRE } });

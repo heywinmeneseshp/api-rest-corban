@@ -23,6 +23,11 @@ export const precipitacionDiariaController = {
     ApiResponse.send(res, { message: 'Registros obtenidos correctamente', data: result });
   }),
 
+  serie: asyncHandler(async (req, res) => {
+    const result = await precipitacionDiariaService.serie(req.query, req.user);
+    ApiResponse.send(res, { message: 'Serie de precipitación obtenida correctamente', data: result });
+  }),
+
   listUsuarios: asyncHandler(async (req, res) => {
     const result = await precipitacionDiariaService.listUsuariosRegistrados();
     ApiResponse.send(res, { message: 'Usuarios obtenidos correctamente', data: result });
