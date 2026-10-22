@@ -382,6 +382,40 @@ function assertProgramada(aspersion) {
   }
 }
 
+// Filas del snapshot de insumos de una aspersión: los de la receta (con la cantidad que el operador dejó en pantalla, si la ajustó) más los
+// insumos ADICIONALES — artículos del payload que no están en la receta de la mezcla. Un adicional guarda su cantidad tal cual (sin teórica
+// de receta: `cantidadCalculada` = `cantidad`), en la unidad indicada o, por defecto, la del artículo.
+async function construirFilasComponentes({ componentesReceta, payloadComponentes, actorId, transaction }) {
+  const lista = payloadComponentes || [];
+  const overridesPorArticulo = new Map(lista.map((c) => [c.articuloUuid, Number(c.cantidad)]));
+  const filas = componentesReceta.map((c) => ({
+    articuloId: c.articuloId,
+    unidadId: c.unidadId,
+    cantidadCalculada: c.cantidadCalculada,
+    cantidad: overridesPorArticulo.has(c.articuloUuid) ? overridesPorArticulo.get(c.articuloUuid) : c.cantidadCalculada,
+    createdBy: actorId,
+  }));
+  const uuidsReceta = new Set(componentesReceta.map((c) => c.articuloUuid));
+  const vistos = new Set();
+  for (const extra of lista.filter((c) => !uuidsReceta.has(c.articuloUuid))) {
+    if (vistos.has(extra.articuloUuid)) throw ApiError.badRequest('Un insumo adicional está repetido');
+    vistos.add(extra.articuloUuid);
+    const articulo = await Articulo.findOne({ where: { uuid: extra.articuloUuid }, transaction });
+    if (!articulo) throw ApiError.notFound('Insumo adicional no encontrado');
+    if (!articulo.estado) throw ApiError.badRequest(`El insumo "${articulo.nombre}" está inactivo`);
+    let unidadId = articulo.unidadMedidaId || null;
+    if (extra.unidadUuid) {
+      const unidad = await UnidadMedida.findOne({ where: { uuid: extra.unidadUuid }, transaction });
+      if (!unidad) throw ApiError.notFound('Unidad del insumo adicional no encontrada');
+      unidadId = unidad.id;
+    }
+    // Falla ya (y no al ejecutar) si no hay conversión entre la unidad elegida y la del artículo.
+    await convertirACantidadBase(articulo, unidadId, Number(extra.cantidad), { transaction });
+    filas.push({ articuloId: articulo.id, unidadId, cantidadCalculada: Number(extra.cantidad), cantidad: Number(extra.cantidad), createdBy: actorId });
+  }
+  return filas;
+}
+
 export const aspersionProgramacionService = {
   async list(query, user) {
     const { page, limit, offset } = getPagination(query);
@@ -533,16 +567,9 @@ export const aspersionProgramacionService = {
       // createAspersionSchema#componentes) — ese ajuste queda en `cantidad`,
       // la teórica siempre en `cantidadCalculada` (nunca se pisa).
       const componentesReceta = await calcularComponentesReceta(mezcla, hectareas, { transaction: t });
-      const overridesPorArticulo = new Map((payload.componentes || []).map((c) => [c.articuloUuid, Number(c.cantidad)]));
       await aspersionProgramacionRepository.replaceComponentes(
         aspersion.id,
-        componentesReceta.map((c) => ({
-          articuloId: c.articuloId,
-          unidadId: c.unidadId,
-          cantidadCalculada: c.cantidadCalculada,
-          cantidad: overridesPorArticulo.has(c.articuloUuid) ? overridesPorArticulo.get(c.articuloUuid) : c.cantidadCalculada,
-          createdBy: actorId,
-        })),
+        await construirFilasComponentes({ componentesReceta, payloadComponentes: payload.componentes, actorId, transaction: t }),
         { transaction: t },
       );
 
@@ -748,16 +775,9 @@ export const aspersionProgramacionService = {
         // Igual que create(): la cantidad que el operador dejó en pantalla
         // por insumo se guarda en `cantidad`; la teórica de la receta
         // siempre queda en `cantidadCalculada`.
-        const overridesPorArticulo = new Map((payload.componentes || []).map((c) => [c.articuloUuid, Number(c.cantidad)]));
         await aspersionProgramacionRepository.replaceComponentes(
           aspersion.id,
-          componentesReceta.map((c) => ({
-            articuloId: c.articuloId,
-            unidadId: c.unidadId,
-            cantidadCalculada: c.cantidadCalculada,
-            cantidad: overridesPorArticulo.has(c.articuloUuid) ? overridesPorArticulo.get(c.articuloUuid) : c.cantidadCalculada,
-            createdBy: actorId,
-          })),
+          await construirFilasComponentes({ componentesReceta, payloadComponentes: payload.componentes, actorId, transaction: t }),
           { transaction: t },
         );
       }

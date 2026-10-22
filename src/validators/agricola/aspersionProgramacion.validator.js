@@ -25,6 +25,8 @@ export const createAspersionSchema = Joi.object({
       Joi.object({
         articuloUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
         cantidad: Joi.number().positive().required(),
+        // Solo para insumos ADICIONALES (que no están en la receta): unidad en que viene la cantidad (por defecto, la del artículo).
+        unidadUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
       }),
     ),
     representanteCorbanaNombre: Joi.string().trim().max(150).allow(null, ''),
@@ -49,6 +51,8 @@ export const updateAspersionSchema = Joi.object({
       Joi.object({
         articuloUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
         cantidad: Joi.number().positive().required(),
+        // Solo para insumos ADICIONALES (que no están en la receta): unidad en que viene la cantidad (por defecto, la del artículo).
+        unidadUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
       }),
     ),
     representanteCorbanaNombre: Joi.string().trim().max(150).allow(null, ''),
