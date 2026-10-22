@@ -270,6 +270,37 @@ async function adjuntarGalonesProgramados(rows) {
     const porCiclo = new Map(conteo.map((c) => [c.cicloUuid, Number(c.n)]));
     for (const r of rows) r.setDataValue('partesCiclo', porCiclo.get(r.cicloUuid) || 1);
   }
+  // Días desde la aspersión anterior de la MISMA finca (la más reciente con fecha anterior, sin contar las canceladas): `diasDesdeUltima`.
+  const fincaIds = [...new Set(rows.map((r) => r.fincaId).filter(Boolean))];
+  if (fincaIds.length) {
+    const previas = await AspersionProgramacion.findAll({
+      where: { fincaId: fincaIds, estado: { [Op.ne]: 'CANCELADA' } },
+      attributes: ['fincaId', 'fecha'],
+      raw: true,
+    });
+    const fechasPorFinca = new Map();
+    for (const p of previas) {
+      if (!fechasPorFinca.has(p.fincaId)) fechasPorFinca.set(p.fincaId, new Set());
+      fechasPorFinca.get(p.fincaId).add(String(p.fecha).slice(0, 10));
+    }
+    const MS_DIA = 24 * 60 * 60 * 1000;
+    for (const r of rows) {
+      const propia = String(r.fecha).slice(0, 10);
+      const anteriores = [...(fechasPorFinca.get(r.fincaId) || [])].filter((f) => f < propia).sort();
+      const ultima = anteriores[anteriores.length - 1];
+      r.setDataValue('diasDesdeUltima', ultima ? Math.round((new Date(`${propia}T00:00:00Z`) - new Date(`${ultima}T00:00:00Z`)) / MS_DIA) : null);
+    }
+  }
+  // Insumo principal de la receta activa de cada mezcla (el calendario lo muestra en lugar del nombre de la mezcla).
+  const mezclaIds = [...new Set(rows.map((r) => r.mezclaId).filter(Boolean))];
+  if (mezclaIds.length) {
+    const versiones = await MezclaVersion.findAll({
+      where: { mezclaId: mezclaIds, activa: true },
+      include: [{ model: MezclaComponente, as: 'componentes', where: { esPrincipal: true }, required: false, include: [{ model: Articulo, as: 'articulo', attributes: ['nombre'] }] }],
+    });
+    const principalPorMezcla = new Map(versiones.map((v) => [v.mezclaId, v.componentes?.[0]?.articulo?.nombre || null]));
+    for (const r of rows) r.setDataValue('insumoPrincipalNombre', principalPorMezcla.get(r.mezclaId) ?? null);
+  }
   const galon = await UnidadMedida.findOne({ where: { nombre: 'Galón' } });
   if (!galon) return rows;
   const uuids = [...new Set(rows.map((r) => r.mezcla?.unidadRendimiento?.uuid).filter(Boolean))];
@@ -431,6 +462,7 @@ export const aspersionProgramacionService = {
       fechaHasta: query.fechaHasta,
       almacenIdsPermitidos: getAlmacenIdsPermitidas(user),
       search: query.search,
+      orden: query.orden,
     });
     await adjuntarGalonesProgramados(rows);
     return { items: rows, meta: buildPaginationMeta({ page, limit, total: count }) };

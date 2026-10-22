@@ -83,6 +83,8 @@ export const listAspersionSchema = Joi.object({
     fechaDesde: Joi.date().iso(),
     fechaHasta: Joi.date().iso(),
     search: Joi.string().allow('', null),
+    // Orden por fecha: 'desc' (más reciente primero, por defecto) o 'asc' (más antigua primero).
+    orden: Joi.string().valid('asc', 'desc'),
   }),
 });
 
