@@ -1248,12 +1248,18 @@ export const mezclaService = {
       throw ApiError.conflict('Ya existe una mezcla con ese nombre');
     }
 
+    // Nombre del artículo elaborado: el que se escriba al crear la mezcla o, por defecto, el consecutivo ("Mezcla MEZ-0001").
+    const nombreElaborado = payload.articuloElaboradoNombre || `Mezcla ${codigo}`;
+    if (payload.articuloElaboradoNombre && (await Articulo.findOne({ where: { nombre: nombreElaborado } }))) {
+      throw ApiError.conflict('Ya existe un artículo con ese nombre');
+    }
+
     // articuloService.create() maneja su propia transacción interna (mismo
     // patrón ya usado en crearElaborado()) — se llama antes de abrir la de
     // acá abajo.
     const nuevoArticulo = await articuloService.create(
       {
-        nombre: `Mezcla ${codigo}`,
+        nombre: nombreElaborado,
         codigo: payload.articuloCodigo || null,
         categoriaUuid: payload.articuloCategoriaUuid,
         unidadMedidaUuid: payload.articuloUnidadMedidaUuid || null,

@@ -1,4 +1,4 @@
-import { Op } from 'sequelize';
+import { Op, fn, literal } from 'sequelize';
 import { MovimientoInventario, Existencia, Almacen, Articulo, UnidadMedida, Motivo, Proveedor, User } from '../../database/associations.js';
 
 const INCLUDE = [
@@ -43,6 +43,92 @@ export const movimientoRepository = {
   // el histórico de movimientos_inventario en cada consulta — antes esto
   // era un GROUP BY + SUM() sobre la tabla completa, que crece con el total
   // histórico de movimientos y no con el stock actual.
+  // Saldo en una fecha pasada: se reconstruye desde el kárdex (movimientos hasta ese día, inclusive). Coincide con el cache `existencias`
+  // porque cada movimiento lo actualiza en la misma transacción. Devuelve todas las filas ya ordenadas (almacén y artículo).
+  async getExistenciasAFecha({ almacenUuid, articuloUuid, fecha }) {
+    const where = { fecha: { [Op.lte]: fecha } };
+    if (almacenUuid) {
+      const alm = await Almacen.findOne({ where: { uuid: almacenUuid } });
+      where.almacenId = alm ? alm.id : -1;
+    }
+    if (articuloUuid) {
+      const prod = await Articulo.findOne({ where: { uuid: articuloUuid } });
+      where.articuloId = prod ? prod.id : -1;
+    }
+    const sumas = await MovimientoInventario.findAll({
+      where,
+      attributes: [
+        'almacenId',
+        'articuloId',
+        [fn('SUM', literal("CASE WHEN tipo IN ('ENTRADA','AJUSTE_ENTRADA','TRANSFERENCIA_ENTRADA','ELABORACION_ENTRADA') THEN cantidad_base ELSE -cantidad_base END")), 'saldo'],
+      ],
+      group: ['almacenId', 'articuloId'],
+      raw: true,
+    });
+    if (sumas.length === 0) return [];
+    const [almacenes, articulos] = await Promise.all([
+      Almacen.findAll({ where: { id: { [Op.in]: [...new Set(sumas.map((s) => s.almacenId))] } }, attributes: ['id', 'uuid', 'nombre'], paranoid: false }),
+      Articulo.findAll({
+        where: { id: { [Op.in]: [...new Set(sumas.map((s) => s.articuloId))] } },
+        attributes: ['id', 'uuid', 'nombre', 'codigo'],
+        include: [{ model: UnidadMedida, as: 'unidadMedida', attributes: ['uuid', 'nombre', 'simbolo'] }],
+        paranoid: false,
+      }),
+    ]);
+    const almPorId = new Map(almacenes.map((a) => [a.id, a]));
+    const artPorId = new Map(articulos.map((a) => [a.id, a]));
+    return sumas
+      .map((s) => {
+        const a = almPorId.get(s.almacenId);
+        const p = artPorId.get(s.articuloId);
+        return {
+          almacen: a ? { uuid: a.uuid, nombre: a.nombre } : null,
+          articulo: p ? { uuid: p.uuid, nombre: p.nombre, codigo: p.codigo } : null,
+          unidad: p?.unidadMedida ? { uuid: p.unidadMedida.uuid, nombre: p.unidadMedida.nombre, simbolo: p.unidadMedida.simbolo } : null,
+          saldo: Math.round(Number(s.saldo) * 100) / 100,
+        };
+      })
+      .sort((x, y) => String(x.almacen?.nombre).localeCompare(String(y.almacen?.nombre)) || String(x.articulo?.nombre).localeCompare(String(y.articulo?.nombre)));
+  },
+
+  async getExistenciasPaginado({ almacenUuid, articuloUuid, limit, offset }) {
+    const { where, include } = await this._existenciasQuery({ almacenUuid, articuloUuid });
+    const { rows, count } = await Existencia.findAndCountAll({
+      where,
+      include,
+      order: [[{ model: Almacen, as: 'almacen' }, 'nombre', 'ASC'], [{ model: Articulo, as: 'articulo' }, 'nombre', 'ASC']],
+      limit,
+      offset,
+    });
+    return { items: this._existenciasFilas(rows), total: count };
+  },
+
+  async _existenciasQuery({ almacenUuid, articuloUuid }) {
+    const where = {};
+    if (almacenUuid) {
+      const alm = await Almacen.findOne({ where: { uuid: almacenUuid } });
+      where.almacenId = alm ? alm.id : -1;
+    }
+    if (articuloUuid) {
+      const prod = await Articulo.findOne({ where: { uuid: articuloUuid } });
+      where.articuloId = prod ? prod.id : -1;
+    }
+    const include = [
+      { model: Almacen, as: 'almacen', attributes: ['uuid', 'nombre'] },
+      { model: Articulo, as: 'articulo', attributes: ['uuid', 'nombre', 'codigo'], include: [{ model: UnidadMedida, as: 'unidadMedida', attributes: ['uuid', 'nombre', 'simbolo'] }] },
+    ];
+    return { where, include };
+  },
+
+  _existenciasFilas(filas) {
+    return filas.map((f) => ({
+      almacen: f.almacen,
+      articulo: f.articulo,
+      unidad: f.articulo?.unidadMedida ? { uuid: f.articulo.unidadMedida.uuid, nombre: f.articulo.unidadMedida.nombre, simbolo: f.articulo.unidadMedida.simbolo } : null,
+      saldo: Number(f.saldo),
+    }));
+  },
+
   async getExistencias({ almacenUuid, articuloUuid }) {
     const where = {};
     if (almacenUuid) {

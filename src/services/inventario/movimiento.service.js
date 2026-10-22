@@ -333,10 +333,17 @@ export const movimientoService = {
   },
 
   async getExistencias(query) {
-    return movimientoRepository.getExistencias({
-      almacenUuid: query.almacenUuid,
-      articuloUuid: query.articuloUuid,
-    });
+    const filtros = { almacenUuid: query.almacenUuid, articuloUuid: query.articuloUuid };
+    if (query.fecha) {
+      const todas = await movimientoRepository.getExistenciasAFecha({ ...filtros, fecha: query.fecha });
+      if (query.page === undefined && query.limit === undefined) return todas;
+      const { page, limit, offset } = getPagination({ page: query.page, limit: query.limit || 100 });
+      return { items: todas.slice(offset, offset + limit), meta: buildPaginationMeta({ page, limit, total: todas.length }) };
+    }
+    if (query.page === undefined && query.limit === undefined) return movimientoRepository.getExistencias(filtros);
+    const { page, limit, offset } = getPagination({ page: query.page, limit: query.limit || 100 });
+    const { items, total } = await movimientoRepository.getExistenciasPaginado({ ...filtros, limit, offset });
+    return { items, meta: buildPaginationMeta({ page, limit, total }) };
   },
 
   async getKardex(query) {

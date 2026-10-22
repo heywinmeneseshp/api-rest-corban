@@ -76,6 +76,11 @@ export const existenciasSchema = Joi.object({
   query: Joi.object({
     almacenUuid: Joi.string().uuid(),
     articuloUuid: Joi.string().uuid(),
+    // Saldo en un día pasado (AAAA-MM-DD), reconstruido desde el kárdex; sin fecha es el saldo actual.
+    fecha: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/),
+    // Con page o limit la respuesta viene paginada ({ items, meta }); sin ellos devuelve todo como arreglo (otras pantallas).
+    page: Joi.number().integer().min(1),
+    limit: Joi.number().integer().min(1).max(500),
   }),
 });
 

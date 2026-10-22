@@ -295,6 +295,8 @@ export const crearElaboradoSchema = Joi.object({
 export const crearDirectaSchema = Joi.object({
   body: Joi.object({
     articuloNombre: Joi.string().trim().max(150).required(),
+    // Nombre del artículo elaborado (interno). Opcional: sin él se nombra "Mezcla MEZ-000N".
+    articuloElaboradoNombre: Joi.string().trim().max(150).allow(null, ''),
     articuloCodigo: Joi.string().trim().max(50).allow(null, ''),
     articuloCategoriaUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
     articuloUnidadMedidaUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
