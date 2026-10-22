@@ -104,6 +104,27 @@ export const racimoMovimientoRepository = {
     return RacimoMovimiento.bulkCreate(dataArray, { transaction });
   },
 
+  // Saldo (EMBOLSE − REPIQUE − RECUSE − PROCESADO) por finca, lote y semana de embolse, para las semanas de embolse dadas.
+  // Devuelve filas { fincaId, loteId, semanaEmbolseId, saldo }.
+  async getSaldosPorLoteYCohorte({ fincaIds, semanaEmbolseIds }) {
+    if (semanaEmbolseIds.length === 0) return [];
+    const results = await RacimoMovimiento.findAll({
+      where: {
+        semanaEmbolseId: { [Op.in]: semanaEmbolseIds },
+        ...(fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
+      },
+      attributes: [
+        'fincaId',
+        'loteId',
+        'semanaEmbolseId',
+        [fn('COALESCE', fn('SUM', literal("CASE WHEN tipo = 'EMBOLSE' THEN cantidad ELSE -cantidad END")), 0), 'saldo'],
+      ],
+      group: ['fincaId', 'loteId', 'semanaEmbolseId'],
+      raw: true,
+    });
+    return results.map((r) => ({ fincaId: r.fincaId, loteId: r.loteId, semanaEmbolseId: r.semanaEmbolseId, saldo: Number(r.saldo) }));
+  },
+
   async getSaldosCohortes(cohortes) {
     if (cohortes.length === 0) return new Map();
 

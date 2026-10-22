@@ -5,6 +5,8 @@ import { Finca, Semana } from '../../database/associations.js';
 import { racimoMovimientoRepository } from '../../repositories/agricola/racimoMovimiento.repository.js';
 import { produccionSemanalRepository } from '../../repositories/agricola/produccionSemanal.repository.js';
 import { semanaRepository } from '../../repositories/agricola/semana.repository.js';
+import { hectareasPorFincaYSemana } from './dashboard.service.js';
+import { crearEstimadorEmbolsePorHa } from './embolsePorHectarea.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getFincaIdsPermitidas } from '../../utils/fincaScope.js';
 import { logger } from '../../utils/logger.js';
@@ -49,6 +51,13 @@ const RECIENTE_LOOKBACK = EDAD_MAX + 20;
 // propiamente construida (varias ventanas, no 2 elegidas a mano).
 const MIN_COHORTES_FINCA = 5;
 const SEMANAS_RATIO = 8;
+// Ratio cajas/racimo: nivel reciente con peso exponencial (más peso a lo más nuevo). El backtest mostró que el histórico de la misma
+// semana de años anteriores sesga el ratio ~10% hacia abajo y que el nivel reciente de semanas limpias lo predice mucho mejor.
+const SEMANAS_RATIO_NIVEL = 12;
+const ALFA_RATIO = 0.3;
+// Semanas con un ratio fuera de este rango son de captura incompleta o duplicada, no de rendimiento real.
+const RATIO_MIN = 0.7;
+const RATIO_MAX = 1.3;
 const MIN_SEMANAS_RATIO_FINCA = 3;
 // Componente "estacional": además de la tendencia reciente, se compara la
 // MISMA semana del calendario (numero_semana) en años anteriores — el ratio
@@ -160,6 +169,8 @@ async function computeForecast(query, user, asOfDate = new Date()) {
       ? Number(query.pctNoCosechado)
       : null;
 
+  // Los saldos reales son los de HOY: solo se usan en la consulta en vivo (el backtest simula fechas pasadas y no los tiene).
+  const enVivo = Math.abs(Date.now() - asOfDate.getTime()) < 24 * 60 * 60 * 1000;
   const hoy = await semanaRepository.findByFecha(toISODate(asOfDate));
   if (!hoy) {
     throw ApiError.notFound('No hay una semana de calendario registrada para la fecha actual — revisa el calendario de semanas.');
@@ -245,6 +256,52 @@ async function computeForecast(query, user, asOfDate = new Date()) {
   const fincaIdsConDatos = new Set();
   for (const key of embolseMap.keys()) fincaIdsConDatos.add(Number(key.split('-')[0]));
   for (const key of cosechadoMap.keys()) fincaIdsConDatos.add(Number(key.split('-')[0]));
+
+  // Índice de la semana actual (última semana real de la ventana).
+  let hoyIdx = -1;
+  for (let i = 0; i < semanas.length; i++) if (esReal(i)) hoyIdx = i;
+
+  // Hectáreas PRODUCTIVAS por finca y semana (área vigente de lote_area_produccion con arrastre; nunca Lote.area). Las semanas
+  // futuras arrastran la última área vigente.
+  const haMap = await hectareasPorFincaYSemana([...fincaIdsConDatos], semanas);
+  const haDe = (fincaId, idx) => (idx < 0 || idx >= semanas.length ? 0 : haMap.get(fincaId)?.get(semanas[idx].id) || 0);
+
+  // Saldos reales por lote y cinta de las cintas que aún pueden cortar edades 8 a 12, sumados por finca (un lote con saldo
+  // negativo por error de captura cuenta 0).
+  const saldoPorFincaCohorte = new Map();
+  if (enVivo && hoyIdx >= 0) {
+    const idsCohortes = [];
+    for (let i = Math.max(0, hoyIdx - EDAD_MAX + 1); i <= hoyIdx; i++) idsCohortes.push(semanas[i].id);
+    const filasSaldo = await racimoMovimientoRepository.getSaldosPorLoteYCohorte({ fincaIds: scopeFincaIds, semanaEmbolseIds: idsCohortes });
+    for (const f of filasSaldo) {
+      const k = `${f.fincaId}-${f.semanaEmbolseId}`;
+      saldoPorFincaCohorte.set(k, (saldoPorFincaCohorte.get(k) || 0) + Math.max(0, f.saldo));
+    }
+  }
+  const saldoFinca = (fincaId, idx) => saldoPorFincaCohorte.get(`${fincaId}-${semanas[idx].id}`) ?? null;
+
+  // Embolse por hectárea esperado de una semana: comportamiento de años pasados ajustado al nivel de este año (ver
+  // embolsePorHectarea.js). Una finca sin historial propio usa el de todas las fincas.
+  const estimadoresEmbolsePorHa = new Map();
+  function estimadorEmbolsePorHa(clave, idList) {
+    if (estimadoresEmbolsePorHa.has(clave)) return estimadoresEmbolsePorHa.get(clave);
+    const puntos = [];
+    for (let idx = 0; idx < semanas.length; idx++) {
+      // Las 2 últimas semanas reales se excluyen: el embolse se carga con rezago y aún están incompletas.
+      if (!esReal(idx) || idx > hoyIdx - 2) continue;
+      let e = 0;
+      let ha = 0;
+      for (const fid of idList) {
+        e += embolse(fid, idx);
+        ha += haDe(fid, idx);
+      }
+      if (e > 0 && ha > 0) puntos.push({ idx, numero: semanas[idx].numeroSemana, anio: semanas[idx].anio, v: e / ha });
+    }
+    const estimador = puntos.length > 0 ? crearEstimadorEmbolsePorHa({ puntos, anioReferencia: hoy.anio, semanasAjuste: SEMANAS_RATIO, minSemanas: MIN_SEMANAS_RATIO_FINCA }) : null;
+    estimadoresEmbolsePorHa.set(clave, estimador);
+    return estimador;
+  }
+  const estimadorGlobalEmbolsePorHa = () => estimadorEmbolsePorHa('global', [...fincaIdsConDatos]);
 
   // Cada movimiento de corte/recuse ya trae su propia semana de embolse de
   // origen (`semanaEmbolseId`) — así que la edad real de cada cohorte se
@@ -530,9 +587,12 @@ async function computeForecast(query, user, asOfDate = new Date()) {
     return () => remuestrearPromedio(lista, rng);
   }
 
+  // Ratios semanales reales y limpios, de la semana más reciente hacia atrás. Se saltan las 2 últimas semanas reales (los racimos se
+  // cargan con rezago y aún están incompletas, lo que dispara el ratio) y las semanas con un ratio fuera de rango.
   function ratiosRecientes(fincaIdList) {
     const ratios = [];
-    for (let idx = startIdx - 1; idx >= 0 && ratios.length < SEMANAS_RATIO; idx--) {
+    const tope = Math.min(startIdx - 1, hoyIdx - 2);
+    for (let idx = tope; idx >= 0 && ratios.length < SEMANAS_RATIO_NIVEL; idx--) {
       if (!esReal(idx)) continue;
       let r = 0;
       let c = 0;
@@ -540,50 +600,33 @@ async function computeForecast(query, user, asOfDate = new Date()) {
         r += cosechado(fincaId, idx);
         c += cajas(fincaId, idx);
       }
-      if (r > 0 && c > 0) ratios.push(c / r);
+      if (!(r > 0 && c > 0)) continue;
+      const q = c / r;
+      if (q >= RATIO_MIN && q <= RATIO_MAX) ratios.push(q);
     }
     return ratios;
   }
 
-  // Todas las semanas reales de la misma temporada (±1 semana) en años
-  // anteriores — sin tope, ya que naturalmente hay pocas (una por año).
-  function ratiosEstacionales(fincaIdList) {
-    const ratios = [];
-    for (let idx = 0; idx < semanas.length; idx++) {
-      if (!esReal(idx) || !esEstacional(idx)) continue;
-      let r = 0;
-      let c = 0;
-      for (const fincaId of fincaIdList) {
-        r += cosechado(fincaId, idx);
-        c += cajas(fincaId, idx);
-      }
-      if (r > 0 && c > 0) ratios.push(c / r);
-    }
-    return ratios;
+  // Promedio con peso exponencial de una lista ordenada de lo más reciente a lo más antiguo.
+  function promedioExponencial(lista) {
+    if (lista.length === 0) return null;
+    let num = 0;
+    let den = 0;
+    lista.forEach((v, k) => {
+      const w = ALFA_RATIO * (1 - ALFA_RATIO) ** k;
+      num += w * v;
+      den += w;
+    });
+    return num / den;
   }
 
   function promedio(lista) {
     return lista.length > 0 ? lista.reduce((a, b) => a + b, 0) / lista.length : null;
   }
 
-  // Ratio de respaldo global: toda la ventana traída, sin filtrar por
-  // semana — mismo criterio "de último recurso" que la tasa global de arriba.
-  function ratiosTodas(fincaIdList) {
-    const ratios = [];
-    for (let idx = 0; idx < semanas.length; idx++) {
-      if (!esReal(idx)) continue;
-      let r = 0;
-      let c = 0;
-      for (const fincaId of fincaIdList) {
-        r += cosechado(fincaId, idx);
-        c += cajas(fincaId, idx);
-      }
-      if (r > 0 && c > 0) ratios.push(c / r);
-    }
-    return ratios;
-  }
-  const listaRatiosGlobalTodas = ratiosTodas([...fincaIdsConDatos]);
-  const ratioGlobalProm = promedio(listaRatiosGlobalTodas) ?? 0;
+  // Ratio de respaldo global: el nivel reciente (mismas semanas limpias) de todas las fincas.
+  const listaRatiosGlobal = ratiosRecientes([...fincaIdsConDatos]);
+  const ratioGlobalNivel = promedioExponencial(listaRatiosGlobal) ?? 0;
 
   // --- Proyección de embolse futuro -----------------------------------------
   // racimosProyectados se calcula multiplicando embolse(semana E) × tasa por
@@ -616,36 +659,10 @@ async function computeForecast(query, user, asOfDate = new Date()) {
   // de precisión a 12 semanas es peor de lo documentado). La tabla de
   // cuantiles de error (pronostico.errorQuantiles.json) se regeneró después
   // de este fix — el IC ya refleja la incertidumbre real.
-  function embolseRecientes(fincaIdList) {
-    const valores = [];
-    for (let idx = startIdx - 1; idx >= 0 && valores.length < SEMANAS_RATIO; idx--) {
-      if (!esReal(idx)) continue;
-      const total = embolseGrupo(fincaIdList, idx);
-      if (total > 0) valores.push(total);
-    }
-    return valores;
-  }
-
-  function embolseEstacionales(fincaIdList) {
-    const valores = [];
-    for (let idx = 0; idx < semanas.length; idx++) {
-      if (!esReal(idx) || !esEstacional(idx)) continue;
-      const total = embolseGrupo(fincaIdList, idx);
-      if (total > 0) valores.push(total);
-    }
-    return valores;
-  }
-
-  function embolseTodos(fincaIdList) {
-    const valores = [];
-    for (let idx = 0; idx < semanas.length; idx++) {
-      if (!esReal(idx)) continue;
-      const total = embolseGrupo(fincaIdList, idx);
-      if (total > 0) valores.push(total);
-    }
-    return valores;
-  }
-  const embolseGlobalProm = promedio(embolseTodos([...fincaIdsConDatos])) ?? 0;
+  //
+  // ACTUALIZACIÓN: el nivel de embolse futuro ya no es este promedio absoluto; ahora es hectáreas productivas × embolse por
+  // hectárea esperado (años pasados ajustados a este año) — ver embolseEstimadoFinca y embolsePorHectarea.js. Las cintas ya
+  // embolsadas usan su saldo real por lote en la consulta en vivo.
 
   // --- Holt-Winters (paso 5, experimental — ver HW_EXPERIMENTO_ACTIVO) ------
   // Semana 53 (años bisiestos de calendario) se pliega sobre el bucket 52 —
@@ -779,7 +796,7 @@ async function computeForecast(query, user, asOfDate = new Date()) {
     clampSinContar(rate);
     globalRateReplicas.push(rate);
   }
-  const genRatioGlobal = creadorMuestraPromedio(listaRatiosGlobalTodas, rng);
+  const genRatioGlobal = creadorMuestraPromedio(listaRatiosGlobal, rng);
   const globalRatioReplicas = [];
   for (let b = 0; b < BOOTSTRAP_B; b++) {
     globalRatioReplicas.push(genRatioGlobal() ?? 0);
@@ -837,6 +854,13 @@ async function computeForecast(query, user, asOfDate = new Date()) {
     ? [{ uuid: null, codigo: 'GLOBAL', nombre: 'Todas las fincas', idList: fincas.map((f) => f.id) }]
     : fincas.map((f) => ({ uuid: f.uuid, codigo: f.codigo, nombre: f.nombre, idList: [f.id] }));
 
+  const ETIQUETA_ORIGEN = { saldo: 'saldo real por lote', embolse: 'embolse real', estimado: 'embolse estimado (hectáreas × embolse por ha de años pasados ajustado a este año)', mixto: 'saldo/embolse real y estimado' };
+  function detalleOrigen(aportes) {
+    const origenes = new Set(aportes.map((a) => a.origen).filter(Boolean));
+    if (origenes.size === 0) return '';
+    return ` · racimos desde ${[...origenes].map((o) => ETIQUETA_ORIGEN[o]).join(' + ')}`;
+  }
+
   const rows = [];
   for (const grupo of grupos) {
     const { rawRate: rateGrupo, pctNoCosechado: pctGrupoHist, cohortesCerradas, usoEstacional: usoEstacionalTasa } = tasasBlend(grupo.idList);
@@ -844,60 +868,69 @@ async function computeForecast(query, user, asOfDate = new Date()) {
     const rate = usaFallbackGlobal ? global.rawRate : rateGrupo;
     const pctNoCosechadoHistorico = usaFallbackGlobal ? global.pctNoCosechado ?? 0 : pctGrupoHist ?? global.pctNoCosechado ?? 0;
 
-    // Ratio: promedio de las últimas semanas reales ("reciente") combinado
-    // con el promedio de la misma semana en años anteriores ("estacional").
-    // Si falta una señal se usa solo la otra; si faltan ambas, se cae al
-    // promedio global (con blend de peso si hay poca muestra reciente).
+    // Ratio: nivel reciente (promedio con peso exponencial de las últimas semanas reales limpias). Con pocas semanas propias se mezcla
+    // con el nivel de todas las fincas; sin ninguna, usa el de todas las fincas.
     const listaReciente = ratiosRecientes(grupo.idList);
-    const listaEstacional = ratiosEstacionales(grupo.idList);
-    const promRecienteProp = promedio(listaReciente);
-    const promEstacional = promedio(listaEstacional);
+    const nivelReciente = promedioExponencial(listaReciente);
     let ratioProyectado;
-    let usoEstacionalRatio = false;
-    if (promRecienteProp != null && promEstacional != null) {
-      ratioProyectado = (promRecienteProp + promEstacional) / 2;
-      usoEstacionalRatio = true;
-    } else if (promEstacional != null && listaReciente.length === 0) {
-      ratioProyectado = promEstacional;
-      usoEstacionalRatio = true;
-    } else if (listaReciente.length >= MIN_SEMANAS_RATIO_FINCA) {
-      ratioProyectado = promRecienteProp;
+    if (listaReciente.length >= MIN_SEMANAS_RATIO_FINCA) {
+      ratioProyectado = nivelReciente;
     } else if (listaReciente.length > 0) {
       const peso = listaReciente.length / MIN_SEMANAS_RATIO_FINCA;
-      ratioProyectado = promRecienteProp * peso + ratioGlobalProm * (1 - peso);
+      ratioProyectado = nivelReciente * peso + ratioGlobalNivel * (1 - peso);
     } else {
-      ratioProyectado = ratioGlobalProm;
+      ratioProyectado = ratioGlobalNivel;
     }
     const semanasRealesGrupo = listaReciente;
 
-    // Nivel de embolse proyectado para semanas futuras — mismo blend
-    // reciente+estacional que el Ratio (ver nota junto a embolseRecientes
-    // más arriba). embolseProyectado(idx) solo lo usa para semanas de
-    // embolse que todavía no tienen dato real; el resto pasa el dato real
-    // sin tocar.
-    const listaEmbolseReciente = embolseRecientes(grupo.idList);
-    const listaEmbolseEstacional = embolseEstacionales(grupo.idList);
-    const promEmbolseReciente = promedio(listaEmbolseReciente);
-    const promEmbolseEstacional = promedio(listaEmbolseEstacional);
-    let embolseProyectadoNivel;
-    let usoEstacionalEmbolse = false;
-    if (promEmbolseReciente != null && promEmbolseEstacional != null) {
-      embolseProyectadoNivel = (promEmbolseReciente + promEmbolseEstacional) / 2;
-      usoEstacionalEmbolse = true;
-    } else if (promEmbolseEstacional != null && listaEmbolseReciente.length === 0) {
-      embolseProyectadoNivel = promEmbolseEstacional;
-      usoEstacionalEmbolse = true;
-    } else if (listaEmbolseReciente.length >= MIN_SEMANAS_RATIO_FINCA) {
-      embolseProyectadoNivel = promEmbolseReciente;
-    } else if (listaEmbolseReciente.length > 0) {
-      const peso = listaEmbolseReciente.length / MIN_SEMANAS_RATIO_FINCA;
-      embolseProyectadoNivel = promEmbolseReciente * peso + embolseGlobalProm * (1 - peso);
-    } else {
-      embolseProyectadoNivel = embolseGlobalProm;
+    // Embolse estimado de UNA finca en una semana sin embolse real: hectáreas productivas × embolse por hectárea esperado de esa
+    // semana (años pasados ajustados a este año). Sin hectáreas productivas o sin historial, no se estima (0).
+    function embolseEstimadoFinca(fid, srcIdx) {
+      const ha = haDe(fid, srcIdx);
+      const estimador = estimadorEmbolsePorHa(`f${fid}`, [fid]) || estimadorGlobalEmbolsePorHa();
+      const porHa = estimador ? estimador.estimar(semanas[srcIdx].numeroSemana) : null;
+      if (ha > 0 && porHa !== null) return ha * porHa;
+      // Sin hectáreas productivas o sin historial en ninguna finca: no se inventa embolse.
+      return 0;
     }
-    function embolseProyectado(srcIdx) {
-      if (srcIdx < 0 || srcIdx >= semanas.length) return 0;
-      return esReal(srcIdx) ? embolseGrupo(grupo.idList, srcIdx) : embolseProyectadoNivel;
+    // Patrón de corte sobre el saldo (igual que la estimación por finca, estimacionFinca.service.js): del saldo real de la cinta,
+    // la parte que sale en la edad `edad` es el % que esa edad representa del total cortado (tasa[edad] ÷ Σ tasas). Las edades
+    // anteriores a la próxima por cortar no aportan.
+    const sumaTasas = EDADES.reduce((acc, k) => acc + rate[k], 0);
+    function pesoSaldo(srcIdx, edad) {
+      const desde = Math.max(hoyIdx - srcIdx + 2, EDADES[0]);
+      if (edad < desde || sumaTasas <= 0) return 0;
+      return rate[edad] / sumaTasas;
+    }
+    // Racimos que aporta la cinta de edad `edad` a la semana `idx` (sin el ajuste de % no cosechado) y de dónde salen:
+    // 'saldo' (saldo real de la cinta), 'embolse' (embolse real × tasa), 'estimado' (hectáreas × embolse por ha) o 'mixto'.
+    function racimosDeEdad(idx, edad) {
+      const srcIdx = idx - edad + 1;
+      if (srcIdx < 0 || srcIdx >= semanas.length) return { racimos: 0, origen: null };
+      if (esReal(idx)) return { racimos: embolseGrupo(grupo.idList, srcIdx) * rate[edad], origen: 'real' };
+      let racimos = 0;
+      const origenes = new Set();
+      for (const fid of grupo.idList) {
+        if (esReal(srcIdx) && embolse(fid, srcIdx) > 0) {
+          const saldo = saldoFinca(fid, srcIdx);
+          if (saldo !== null) {
+            racimos += saldo * pesoSaldo(srcIdx, edad);
+            origenes.add('saldo');
+          } else {
+            racimos += embolse(fid, srcIdx) * rate[edad];
+            origenes.add('embolse');
+          }
+        } else {
+          racimos += embolseEstimadoFinca(fid, srcIdx) * rate[edad];
+          origenes.add('estimado');
+        }
+      }
+      return { racimos, origen: origenes.size === 1 ? [...origenes][0] : 'mixto' };
+    }
+    // Embolse de la semana propia (diagnóstico del backtest): real, o estimado por hectáreas si aún no ocurre.
+    function embolseSemana(idx) {
+      if (idx < 0 || idx >= semanas.length) return 0;
+      return esReal(idx) ? embolseGrupo(grupo.idList, idx) : grupo.idList.reduce((acc, fid) => acc + embolseEstimadoFinca(fid, idx), 0);
     }
 
     // Holt-Winters (experimental, ver HW_EXPERIMENTO_ACTIVO): con suficiente
@@ -910,29 +943,9 @@ async function computeForecast(query, user, asOfDate = new Date()) {
       const serieHW = construirSerieRatioSemanal(grupo.idList);
       modeloHW = ajustarHoltWintersOptimo(serieHW);
     }
-    // Ratio semana a semana: promedio histórico de cajas/racimo de ESA semana del año (±1 semana) en las semanas
-    // reales de años anteriores. Si el grupo no tiene historial de esa semana, cae al ratio fijo de arriba.
-    const ratioHistoricoPorSemana = new Map();
-    function ratioHistoricoSemana(numeroSemana) {
-      if (ratioHistoricoPorSemana.has(numeroSemana)) return ratioHistoricoPorSemana.get(numeroSemana);
-      const lista = [];
-      for (let i = 0; i < semanas.length; i++) {
-        if (!esReal(i) || distanciaCircular(semanas[i].numeroSemana, numeroSemana) > TOLERANCIA_SEMANA_ESTACIONAL) continue;
-        let rr = 0;
-        let cc = 0;
-        for (const fincaId of grupo.idList) {
-          rr += cosechado(fincaId, i);
-          cc += cajas(fincaId, i);
-        }
-        if (rr > 0 && cc > 0) lista.push(cc / rr);
-      }
-      const valor = promedio(lista);
-      ratioHistoricoPorSemana.set(numeroSemana, valor);
-      return valor;
-    }
     function ratioParaOffset(offset, idx) {
       if (modeloHW) return proyectarHoltWinters(modeloHW, offset, faseSemana(semanas[idx].numeroSemana));
-      return ratioHistoricoSemana(semanas[idx].numeroSemana) ?? ratioProyectado;
+      return ratioProyectado;
     }
 
     // Réplicas de bootstrap para el intervalo de confianza: mismo respaldo
@@ -943,16 +956,12 @@ async function computeForecast(query, user, asOfDate = new Date()) {
       ? globalRateReplicas
       : bootstrapTasasBlend(listaCohortesRate(grupo.idList, esReciente), listaCohortesRate(grupo.idList, esEstacional), rng);
     const genRatioReciente = creadorMuestraPromedio(listaReciente, rng);
-    const genRatioEstacional = creadorMuestraPromedio(listaEstacional, rng);
     const ratioReplicas = [];
     for (let b = 0; b < BOOTSTRAP_B; b++) {
       const pr = genRatioReciente();
-      const pe = genRatioEstacional();
       const pg = globalRatioReplicas[b];
       let ratioB;
-      if (pr != null && pe != null) ratioB = (pr + pe) / 2;
-      else if (pe != null && listaReciente.length === 0) ratioB = pe;
-      else if (listaReciente.length >= MIN_SEMANAS_RATIO_FINCA) ratioB = pr;
+      if (listaReciente.length >= MIN_SEMANAS_RATIO_FINCA) ratioB = pr;
       else if (listaReciente.length > 0) {
         const peso = listaReciente.length / MIN_SEMANAS_RATIO_FINCA;
         ratioB = pr * peso + pg * (1 - peso);
@@ -983,16 +992,9 @@ async function computeForecast(query, user, asOfDate = new Date()) {
       const semana = semanas[idx];
       const real = esReal(idx);
 
-      const ageBreakdown = EDADES.map((edad) => {
-        const srcIdx = idx - edad + 1;
-        const proyectado = embolseProyectado(srcIdx) * rate[edad] * (real ? 1 : scaleFactor);
-        return { edad, racimos: Math.round(proyectado) };
-      });
+      const aportes = EDADES.map((edad) => ({ edad, ...racimosDeEdad(idx, edad) }));
+      const ageBreakdown = aportes.map((a) => ({ edad: a.edad, racimos: Math.round(a.racimos * (real ? 1 : scaleFactor)), origen: a.origen }));
       const racimosProyectados = ageBreakdown.reduce((acc, a) => acc + a.racimos, 0);
-      const embolseFuturoUsado = !real && EDADES.some((edad) => {
-        const srcIdx = idx - edad + 1;
-        return srcIdx >= 0 && srcIdx < semanas.length && !esReal(srcIdx);
-      });
 
       let racimosCosechados;
       let cajas20kg;
@@ -1030,7 +1032,9 @@ async function computeForecast(query, user, asOfDate = new Date()) {
         // aplicados B veces con los mismos hiperparámetros que el punto
         // estimado. Remuestreo pareado (misma réplica b para tasa y ratio)
         // para no mezclar incertidumbres de fuentes independientes.
-        const embolsePorEdad = EDADES.map((edad) => embolseProyectado(idx - edad + 1));
+        // Embolse equivalente por edad (racimos de la cinta ÷ tasa): con saldo real o estimado por hectáreas, la tasa remuestreada
+        // sigue aplicándose igual que antes.
+        const embolsePorEdad = aportes.map((a) => (rate[a.edad] > 0 ? a.racimos / rate[a.edad] : 0));
         const cajasReplicas = new Array(BOOTSTRAP_B);
         for (let b = 0; b < BOOTSTRAP_B; b++) {
           const rateB = rateReplicas[b];
@@ -1067,13 +1071,10 @@ async function computeForecast(query, user, asOfDate = new Date()) {
         ? 'Semana con datos reales registrados'
         : (modeloHW
             ? 'Ratio proyectado con tendencia y estacionalidad (Holt-Winters)'
-            : ratioHistoricoSemana(semanas[idx].numeroSemana) !== null
-              ? 'Ratio: promedio histórico de esta semana del año'
-              : `Ratio basado en ${semanasRealesGrupo.length} semana(s) real(es)`) +
-          (usoEstacionalRatio && !modeloHW && ratioHistoricoSemana(semanas[idx].numeroSemana) === null ? ' + misma semana de años anteriores' : '') +
+            : `Ratio: nivel de las últimas ${semanasRealesGrupo.length} semana(s) real(es) limpias (más peso a las recientes)`) +
           (usaFallbackGlobal ? ` · edades ${EDADES[0]}-${EDAD_MAX} sin historial propio suficiente, usando promedio global` : '') +
           (usoEstacionalTasa && !usaFallbackGlobal ? ' · aprovechamiento combinado con la misma temporada de años anteriores' : '') +
-          (embolseFuturoUsado ? ` · embolse de semanas futuras estimado (${usoEstacionalEmbolse ? 'reciente + misma temporada de años anteriores' : 'promedio reciente'})` : '') +
+          (real ? '' : detalleOrigen(aportes)) +
           (cajasCiLow != null ? ` · IC 90%: ${Math.round(cajasCiLow).toLocaleString('es')}–${Math.round(cajasCiHigh).toLocaleString('es')} cajas` : '');
 
       const aprovechamiento = real ? aprovechamientoHistorico : aprovechamientoProyectado;
@@ -1094,7 +1095,7 @@ async function computeForecast(query, user, asOfDate = new Date()) {
         // construir racimosCosechados (que mezcla 5 semanas de embolse
         // distintas, una por edad). Permite medir la etapa 1
         // (racimos embolsados) de forma completamente independiente.
-        embolseProyectado: embolseProyectado(idx),
+        embolseProyectado: embolseSemana(idx),
         racimosCosechados,
         ratio: Math.round(ratioUsado * 10000) / 10000,
         aprovechamiento: Math.round(aprovechamiento * 10000) / 10000,

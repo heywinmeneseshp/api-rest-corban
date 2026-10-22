@@ -351,6 +351,10 @@ export const PERMISSIONS = {
 
   MENU_INVENTARIOS_MOTIVOS: 'menu.inventarios.motivos',
   MENU_INVENTARIOS_MOVIMIENTOS: 'menu.inventarios.movimientos',
+  MENU_INVENTARIOS_CONTEOS: 'menu.inventarios.conteos',
+  INVENTARIO_CONTEOS_VER: 'inventario.conteos.ver',
+  INVENTARIO_CONTEOS_CREAR: 'inventario.conteos.crear',
+  INVENTARIO_CONTEOS_CERRAR: 'inventario.conteos.cerrar',
 
   // Inventarios - FASE 3: Mezclas y Elaboraciones
   INVENTARIO_MEZCLAS_VER: 'inventario.mezclas.ver',
@@ -658,6 +662,10 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.INVENTARIO_MOVIMIENTOS_CREAR, nombre: 'Crear movimientos de inventario' },
   { codigo: PERMISSIONS.MENU_INVENTARIOS_MOTIVOS, nombre: 'Ver submenú Motivos (Inventarios)' },
   { codigo: PERMISSIONS.MENU_INVENTARIOS_MOVIMIENTOS, nombre: 'Ver submenú Movimientos (Inventarios)' },
+  { codigo: PERMISSIONS.MENU_INVENTARIOS_CONTEOS, nombre: 'Ver submenú Conteo (Inventarios)' },
+  { codigo: PERMISSIONS.INVENTARIO_CONTEOS_VER, nombre: 'Ver conteos de inventario' },
+  { codigo: PERMISSIONS.INVENTARIO_CONTEOS_CREAR, nombre: 'Crear y digitar conteos de inventario' },
+  { codigo: PERMISSIONS.INVENTARIO_CONTEOS_CERRAR, nombre: 'Cerrar conteos de inventario (aplicar ajustes)' },
   { codigo: PERMISSIONS.INVENTARIO_MEZCLAS_VER, nombre: 'Ver mezclas (Inventarios)' },
   { codigo: PERMISSIONS.INVENTARIO_MEZCLAS_CREAR, nombre: 'Crear mezclas' },
   { codigo: PERMISSIONS.INVENTARIO_MEZCLAS_EDITAR, nombre: 'Editar mezclas' },

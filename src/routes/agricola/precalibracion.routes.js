@@ -13,6 +13,13 @@ import {
   resumenPrecalibracionSchema,
   detalleLotePrecalibracionSchema,
   registrarPrecalibracionSchema,
+  cerrarSesionPrecalibracionSchema,
+  sesionesPrecalibracionSchema,
+  trazaSesionPrecalibracionSchema,
+  getTrazaSesionPrecalibracionSchema,
+  rendimientoPrecalibracionSchema,
+  semanalPrecalibracionSchema,
+  importarPrecalibracionSchema,
   guardarEstimacionPrecalibracionSchema,
   guardarConfigPrecalibracionSchema,
   configPrecalibracionVaciaSchema,
@@ -79,6 +86,52 @@ router.get('/lotes/:loteUuid/detalle', auth, permission(PERMISSIONS.PRECALIBRACI
 router.post('/registros', auth, permission(PERMISSIONS.PRECALIBRACION_CREAR), validate(registrarPrecalibracionSchema), asyncHandler(async (req, res) => {
   const resultado = await precalibracionService.registrar(req.body, req.user?.id, req.user);
   ApiResponse.send(res, { statusCode: HTTP_STATUS.CREATED, message: 'Registros de precalibración procesados', data: resultado });
+}));
+
+/**
+ * @openapi
+ * /precalibracion/sesiones/{uuid}/cerrar:
+ *   post:
+ *     tags: [Precalibración]
+ *     summary: Cierra una sesión de precalibración y guarda su potencial de cosecha
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ * /precalibracion/sesiones:
+ *   get:
+ *     tags: [Precalibración]
+ *     summary: Sesiones de precalibración con racimos aptos por edad, hectáreas, horas, duración y recorrido
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.post('/sesiones/:uuid/cerrar', auth, permission(PERMISSIONS.PRECALIBRACION_CREAR), validate(cerrarSesionPrecalibracionSchema), asyncHandler(async (req, res) => {
+  const data = await precalibracionService.cerrarSesion(req.params.uuid, req.body, req.user?.id, req.user);
+  ApiResponse.send(res, { message: 'Sesión de precalibración cerrada', data });
+}));
+router.post('/sesiones/:uuid/traza', auth, permission(PERMISSIONS.PRECALIBRACION_CREAR), validate(trazaSesionPrecalibracionSchema), asyncHandler(async (req, res) => {
+  const data = await precalibracionService.subirTraza(req.params.uuid, req.body.puntos, req.user);
+  ApiResponse.send(res, { statusCode: HTTP_STATUS.CREATED, message: 'Traza de la sesión recibida', data });
+}));
+router.get('/sesiones/:uuid/traza', auth, permission(PERMISSIONS.PRECALIBRACION_VER), validate(getTrazaSesionPrecalibracionSchema), asyncHandler(async (req, res) => {
+  const data = await precalibracionService.getTrazaSesion(req.params.uuid, req.user);
+  ApiResponse.send(res, { message: 'Traza de la sesión obtenida correctamente', data });
+}));
+router.post('/importar', auth, permission(PERMISSIONS.PRECALIBRACION_CREAR), validate(importarPrecalibracionSchema), asyncHandler(async (req, res) => {
+  const data = await precalibracionService.importarExcel(req.body, req.user?.id, req.user);
+  ApiResponse.send(res, { message: req.body.simular ? 'Archivo validado' : 'Precalibración importada', data });
+}));
+router.get('/rendimiento', auth, permission(PERMISSIONS.PRECALIBRACION_VER), validate(rendimientoPrecalibracionSchema), asyncHandler(async (req, res) => {
+  const data = await precalibracionService.getRendimiento(req.query, req.user);
+  ApiResponse.send(res, { message: 'Rendimiento de precalibración obtenido correctamente', data });
+}));
+router.get('/semanal', auth, permission(PERMISSIONS.PRECALIBRACION_VER), validate(semanalPrecalibracionSchema), asyncHandler(async (req, res) => {
+  const data = await precalibracionService.getSemanal(req.query, req.user);
+  ApiResponse.send(res, { message: 'Resumen semanal de precalibración obtenido correctamente', data });
+}));
+router.get('/sesiones', auth, permission(PERMISSIONS.PRECALIBRACION_VER), validate(sesionesPrecalibracionSchema), asyncHandler(async (req, res) => {
+  const data = await precalibracionService.getSesiones(req.query, req.user);
+  ApiResponse.send(res, { message: 'Sesiones de precalibración obtenidas correctamente', data });
 }));
 
 /**

@@ -32,6 +32,8 @@ import { MotivoRepique } from './models/motivoRepique.model.js';
 import { MotivoRecuse } from './models/motivoRecuse.model.js';
 import { RacimoMovimiento } from './models/racimoMovimiento.model.js';
 import { PrecalibracionRegistro } from './models/precalibracionRegistro.model.js';
+import { PrecalibracionSesion } from './models/precalibracionSesion.model.js';
+import { PrecalibracionTraza } from './models/precalibracionTraza.model.js';
 import { PrecalibracionEstimacion } from './models/precalibracionEstimacion.model.js';
 import { ProyeccionEscenario } from './models/proyeccionEscenario.model.js';
 import { ProyeccionArea } from './models/proyeccionArea.model.js';
@@ -84,6 +86,8 @@ import { OrdenManoObra } from './models/ordenManoObra.model.js';
 import { OrdenServicio } from './models/ordenServicio.model.js';
 import { Proveedor } from './models/proveedor.model.js';
 import { Existencia } from './models/existencia.model.js';
+import { ConteoInventario } from './models/conteoInventario.model.js';
+import { ConteoInventarioDetalle } from './models/conteoInventarioDetalle.model.js';
 import { Factura } from './models/factura.model.js';
 import { FacturaDetalle } from './models/facturaDetalle.model.js';
 import { AspersionProgramacion } from './models/aspersionProgramacion.model.js';
@@ -369,6 +373,7 @@ export const setupAssociations = () => {
   withAuditAssociations(MotivoRecuse);
   withAuditAssociations(RacimoMovimiento);
   withAuditAssociations(PrecalibracionRegistro);
+  withAuditAssociations(PrecalibracionSesion);
   withAuditAssociations(PrecalibracionEstimacion);
 
   // Proyección anual: escenarios y su plan de hectáreas nuevas por finca y semana de entrada.
@@ -579,6 +584,15 @@ export const setupAssociations = () => {
   Existencia.belongsTo(Almacen, { foreignKey: 'almacenId', as: 'almacen' });
   Articulo.hasMany(Existencia, { foreignKey: 'articuloId', as: 'existencias' });
   Existencia.belongsTo(Articulo, { foreignKey: 'articuloId', as: 'articulo' });
+
+  // Conteos (toma de inventario físico) por almacén.
+  ConteoInventario.belongsTo(Almacen, { foreignKey: 'almacenId', as: 'almacen' });
+  Almacen.hasMany(ConteoInventario, { foreignKey: 'almacenId', as: 'conteos' });
+  ConteoInventario.belongsTo(ArticuloCategoria, { foreignKey: 'categoriaId', as: 'categoria' });
+  ConteoInventario.belongsTo(Motivo, { foreignKey: 'motivoId', as: 'motivo' });
+  ConteoInventario.hasMany(ConteoInventarioDetalle, { foreignKey: 'conteoId', as: 'detalle' });
+  ConteoInventarioDetalle.belongsTo(ConteoInventario, { foreignKey: 'conteoId', as: 'conteo' });
+  ConteoInventarioDetalle.belongsTo(Articulo, { foreignKey: 'articuloId', as: 'articulo' });
 
   // Inventarios - FASE 3: Mezclas y Elaboraciones
   Mezcla.hasMany(MezclaVersion, { foreignKey: 'mezclaId', as: 'versiones' });
@@ -808,6 +822,8 @@ export {
   MotivoRecuse,
   RacimoMovimiento,
   PrecalibracionRegistro,
+  PrecalibracionSesion,
+  PrecalibracionTraza,
   PrecalibracionEstimacion,
   ProyeccionEscenario,
   ProyeccionArea,
@@ -859,6 +875,8 @@ export {
   OrdenServicio,
   Proveedor,
   Existencia,
+  ConteoInventario,
+  ConteoInventarioDetalle,
   Factura,
   FacturaDetalle,
   AspersionProgramacion,

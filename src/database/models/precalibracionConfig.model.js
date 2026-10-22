@@ -11,6 +11,8 @@ PrecalibracionConfig.init(
     fincaId: { type: DataTypes.INTEGER, allowNull: true, unique: true, field: 'finca_id' },
     edades: { type: DataTypes.JSON, allowNull: false },
     valores: { type: DataTypes.JSON, allowNull: false },
+    segundosEspera: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 10, field: 'segundos_espera' },
+    modalidad: { type: DataTypes.STRING(12), allowNull: false, defaultValue: 'VIGENTE' },
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
     updatedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'updated_by' },
   },

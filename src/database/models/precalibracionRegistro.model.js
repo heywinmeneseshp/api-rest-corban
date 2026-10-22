@@ -13,6 +13,7 @@ PrecalibracionRegistro.init(
     loteId: { type: DataTypes.INTEGER, allowNull: false, field: 'lote_id' },
     semanaEmbolseId: { type: DataTypes.INTEGER, allowNull: false, field: 'semana_embolse_id' },
     semanaId: { type: DataTypes.INTEGER, allowNull: false, field: 'semana_id' },
+    sesionId: { type: DataTypes.INTEGER, allowNull: true, field: 'sesion_id' },
     valor: { type: DataTypes.STRING(10), allowNull: false },
     fechaHora: { type: DataTypes.DATE, allowNull: false, field: 'fecha_hora' },
     lat: { type: DataTypes.DECIMAL(10, 7), allowNull: true },

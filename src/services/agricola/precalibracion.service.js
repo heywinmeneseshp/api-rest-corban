@@ -1,6 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import { Op, fn, literal } from 'sequelize';
-import { Finca, Lote, Semana, User, PrecalibracionRegistro, PrecalibracionEstimacion, RacimoMovimiento, EstimacionFinca } from '../../database/associations.js';
-import { cargarConfig, edadesDeFinca, valoresDeFinca, unionEdades, unionValores } from './precalibracionConfig.service.js';
+import { Finca, Lote, Semana, User, PrecalibracionRegistro, PrecalibracionSesion, PrecalibracionTraza, PrecalibracionEstimacion, RacimoMovimiento, EstimacionFinca } from '../../database/associations.js';
+import { loteAreaProduccionRepository } from '../../repositories/agricola/loteAreaProduccion.repository.js';
+import { cargarConfig, edadesDeFinca, modalidadDeFinca, segundosEsperaDeFinca, valoresDeFinca, unionEdades, unionValores } from './precalibracionConfig.service.js';
 import { produccionSemanalRepository } from '../../repositories/agricola/produccionSemanal.repository.js';
 import { racimoMovimientoRepository } from '../../repositories/agricola/racimoMovimiento.repository.js';
 import { ApiError } from '../../utils/ApiError.js';
@@ -24,6 +26,37 @@ const COLOR_HEX = {
   Verde: '#16a34a',
   Gris: '#9ca3af',
 };
+
+// Distancia (m) entre dos coordenadas (fórmula de Haversine).
+const distanciaM = (a, b) => {
+  const rad = (g) => (g * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat);
+  const dLng = rad(b.lng - a.lng);
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371000 * Math.asin(Math.sqrt(x));
+};
+
+// Recorrido sobre la traza GPS (puntos [{lat, lng, t en ms}] ordenados). Se descartan saltos imposibles de GPS (más de 3 m/s
+// = no es caminando) y se cuenta el tiempo en movimiento (> 0,3 m/s, tramos de hasta 60 s).
+const MAX_VELOCIDAD_MS = 3;
+const MIN_VELOCIDAD_MOVIMIENTO_MS = 0.3;
+function recorridoDeTraza(puntos) {
+  let distM = 0;
+  let movSeg = 0;
+  let previo = puntos[0];
+  for (let i = 1; i < puntos.length; i += 1) {
+    const actual = puntos[i];
+    const dt = (actual.t - previo.t) / 1000;
+    if (dt <= 0) continue;
+    const d = distanciaM(previo, actual);
+    const v = d / dt;
+    if (v > MAX_VELOCIDAD_MS) continue; // salto de GPS: se ignora y se compara con el siguiente punto
+    distM += d;
+    if (v > MIN_VELOCIDAD_MOVIMIENTO_MS && dt <= 60) movSeg += dt;
+    previo = actual;
+  }
+  return { distM, movSeg };
+}
 
 const redondear = (n, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
 const hoyBogota = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
@@ -148,6 +181,40 @@ async function saldosDeCintas(cintas, filtros) {
   return filas.map((f) => ({ ...f, saldo: Number(f.saldo) })).filter((f) => f.saldo > 0);
 }
 
+// Indicadores de un conjunto de sesiones (de un trabajador, de una semana o del equipo). Por hectárea cuentan solo las sesiones con
+// área productiva y duración.
+const cuentasDeSesiones = (lista) => {
+  // Indicadores por hectárea: solo con sesiones que tienen área productiva y duración.
+  const conHa = lista.filter((s) => s.ha > 0 && s.duracionMin > 0);
+  const ha = conHa.reduce((a, s) => a + s.ha, 0);
+  const minConHa = conHa.reduce((a, s) => a + s.duracionMin, 0);
+  const aptosConHa = conHa.reduce((a, s) => a + s.totalAptos, 0);
+  const recConHa = conHa.reduce((a, s) => a + (s.recorridoM || 0), 0);
+  const minTotal = lista.reduce((a, s) => a + (s.duracionMin || 0), 0);
+  const aptos = lista.reduce((a, s) => a + s.totalAptos, 0);
+  const recorridoM = lista.reduce((a, s) => a + (s.recorridoM || 0), 0);
+  const medidas = lista.filter((s) => s.recorridoMedido && s.duracionMin > 0);
+  const minMedidos = medidas.reduce((a, s) => a + s.duracionMin, 0);
+  const movMin = medidas.reduce((a, s) => a + (s.tiempoMovimientoMin || 0), 0);
+  return {
+    sesiones: lista.length,
+    sinAreaProductiva: lista.filter((s) => !(s.ha > 0)).length,
+    dias: new Set(lista.map((s) => s.fecha)).size,
+    ha: redondear(ha, 2),
+    horas: redondear(minTotal / 60, 2),
+    haPorHora: minConHa > 0 ? redondear(ha / (minConHa / 60), 2) : null,
+    minPorHa: ha > 0 ? redondear(minConHa / ha, 1) : null,
+    racimos: aptos,
+    racimosPorHa: ha > 0 ? redondear(aptosConHa / ha, 1) : null,
+    racimosPorHora: minTotal > 0 ? redondear(aptos / (minTotal / 60), 1) : null,
+    recorridoKm: redondear(recorridoM / 1000, 2),
+    metrosPorHa: ha > 0 ? Math.round(recConHa / ha) : null,
+    velocidadKmh: minTotal > 0 && recorridoM > 0 ? redondear(recorridoM / 1000 / (minTotal / 60), 2) : null,
+    pctMovimiento: minMedidos > 0 ? Math.round((movMin / minMedidos) * 100) : null,
+    recorridoMedido: lista.length > 0 && lista.every((s) => s.recorridoMedido),
+  };
+};
+
 export const precalibracionService = {
   // Catálogos para los filtros de la pantalla (y para la app móvil: las cintas de hoy con su color).
   async getOpciones(user) {
@@ -159,7 +226,7 @@ export const precalibracionService = {
       order: [['nombre', 'ASC']],
     });
     const lotes = await Lote.findAll({
-      where: { fincaId: { [Op.in]: fincas.map((f) => f.id) } },
+      where: { fincaId: { [Op.in]: fincas.map((f) => f.id) }, estado: true },
       attributes: ['uuid', 'nombre', 'fincaId'],
     });
     const fincaPorId = new Map(fincas.map((f) => [f.id, f]));
@@ -168,11 +235,12 @@ export const precalibracionService = {
     const idsVisibles = fincas.map((f) => f.id);
     const edadesUnion = unionEdades(config, idsVisibles);
     const configPorFinca = {};
-    for (const f of fincas) configPorFinca[f.uuid] = { edades: edadesDeFinca(config, f.id), valores: valoresDeFinca(config, f.id) };
+    for (const f of fincas) configPorFinca[f.uuid] = { edades: edadesDeFinca(config, f.id), valores: valoresDeFinca(config, f.id), segundosEspera: segundosEsperaDeFinca(config, f.id), modalidad: modalidadDeFinca(config, f.id) };
     return {
       fincas: fincas.map((f) => ({ id: f.uuid, codigo: f.codigo, nombre: f.nombre })),
       lotes: lotes
-        .filter((l) => fincaPorId.get(l.fincaId))
+        // Solo lotes activos; los lotes de relleno (nombre solo de ceros, p. ej. "00000") no se pueden precalibrar.
+        .filter((l) => fincaPorId.get(l.fincaId) && !/^0+$/.test(String(l.nombre).trim()))
         .map((l) => ({ id: l.uuid, nombre: l.nombre, fincaId: fincaPorId.get(l.fincaId).uuid })),
       semanas: cal.semanas
         .filter((s) => !hasta || s.fechaInicio <= hasta)
@@ -193,6 +261,7 @@ export const precalibracionService = {
   // reenvío no duplica. Devuelve el resultado por elemento para que el móvil marque cuáles ya se sincronizaron.
   async registrar(payload, actorId, user) {
     const cal = await cargarCalendario();
+    const config = await cargarConfig();
     const items = payload.registros;
 
     const uuidsFinca = [...new Set(items.map((i) => i.fincaUuid))];
@@ -237,6 +306,8 @@ export const precalibracionService = {
       if (!semana) { error('No existe una semana para la fecha del registro'); continue; }
       const edad = edadDe(cal, semana.id, embolse.id);
       if (edad === null || edad < 1) { error('La semana de embolse es posterior a la fecha del registro'); continue; }
+      // Solo se precalibra en las edades de cosecha configuradas para la finca.
+      if (!edadesDeFinca(config, finca.id).includes(edad)) { error(`La edad ${edad} no es una edad de cosecha para esta finca`); continue; }
       filas.push({
         uuid: item.uuid,
         fincaId: finca.id,
@@ -248,11 +319,38 @@ export const precalibracionService = {
         lat: item.lat ?? null,
         lng: item.lng ?? null,
         createdBy: actorId,
+        _sesion: item.sesion || null,
       });
       resultados.push({ uuid: item.uuid, estado: 'CREADO' });
       yaRegistrados.add(item.uuid); // un uuid repetido dentro del mismo envío no se inserta dos veces
     }
-    if (filas.length > 0) await PrecalibracionRegistro.bulkCreate(filas);
+    // Sesiones: cada registro puede traer la suya; se crea la primera vez que llega (idempotente por uuid).
+    const sesionUuids = [...new Set(filas.map((f) => f._sesion?.uuid).filter(Boolean))];
+    if (sesionUuids.length > 0) {
+      const sesionesExistentes = await PrecalibracionSesion.findAll({ where: { uuid: { [Op.in]: sesionUuids } } });
+      const sesionPorUuid = new Map(sesionesExistentes.map((s) => [s.uuid, s]));
+      for (const f of filas) {
+        const ses = f._sesion;
+        if (!ses) continue;
+        if (!sesionPorUuid.has(ses.uuid)) {
+          const inicio = ses.inicio || f.fechaHora;
+          const fechaIni = fechaLocal(inicio);
+          const semanaIni = cal.semanas.find((s) => s.fechaInicio <= fechaIni && s.fechaFin >= fechaIni);
+          const creada = await PrecalibracionSesion.create({
+            uuid: ses.uuid,
+            fincaId: f.fincaId,
+            loteId: f.loteId,
+            semanaId: semanaIni ? semanaIni.id : f.semanaId,
+            tipo: ses.tipo,
+            inicioAt: inicio,
+            createdBy: actorId,
+          });
+          sesionPorUuid.set(ses.uuid, creada);
+        }
+        f.sesionId = sesionPorUuid.get(ses.uuid).id;
+      }
+    }
+    if (filas.length > 0) await PrecalibracionRegistro.bulkCreate(filas.map(({ _sesion, ...resto }) => resto));
     return {
       total: items.length,
       creados: resultados.filter((r) => r.estado === 'CREADO').length,
@@ -260,6 +358,356 @@ export const precalibracionService = {
       errores: resultados.filter((r) => r.estado === 'ERROR').length,
       resultados,
     };
+  },
+
+  // Carga manual desde Excel (cuando la precalibración se hizo en papel). Cada fila es una sesión de un lote y un día, con los racimos
+  // aptos por edad; se convierte en una sesión cerrada con un registro por racimo (sin GPS). Con `simular` solo valida y devuelve el
+  // resultado por fila, sin guardar nada. Las horas son opcionales: con ellas la sesión tiene duración (los racimos se reparten entre
+  // la hora de inicio y la de fin); sin ellas, la duración queda vacía.
+  async importarExcel({ filas, simular }, actorId, user) {
+    const cal = await cargarCalendario();
+    const config = await cargarConfig();
+    const norm = (t) => String(t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+    const permitidas = getFincaIdsPermitidas(user);
+    const fincas = await Finca.findAll({ where: permitidas ? { id: { [Op.in]: permitidas } } : {}, attributes: ['id', 'uuid', 'nombre'] });
+    const fincaPorNombre = new Map(fincas.map((f) => [norm(f.nombre), f]));
+    const lotes = await Lote.findAll({ where: { fincaId: { [Op.in]: fincas.map((f) => f.id) }, estado: true }, attributes: ['id', 'uuid', 'nombre', 'fincaId'] });
+    const lotePorClave = new Map(lotes.map((l) => [`${l.fincaId}|${norm(l.nombre)}`, l]));
+    const hora = (h) => (/^\d{1,2}:\d{2}$/.test(String(h ?? '').trim()) ? String(h).trim().padStart(5, '0') : null);
+
+    const resultados = [];
+    const aGuardar = [];
+    filas.forEach((f, i) => {
+      const numero = f.fila || i + 2;
+      const fallo = (mensaje) => resultados.push({ fila: numero, estado: 'ERROR', mensaje, racimos: 0 });
+      const finca = fincaPorNombre.get(norm(f.finca));
+      if (!finca) return fallo(`Finca «${f.finca}» no encontrada o sin acceso`);
+      const lote = lotePorClave.get(`${finca.id}|${norm(f.lote)}`);
+      if (!lote) return fallo(`Lote «${f.lote}» no existe (o está inactivo) en ${finca.nombre}`);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(f.fecha || ''))) return fallo('Fecha inválida (usa dd/mm/aaaa)');
+      const semana = cal.semanas.find((x) => x.fechaInicio <= f.fecha && x.fechaFin >= f.fecha);
+      if (!semana) return fallo('No existe una semana del calendario para esa fecha');
+      const modalidad = /^v/i.test(norm(f.modalidad)) ? 'VIGENTE' : /^a/i.test(norm(f.modalidad)) ? 'ANTICIPADA' : null;
+      if (!modalidad) return fallo('Modalidad debe ser Vigente o Anticipada');
+      const valor = String(f.calibrador ?? '').trim();
+      if (!valor) return fallo('Falta el calibrador');
+      if (!valoresDeFinca(config, finca.id).includes(valor)) return fallo(`El calibrador ${valor} no está configurado para ${finca.nombre}`);
+      const idxSemana = cal.idx.get(semana.id);
+      const edadesValidas = edadesDeFinca(config, finca.id);
+      const items = [];
+      let racimos = 0;
+      for (const [edadTxt, cantidad] of Object.entries(f.edades || {})) {
+        const edad = Number(edadTxt);
+        const n = Number(cantidad) || 0;
+        if (n <= 0) continue;
+        if (!edadesValidas.includes(edad)) return fallo(`La edad ${edad} no es una edad de cosecha para ${finca.nombre}`);
+        const embolse = cal.semanas[idxSemana - (edad - 1)];
+        if (!embolse) return fallo(`No existe la semana de embolse para la edad ${edad}`);
+        racimos += n;
+        items.push({ embolse, n });
+      }
+      if (racimos === 0) return fallo('No tiene racimos aptos');
+      if (racimos > 20000) return fallo('Demasiados racimos en una fila (máximo 20.000)');
+      const hIni = hora(f.horaInicio);
+      const hFin = hora(f.horaFin);
+      if ((f.horaInicio && !hIni) || (f.horaFin && !hFin)) return fallo('Las horas deben tener formato HH:mm');
+      resultados.push({ fila: numero, estado: 'OK', mensaje: '', racimos });
+      aGuardar.push({ finca, lote, fecha: f.fecha, modalidad, valor, items, racimos, hIni, hFin, numero });
+    });
+
+    let creados = 0;
+    if (!simular && aGuardar.length > 0) {
+      for (const g of aGuardar) {
+        const sesionUuid = randomUUID();
+        const t0 = new Date(`${g.fecha}T${g.hIni || '08:00'}:00-05:00`).getTime();
+        const t1 = g.hIni && g.hFin ? new Date(`${g.fecha}T${g.hFin}:00-05:00`).getTime() : t0;
+        const registros = [];
+        let k = 0;
+        for (const it of g.items) {
+          for (let j = 0; j < it.n; j += 1) {
+            const t = g.racimos > 1 ? t0 + ((t1 - t0) * k) / (g.racimos - 1) : t0;
+            registros.push({
+              uuid: randomUUID(),
+              fincaUuid: g.finca.uuid,
+              loteUuid: g.lote.uuid,
+              semanaEmbolseUuid: it.embolse.uuid,
+              valor: g.valor,
+              fechaHora: new Date(t).toISOString(),
+              fecha: g.fecha,
+              lat: null,
+              lng: null,
+              sesion: { uuid: sesionUuid, tipo: g.modalidad, inicio: new Date(t0).toISOString() },
+            });
+            k += 1;
+          }
+        }
+        // En lotes de 1.000 por si la fila trae muchos racimos.
+        for (let a = 0; a < registros.length; a += 1000) {
+          const r = await this.registrar({ registros: registros.slice(a, a + 1000) }, actorId, user);
+          if (r.errores > 0) {
+            const primero = r.resultados.find((x) => x.estado === 'ERROR');
+            const res = resultados.find((x) => x.fila === g.numero);
+            if (res) { res.estado = 'ERROR'; res.mensaje = primero?.mensaje || 'Error al guardar'; }
+            break;
+          }
+        }
+        await this.cerrarSesion(sesionUuid, { fin: new Date(t1).toISOString() }, actorId, user).catch(() => {});
+        if (resultados.find((x) => x.fila === g.numero)?.estado === 'OK') creados += 1;
+      }
+    }
+    return {
+      total: filas.length,
+      validas: resultados.filter((r) => r.estado === 'OK').length,
+      errores: resultados.filter((r) => r.estado === 'ERROR').length,
+      creadas: creados,
+      simulado: Boolean(simular),
+      filas: resultados,
+    };
+  },
+
+  // Cierra una sesión: guarda la hora de finalización y el potencial de cosecha calculado en ese momento (racimos y cajas
+  // estimados de la finca para la semana de la sesión).
+  async cerrarSesion(uuid, payload, actorId, user) {
+    const sesion = await PrecalibracionSesion.findOne({ where: { uuid } });
+    if (!sesion) throw ApiError.notFound('Sesión no encontrada');
+    assertFincaPermitida(user, sesion.fincaId);
+    const cal = await cargarCalendario();
+    const semana = cal.semanas.find((s) => s.id === sesion.semanaId) || null;
+    const finca = await Finca.findByPk(sesion.fincaId, { attributes: ['id', 'nombre'] });
+    const registrosSemana = await PrecalibracionRegistro.findAll({
+      where: { fincaId: sesion.fincaId, semanaId: sesion.semanaId },
+      attributes: ['semanaId'],
+      raw: true,
+    });
+    const potencial = await this._potencial(cal, registrosSemana, { finca, fincaIds: [finca.id] }, semana);
+    await sesion.update({
+      finAt: payload?.fin || new Date(),
+      potencialRacimos: potencial?.estimacion?.racimos ?? null,
+      potencialCajas: potencial?.estimacion?.cajas ?? null,
+      updatedBy: actorId,
+    });
+    return { uuid: sesion.uuid, finAt: sesion.finAt, potencialRacimos: sesion.potencialRacimos, potencialCajas: sesion.potencialCajas };
+  },
+
+  // Tabla de sesiones: una fila por sesión con sus racimos aptos por edad, hectáreas, horas del primer y último racimo,
+  // duración y recorrido (suma de distancias entre los racimos ordenados por hora). `edades` trae solo las edades con racimos.
+  async getSesiones(query, user) {
+    const cal = await cargarCalendario();
+    const where = {};
+    const permitidas = getFincaIdsPermitidas(user);
+    if (query.fincaUuid) {
+      const f = await Finca.findOne({ where: { uuid: query.fincaUuid }, attributes: ['id'] });
+      if (!f) throw ApiError.notFound('Finca no encontrada');
+      assertFincaPermitida(user, f.id);
+      where.fincaId = f.id;
+    } else if (permitidas) {
+      where.fincaId = { [Op.in]: permitidas };
+    }
+    if (query.loteUuid) {
+      const l = await Lote.findOne({ where: { uuid: query.loteUuid }, attributes: ['id'] });
+      if (!l) throw ApiError.notFound('Lote no encontrado');
+      where.loteId = l.id;
+    }
+    if (query.semanaUuid) {
+      const s = cal.porUuid.get(query.semanaUuid);
+      if (!s) throw ApiError.badRequest('Semana no encontrada');
+      where.semanaId = s.id;
+    }
+    if (query.tipo) where.tipo = query.tipo;
+    const dia = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
+    if (query.fechaDesde || query.fechaHasta) {
+      where.inicioAt = {};
+      if (query.fechaDesde) where.inicioAt[Op.gte] = new Date(`${dia(query.fechaDesde)}T00:00:00-05:00`);
+      if (query.fechaHasta) where.inicioAt[Op.lte] = new Date(`${dia(query.fechaHasta)}T23:59:59-05:00`);
+    }
+
+    const sesiones = await PrecalibracionSesion.findAll({ where, order: [['inicioAt', 'DESC']], limit: query.limite || 300, raw: true });
+    if (sesiones.length === 0) return { edades: [], sesiones: [] };
+
+    const [registros, fincas, lotes, usuarios, trazas] = await Promise.all([
+      PrecalibracionRegistro.findAll({
+        where: { sesionId: { [Op.in]: sesiones.map((s) => s.id) } },
+        attributes: ['sesionId', 'semanaId', 'semanaEmbolseId', 'fechaHora', 'lat', 'lng'],
+        order: [['fechaHora', 'ASC']],
+        raw: true,
+      }),
+      Finca.findAll({ where: { id: { [Op.in]: [...new Set(sesiones.map((s) => s.fincaId))] } }, attributes: ['id', 'nombre'], raw: true }),
+      Lote.findAll({ where: { id: { [Op.in]: [...new Set(sesiones.map((s) => s.loteId))] } }, attributes: ['id', 'nombre', 'area'], raw: true }),
+      User.findAll({ where: { id: { [Op.in]: [...new Set(sesiones.map((s) => s.createdBy).filter(Boolean))] } }, attributes: ['id', 'nombre', 'apellido'], raw: true }),
+      PrecalibracionTraza.findAll({
+        where: { sesionId: { [Op.in]: sesiones.map((s) => s.id) } },
+        attributes: ['sesionId', 'lat', 'lng', 'registradoAt'],
+        order: [['sesionId', 'ASC'], ['registradoAt', 'ASC']],
+        raw: true,
+      }),
+    ]);
+    const trazaPorSesion = new Map();
+    for (const p of trazas) {
+      if (!trazaPorSesion.has(p.sesionId)) trazaPorSesion.set(p.sesionId, []);
+      trazaPorSesion.get(p.sesionId).push({ lat: Number(p.lat), lng: Number(p.lng), t: comoDate(p.registradoAt).getTime() });
+    }
+    const fincaPorId = new Map(fincas.map((f) => [f.id, f]));
+    const lotePorId = new Map(lotes.map((l) => [l.id, l]));
+    const usuarioPorId = new Map(usuarios.map((u) => [u.id, `${u.nombre} ${u.apellido || ''}`.trim()]));
+    const registrosPorSesion = new Map();
+    for (const r of registros) {
+      if (!registrosPorSesion.has(r.sesionId)) registrosPorSesion.set(r.sesionId, []);
+      registrosPorSesion.get(r.sesionId).push(r);
+    }
+
+    const edadesConDatos = new Set();
+    const filas = [];
+    for (const s of sesiones) {
+      const regs = registrosPorSesion.get(s.id) || [];
+      const aptosPorEdad = {};
+      for (const r of regs) {
+        const edad = edadDe(cal, r.semanaId, r.semanaEmbolseId);
+        if (edad === null) continue;
+        aptosPorEdad[edad] = (aptosPorEdad[edad] || 0) + 1;
+        edadesConDatos.add(edad);
+      }
+      const primero = regs[0];
+      const ultimo = regs[regs.length - 1];
+      const conGps = regs.filter((r) => r.lat !== null && r.lng !== null).map((r) => ({ lat: Number(r.lat), lng: Number(r.lng) }));
+      // Recorrido: del tracking GPS de la sesión si lo hay; si no, aproximado con las coordenadas de los racimos.
+      const traza = trazaPorSesion.get(s.id) || [];
+      const medido = traza.length > 1;
+      let recorridoM = 0;
+      let movSeg = null;
+      if (medido) {
+        const rt = recorridoDeTraza(traza);
+        recorridoM = rt.distM;
+        movSeg = rt.movSeg;
+      } else {
+        for (let i = 1; i < conGps.length; i += 1) recorridoM += distanciaM(conGps[i - 1], conGps[i]);
+      }
+      const semana = cal.semanas.find((x) => x.id === s.semanaId) || null;
+      const lote = lotePorId.get(s.loteId);
+      // Hectáreas: siempre el área PRODUCTIVA vigente en la semana de la sesión (nunca Lote.area); sin registro queda en null.
+      let ha = null;
+      if (semana) {
+        const vigente = await loteAreaProduccionRepository.areaVigenteEnSemana(s.loteId, semana);
+        if (vigente && Number(vigente.area) > 0) ha = Number(vigente.area);
+      }
+      filas.push({
+        id: s.uuid,
+        fecha: fechaLocal(s.inicioAt),
+        usuario: usuarioPorId.get(s.createdBy) || '',
+        usuarioId: s.createdBy,
+        finca: fincaPorId.get(s.fincaId)?.nombre || '',
+        lote: lote?.nombre || '',
+        loteId: lote ? undefined : undefined,
+        semana: semana ? semana.codigo : '',
+        // Vigente = se cosecha la misma semana; anticipada = la semana siguiente.
+        semanaCosecha: semana ? (s.tipo === 'ANTICIPADA' ? cal.semanas[cal.semanas.findIndex((x) => x.id === semana.id) + 1]?.codigo || '' : semana.codigo) : '',
+        tipo: s.tipo,
+        aptosPorEdad,
+        totalAptos: regs.length,
+        ha: ha === null ? null : redondear(ha, 2),
+        horaInicio: primero ? horaLocal(primero.fechaHora) : null,
+        horaFin: ultimo ? horaLocal(ultimo.fechaHora) : null,
+        duracionMin: primero && ultimo ? Math.round((comoDate(ultimo.fechaHora) - comoDate(primero.fechaHora)) / 60000) : null,
+        recorridoM: medido || conGps.length > 1 ? Math.round(recorridoM) : null,
+        recorridoMedido: medido,
+        trazaPuntos: traza.length,
+        tiempoMovimientoMin: movSeg === null ? null : Math.round(movSeg / 60),
+        potencialRacimos: s.potencialRacimos,
+        potencialCajas: s.potencialCajas,
+        cerrada: Boolean(s.finAt),
+      });
+    }
+    return { edades: [...edadesConDatos].sort((a, b) => a - b), sesiones: filas.map(({ loteId: _l, ...resto }) => resto) };
+  },
+
+  // Recibe puntos del tracking GPS de una sesión (en lotes). Es idempotente: un punto repetido (mismo momento) se ignora.
+  async subirTraza(uuid, puntos, user) {
+    const sesion = await PrecalibracionSesion.findOne({ where: { uuid }, attributes: ['id', 'fincaId'] });
+    if (!sesion) throw ApiError.notFound('Sesión no encontrada');
+    assertFincaPermitida(user, sesion.fincaId);
+    const filas = puntos.map((p) => ({ sesionId: sesion.id, lat: p.lat, lng: p.lng, precisionM: p.precision ?? null, registradoAt: new Date(p.t) }));
+    await PrecalibracionTraza.bulkCreate(filas, { ignoreDuplicates: true });
+    return { recibidos: filas.length };
+  },
+
+  // Traza completa de una sesión para dibujar el recorrido real en el mapa.
+  async getTrazaSesion(uuid, user) {
+    const sesion = await PrecalibracionSesion.findOne({ where: { uuid }, attributes: ['id', 'fincaId'] });
+    if (!sesion) throw ApiError.notFound('Sesión no encontrada');
+    assertFincaPermitida(user, sesion.fincaId);
+    const puntos = await PrecalibracionTraza.findAll({ where: { sesionId: sesion.id }, attributes: ['lat', 'lng', 'registradoAt'], order: [['registradoAt', 'ASC']], raw: true });
+    return { puntos: puntos.map((p) => ({ lat: Number(p.lat), lng: Number(p.lng), t: comoDate(p.registradoAt).toISOString() })) };
+  },
+
+  // Rendimiento semanal por trabajador: suma las sesiones de cada usuario en la semana (por defecto la actual) y calcula
+  // indicadores por hectárea con el área PRODUCTIVA de cada lote. Tiempo = del primer al último racimo de cada sesión.
+  async getRendimiento(query, user) {
+    const cal = await cargarCalendario();
+    const semana = query.semanaUuid ? cal.porUuid.get(query.semanaUuid) : cal.actual;
+    if (!semana) throw ApiError.badRequest('Semana no encontrada');
+    const { sesiones } = await this.getSesiones({ semanaUuid: semana.uuid, fincaUuid: query.fincaUuid }, user);
+
+    const porUsuario = new Map();
+    for (const s of sesiones) {
+      const clave = s.usuarioId || 0;
+      if (!porUsuario.has(clave)) porUsuario.set(clave, []);
+      porUsuario.get(clave).push(s);
+    }
+    const equipo = cuentasDeSesiones(sesiones);
+    const dif = (v, ref) => (v !== null && ref ? Math.round(((v - ref) / ref) * 100) : null);
+    const trabajadores = [...porUsuario.values()]
+      .map((lista) => {
+        const c = cuentasDeSesiones(lista);
+        return {
+          usuario: lista[0].usuario || '—',
+          usuarioId: lista[0].usuarioId,
+          ...c,
+          vsEquipoHaPorHora: dif(c.haPorHora, equipo.haPorHora),
+          lotes: lista
+            .map((s) => ({
+              id: s.id,
+              fecha: s.fecha,
+              finca: s.finca,
+              lote: s.lote,
+              tipo: s.tipo,
+              ha: s.ha,
+              duracionMin: s.duracionMin,
+              minPorHa: s.ha > 0 && s.duracionMin > 0 ? redondear(s.duracionMin / s.ha, 1) : null,
+              haPorHora: s.ha > 0 && s.duracionMin > 0 ? redondear(s.ha / (s.duracionMin / 60), 2) : null,
+              racimos: s.totalAptos,
+              racimosPorHa: s.ha > 0 ? redondear(s.totalAptos / s.ha, 1) : null,
+              recorridoM: s.recorridoM,
+              metrosPorHa: s.ha > 0 && s.recorridoM ? Math.round(s.recorridoM / s.ha) : null,
+              recorridoMedido: s.recorridoMedido,
+            }))
+            .sort((a, b) => a.fecha.localeCompare(b.fecha)),
+        };
+      })
+      .sort((a, b) => (b.haPorHora ?? -1) - (a.haPorHora ?? -1));
+
+    return { semana: { uuid: semana.uuid, codigo: semana.codigo }, equipo, trabajadores };
+  },
+
+  // Resumen por semana de precalibración (no por sesión): suma las sesiones de cada semana con sus indicadores.
+  async getSemanal(query, user) {
+    const { sesiones } = await this.getSesiones({ fincaUuid: query.fincaUuid, tipo: query.tipo, limite: 5000 }, user);
+    const porSemana = new Map();
+    for (const s of sesiones) {
+      if (!s.semana) continue;
+      if (!porSemana.has(s.semana)) porSemana.set(s.semana, []);
+      porSemana.get(s.semana).push(s);
+    }
+    const semanas = [...porSemana.entries()]
+      .map(([codigo, lista]) => ({
+        semana: codigo,
+        desde: lista.reduce((m, s) => (s.fecha < m ? s.fecha : m), lista[0].fecha),
+        hasta: lista.reduce((m, s) => (s.fecha > m ? s.fecha : m), lista[0].fecha),
+        semanaCosecha: [...new Set(lista.map((s) => s.semanaCosecha).filter(Boolean))].sort().join(' · '),
+        trabajadores: new Set(lista.map((s) => s.usuarioId)).size,
+        lotes: new Set(lista.map((s) => `${s.finca}|${s.lote}`)).size,
+        ...cuentasDeSesiones(lista),
+      }))
+      .sort((a, b) => b.desde.localeCompare(a.desde));
+    return { semanas };
   },
 
   // Dashboard: KPIs, tabla por lote (aptos, saldo y restante por cinta), distribución, ratio y potencial.

@@ -7,7 +7,8 @@ import { ROLES } from '../constants/roles.constants.js';
 // cualquier endpoint de Inventarios). Sigue exigiendo login (`auth`), solo
 // se salta el chequeo de permisos puntual. Quitar este bypass en cuanto
 // pida las restricciones reales.
-const esPermisoInventario = (code) => code.startsWith('menu.inventarios') || code.startsWith('inventario.');
+// Excepción: los permisos de Mezclas (inventario.mezclas.*) SÍ se aplican, se asignan por rol en Maestros > Roles.
+const esPermisoInventario = (code) => !code.startsWith('inventario.mezclas.') && (code.startsWith('menu.inventarios') || code.startsWith('inventario.'));
 
 export const permission = (...requiredCodes) => (req, _res, next) => {
   if (!req.user) {
