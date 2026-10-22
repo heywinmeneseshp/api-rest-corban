@@ -12,8 +12,8 @@ import {
 
 const router = Router();
 
-router.get('/', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_VER), validate(listElaboracionSchema), elaboracionController.list);
-router.get('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_VER), validate(getElaboracionSchema), elaboracionController.getByUuid);
+router.get('/', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_VER, PERMISSIONS.MENU_INVENTARIOS_ELABORACIONES, PERMISSIONS.MENU_INVENTARIOS_MEZCLAS), validate(listElaboracionSchema), elaboracionController.list);
+router.get('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_VER, PERMISSIONS.MENU_INVENTARIOS_ELABORACIONES, PERMISSIONS.MENU_INVENTARIOS_MEZCLAS), validate(getElaboracionSchema), elaboracionController.getByUuid);
 router.post('/', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_ELABORAR), validate(createElaboracionSchema), elaboracionController.create);
 
 export default router;

@@ -35,7 +35,7 @@ const router = Router();
 // Parámetros de validación (pH/CE) — antes de /:uuid para no chocar con el
 // parseo de uuid. GET: cualquiera con acceso al módulo (el formulario los
 // necesita para mostrar el rango); PUT: solo Administrador.
-router.get('/parametros', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_VER), mezclaController.getParametros);
+router.get('/parametros', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_VER, PERMISSIONS.MENU_INVENTARIOS_ELABORACIONES, PERMISSIONS.MENU_INVENTARIOS_MEZCLAS), mezclaController.getParametros);
 router.put('/parametros', auth, requireAdmin, validate(mezclaParametrosSchema), mezclaController.setParametros);
 
 // Foto — fuera del namespace /:uuid/versiones porque se referencia solo
@@ -49,7 +49,7 @@ router.delete('/fotos/:fotoUuid', auth, permission(PERMISSIONS.INVENTARIO_MEZCLA
 router.delete('/etapas/:etapaUuid', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_EDITAR), validate(eliminarEtapaSchema), mezclaController.eliminarEtapa);
 
 // Historial de pruebas — antes de /:uuid para no chocar con el parseo de uuid.
-router.get('/historial', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_VER), validate(listHistorialSchema), mezclaController.listHistorial);
+router.get('/historial', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_VER, PERMISSIONS.MENU_INVENTARIOS_ELABORACIONES, PERMISSIONS.MENU_INVENTARIOS_MEZCLAS), validate(listHistorialSchema), mezclaController.listHistorial);
 
 // Crear un elaborado SIN prueba de laboratorio — antes de /:uuid por el
 // mismo motivo. Mismo permiso que "Nueva elaboración"/"Crear elaborado".
@@ -64,9 +64,9 @@ router.post('/bulk-upload', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_ELAB
 // Antes de /:uuid por el mismo motivo que el resto de sub-rutas fijas.
 router.get('/eliminados', auth, requireAdmin, mezclaController.listDeleted);
 
-router.get('/', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_VER), validate(listMezclaSchema), mezclaController.list);
+router.get('/', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_VER, PERMISSIONS.MENU_INVENTARIOS_ELABORACIONES, PERMISSIONS.MENU_INVENTARIOS_MEZCLAS), validate(listMezclaSchema), mezclaController.list);
 router.post('/', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_CREAR), validate(createMezclaSchema), mezclaController.create);
-router.get('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_VER), validate(getMezclaSchema), mezclaController.getByUuid);
+router.get('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_VER, PERMISSIONS.MENU_INVENTARIOS_ELABORACIONES, PERMISSIONS.MENU_INVENTARIOS_MEZCLAS), validate(getMezclaSchema), mezclaController.getByUuid);
 router.put('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_MEZCLAS_EDITAR), validate(updateMezclaSchema), mezclaController.update);
 // Eliminar una prueba de mezcla queda reservado solo al rol Administrador
 // (pedido explícito) — a diferencia del resto del CRUD, que sigue usando el
@@ -79,7 +79,7 @@ router.post('/:uuid/restore', auth, requireAdmin, validate(getMezclaSchema), mez
 router.get(
   '/:uuid/versiones/:versionUuid',
   auth,
-  permission(PERMISSIONS.INVENTARIO_MEZCLAS_VER),
+  permission(PERMISSIONS.INVENTARIO_MEZCLAS_VER, PERMISSIONS.MENU_INVENTARIOS_ELABORACIONES, PERMISSIONS.MENU_INVENTARIOS_MEZCLAS),
   validate(getVersionSchema),
   mezclaController.getVersion,
 );

@@ -34,7 +34,8 @@ const router = Router();
 router.get(
   '/',
   auth,
-  permission(PERMISSIONS.INGREDIENTE_ACTIVO_VER),
+  // También lo puede listar quien ve Mezclas: el formulario de mezclas lo usa para el filtro y las recetas.
+  permission(PERMISSIONS.INGREDIENTE_ACTIVO_VER, PERMISSIONS.INVENTARIO_MEZCLAS_VER, PERMISSIONS.MENU_INVENTARIOS_ELABORACIONES, PERMISSIONS.MENU_INVENTARIOS_MEZCLAS),
   validate(listIngredientesActivosSchema),
   ingredienteActivoController.list,
 );
