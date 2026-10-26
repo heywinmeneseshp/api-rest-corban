@@ -498,6 +498,21 @@ export const racimoMovimientoRepository = {
     return filas.map((f) => ({ semanaEmbolseId: f.semanaEmbolseId, tipo: f.tipo, total: Number(f.total) }));
   },
 
+  // Totales por cinta (semanaEmbolseId), semana de registro y tipo — base de la escalera de saldos/movimientos acumulados.
+  async sumarPorCintaYSemanaRegistro({ semanaEmbolseIds, fincaIds }) {
+    if (semanaEmbolseIds.length === 0) return [];
+    const filas = await RacimoMovimiento.findAll({
+      attributes: ['semanaEmbolseId', 'semanaRegistroId', 'tipo', [fn('SUM', col('cantidad')), 'total']],
+      where: {
+        semanaEmbolseId: { [Op.in]: semanaEmbolseIds },
+        ...(fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
+      },
+      group: ['semanaEmbolseId', 'semanaRegistroId', 'tipo'],
+      raw: true,
+    });
+    return filas.map((f) => ({ semanaEmbolseId: f.semanaEmbolseId, semanaRegistroId: f.semanaRegistroId, tipo: f.tipo, total: Number(f.total) }));
+  },
+
   // Última semana de REGISTRO que efectivamente tiene movimientos de
   // racimos (dentro del alcance de fincas dado, y opcionalmente acotada a un
   // año) — para que "Detalle Semanal" abra por defecto en la última semana

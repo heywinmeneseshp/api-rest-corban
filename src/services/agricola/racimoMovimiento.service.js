@@ -1274,6 +1274,72 @@ export const racimoMovimientoService = {
     };
   },
 
+  // Escalera de movimientos ACUMULADOS (totales, sin desglose por lote): filas = semana de registro, columnas = cinta (semana de embolse);
+  // cada celda es lo acumulado de esa cinta hasta el fin de esa semana, por concepto: saldo, embolsado, repicado, recusado, procesado y
+  // cosechado (= procesado + recusado). Solo se llenan las cintas con 1..cantidadSemanas de edad en esa semana.
+  async getReporteEscalera(query, user) {
+    const finca = query.fincaUuid ? await findFincaByUuidOrFail(query.fincaUuid) : null;
+    if (finca) assertFincaPermitida(user, finca.id);
+    const fincaIdsFiltro = finca ? await expandirFincaIds([finca.id]) : getFincaIdsPermitidas(user);
+
+    const n = Number(query.cantidadSemanas) || 13;
+    const anio = query.anio ? Number(query.anio) : new Date().getFullYear();
+    const semanasAnio = await semanaRepository.findAllByAnio(anio);
+    const ultima = await racimoMovimientoRepository.getUltimaSemanaConMovimientos({ fincaIds: fincaIdsFiltro, anio });
+    if (!semanasAnio.length || !ultima) return { finca: finca ? { uuid: finca.uuid, codigo: finca.codigo, nombre: finca.nombre } : null, anio, filas: [], cintas: [], celdas: {} };
+
+    const filas = semanasAnio.filter((s) => new Date(s.fechaInicio) <= new Date(ultima.fechaInicio));
+    const previas = await semanaRepository.findUltimasN(filas[0].id, n);
+    const cintas = [...previas.filter((s) => s.id !== filas[0].id), ...filas];
+    const filaIdx = new Map(filas.map((s, i) => [s.id, cintas.length - filas.length + i]));
+    const fechaPorId = new Map(cintas.map((s) => [s.id, new Date(s.fechaInicio).getTime()]));
+
+    const sumas = await racimoMovimientoRepository.sumarPorCintaYSemanaRegistro({ semanaEmbolseIds: cintas.map((s) => s.id), fincaIds: fincaIdsFiltro });
+    // Semanas de registro fuera del rango (años anteriores) se conocen solo por id: se buscan para ordenarlas por fecha.
+    const idsFaltantes = [...new Set(sumas.map((x) => x.semanaRegistroId))].filter((id) => !fechaPorId.has(id));
+    for (const id of idsFaltantes) {
+      const s = await semanaRepository.findById(id);
+      if (s) fechaPorId.set(id, new Date(s.fechaInicio).getTime());
+    }
+
+    const CAMPO = { EMBOLSE: 'embolsado', REPIQUE: 'repicado', RECUSE: 'recusado', PROCESADO: 'procesado' };
+    const vacio = () => ({ embolsado: 0, repicado: 0, recusado: 0, procesado: 0 });
+    // Por cinta: movimientos ordenados por fecha de la semana de registro, para acumular fila a fila.
+    const porCinta = new Map();
+    for (const x of sumas) {
+      if (!CAMPO[x.tipo]) continue;
+      if (!porCinta.has(x.semanaEmbolseId)) porCinta.set(x.semanaEmbolseId, []);
+      porCinta.get(x.semanaEmbolseId).push({ t: fechaPorId.get(x.semanaRegistroId) ?? 0, campo: CAMPO[x.tipo], total: x.total });
+    }
+
+    const celdas = {}; // `${filaUuid}|${cintaUuid}` -> { embolsado, repicado, recusado, procesado, cosechado, saldo }
+    filas.forEach((fila) => {
+      const fi = filaIdx.get(fila.id);
+      const corte = fechaPorId.get(fila.id);
+      cintas.forEach((cinta, ci) => {
+        const edad = fi - ci + 1;
+        if (edad < 1 || edad > n) return;
+        const acc = vacio();
+        for (const m of porCinta.get(cinta.id) || []) if (m.t <= corte) acc[m.campo] += m.total;
+        celdas[`${fila.uuid}|${cinta.uuid}`] = {
+          ...acc,
+          cosechado: acc.procesado + acc.recusado,
+          saldo: acc.embolsado - acc.repicado - acc.recusado - acc.procesado,
+        };
+      });
+    });
+
+    const mapSemana = (s) => ({ uuid: s.uuid, codigo: s.codigo, anio: s.anio, numeroSemana: s.numeroSemana, color: s.color });
+    return {
+      finca: finca ? { uuid: finca.uuid, codigo: finca.codigo, nombre: finca.nombre } : null,
+      anio,
+      cantidadSemanas: n,
+      filas: filas.map(mapSemana),
+      cintas: cintas.map(mapSemana),
+      celdas,
+    };
+  },
+
   // Total embolsado por semana de un año completo, para el gráfico de
   // líneas de embolses (general o por finca).
   // Reporte de embolses (por defecto) o, con `query.tipo`, del mismo cálculo
@@ -1540,6 +1606,60 @@ export const racimoMovimientoService = {
       edadesRepique,
       edadesSeleccionadas,
     };
+  },
+
+  // Edita una línea ya registrada — SOLO Administrador (además del permiso de la ruta). Lo que no venga en el payload se conserva. Valida que
+  // el lote sea de la finca, los motivos según el tipo y que ninguna de las dos cohortes afectadas (la de antes y la de después del cambio)
+  // quede con saldo negativo, salvo que se confirme `forzarSaldoNegativo`.
+  async updateMovimiento(uuid, payload, actorId, user) {
+    if (!(user?.roles || []).includes(ROLES.ADMINISTRADOR)) {
+      throw ApiError.forbidden('Solo un administrador puede editar movimientos de racimos');
+    }
+    const movimiento = await this.getMovimientoByUuid(uuid, user);
+    const finca = payload.fincaUuid ? await findFincaByUuidOrFail(payload.fincaUuid) : await Finca.findByPk(movimiento.fincaId);
+    assertFincaPermitida(user, finca.id);
+    const lote = payload.loteUuid ? await findLoteByUuidOrFail(payload.loteUuid) : await Lote.findByPk(movimiento.loteId);
+    if (lote.fincaId !== finca.id) throw ApiError.badRequest('El lote no pertenece a la finca elegida');
+    const semanaEmbolseId = payload.semanaEmbolseUuid ? (await findSemanaByUuidOrFail(payload.semanaEmbolseUuid)).id : movimiento.semanaEmbolseId;
+    const semanaRegistroId = payload.semanaRegistroUuid ? (await findSemanaByUuidOrFail(payload.semanaRegistroUuid)).id : movimiento.semanaRegistroId;
+    const tipo = payload.tipo || movimiento.tipo;
+    const cantidad = payload.cantidad !== undefined ? Number(payload.cantidad) : Number(movimiento.cantidad);
+
+    // Motivos: si el payload no trae ninguno y el tipo no cambió, se conservan los actuales.
+    let motivos;
+    if (payload.motivoRepiqueUuid === undefined && payload.motivoRecuseUuid === undefined && tipo === movimiento.tipo) {
+      motivos = { motivoRepiqueId: movimiento.motivoRepiqueId, motivoRecuseId: movimiento.motivoRecuseId };
+    } else {
+      motivos = await resolveMotivos(tipo, { motivoRepiqueUuid: payload.motivoRepiqueUuid || null, motivoRecuseUuid: payload.motivoRecuseUuid || null });
+    }
+
+    // Saldos de las cohortes afectadas sin esta línea, y con la línea ya editada.
+    const efecto = tipo === 'EMBOLSE' ? cantidad : -cantidad;
+    const nueva = { fincaId: finca.id, loteId: lote.id, semanaEmbolseId };
+    const anterior = { fincaId: movimiento.fincaId, loteId: movimiento.loteId, semanaEmbolseId: movimiento.semanaEmbolseId };
+    const mismaCohorte = nueva.fincaId === anterior.fincaId && nueva.loteId === anterior.loteId && nueva.semanaEmbolseId === anterior.semanaEmbolseId;
+    const saldoNueva = (await racimoMovimientoRepository.getSaldoCohorte(nueva, { excludeId: movimiento.id })) + efecto;
+    const saldoAnterior = mismaCohorte ? saldoNueva : await racimoMovimientoRepository.getSaldoCohorte(anterior, { excludeId: movimiento.id });
+    if (!payload.forzarSaldoNegativo && (saldoNueva < 0 || saldoAnterior < 0)) {
+      throw ApiError.badRequest(
+        `El cambio deja la cohorte con saldo negativo (${Math.min(saldoNueva, saldoAnterior)}). Confírmalo para guardarlo de todas formas.`,
+        { saldoNegativo: true },
+      );
+    }
+
+    await racimoMovimientoRepository.update(movimiento, {
+      fincaId: finca.id,
+      loteId: lote.id,
+      semanaEmbolseId,
+      semanaRegistroId,
+      tipo,
+      ...motivos,
+      cantidad,
+      fecha: payload.fecha || movimiento.fecha,
+      observacion: payload.observacion !== undefined ? payload.observacion : movimiento.observacion,
+      updatedBy: actorId,
+    });
+    return this.getMovimientoByUuid(uuid, user);
   },
 
   // Requiere el permiso racimo_movimiento.eliminar (ya lo exige la ruta).

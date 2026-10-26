@@ -9,12 +9,14 @@ import {
   listRacimoMovimientosSchema,
   getRacimoMovimientoSchema,
   createRacimoMovimientoSchema,
+  updateRacimoMovimientoSchema,
   createRacimoMovimientosEnLoteSchema,
   deleteRacimoMovimientosEnLoteSchema,
   inventarioRacimosSchema,
   resumenCohorteSchema,
   reporteSaldosSchema,
   reporteMovimientosSemanaSchema,
+  reporteEscaleraSchema,
   reporteEmbolsesSchema,
   exportarMovimientosSchema,
   exportarReporteSemanalSchema,
@@ -148,6 +150,14 @@ router.get(
  *       200: { description: OK }
  */
 router.get(
+  '/reporte-escalera',
+  auth,
+  permission(PERMISSIONS.RACIMO_MOVIMIENTO_VER),
+  validate(reporteEscaleraSchema),
+  racimoMovimientoController.reporteEscalera,
+);
+
+router.get(
   '/reporte-movimientos-semana',
   auth,
   permission(PERMISSIONS.RACIMO_MOVIMIENTO_VER),
@@ -267,6 +277,14 @@ router.get(
   permission(PERMISSIONS.RACIMO_MOVIMIENTO_VER),
   validate(getRacimoMovimientoSchema),
   racimoMovimientoController.getByUuid,
+);
+// Editar una línea: solo Administrador (el servicio lo exige además del permiso).
+router.put(
+  '/:uuid',
+  auth,
+  permission(PERMISSIONS.RACIMO_MOVIMIENTO_ELIMINAR),
+  validate(updateRacimoMovimientoSchema),
+  racimoMovimientoController.update,
 );
 router.delete(
   '/:uuid',

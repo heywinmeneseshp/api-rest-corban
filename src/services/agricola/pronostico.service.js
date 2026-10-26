@@ -7,6 +7,7 @@ import { produccionSemanalRepository } from '../../repositories/agricola/producc
 import { semanaRepository } from '../../repositories/agricola/semana.repository.js';
 import { hectareasPorFincaYSemana } from './dashboard.service.js';
 import { crearEstimadorEmbolsePorHa } from './embolsePorHectarea.js';
+import { cargarClimaSemanal, crearVistaClima, ajustarRatioClima, crearAjusteTermico } from './pronosticoClima.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getFincaIdsPermitidas } from '../../utils/fincaScope.js';
 import { logger } from '../../utils/logger.js';
@@ -53,17 +54,36 @@ const MIN_COHORTES_FINCA = 5;
 const SEMANAS_RATIO = 8;
 // Ratio cajas/racimo: nivel reciente con peso exponencial (más peso a lo más nuevo). El backtest mostró que el histórico de la misma
 // semana de años anteriores sesga el ratio ~10% hacia abajo y que el nivel reciente de semanas limpias lo predice mucho mejor.
-const SEMANAS_RATIO_NIVEL = 12;
-const ALFA_RATIO = 0.3;
+const SEMANAS_RATIO_NIVEL = Number(process.env.PRONOSTICO_RATIO_N ?? 8);
+const ALFA_RATIO = Number(process.env.PRONOSTICO_RATIO_ALFA ?? 0.5);
+// Semanas recientes que se saltan siempre al medir el nivel (los racimos se cargan con rezago). 1 = solo la semana en curso/última; el
+// resto se filtra por completitud (ver ratiosRecientes). Con 2 se vuelve al comportamiento anterior (saltar siempre 2).
+const SEMANAS_SALTAR_RATIO = Number(process.env.PRONOSTICO_RATIO_SALTAR ?? 1);
+// Una semana reciente se considera incompleta si sus racimos cosechados son menos de esta fracción de la mediana de las 4 semanas previas.
+const COMPLETITUD_MIN_RATIO = 0.85;
 // Semanas con un ratio fuera de este rango son de captura incompleta o duplicada, no de rendimiento real.
 const RATIO_MIN = 0.7;
 const RATIO_MAX = 1.3;
 const MIN_SEMANAS_RATIO_FINCA = 3;
+// Ratio por semana proyectada: nivel reciente × cambio estacional esperado. El cambio de cada semana se mide en años anteriores como
+// ratio(esa semana) / nivel que tenía el ratio en la misma fecha de "hoy" de ese año; se promedia entre años, se atenúa (el ratio de
+// años distintos no se repite exacto) y se acota.
+const RATIO_ESTACIONAL_ACTIVO = process.env.PRONOSTICO_RATIO_ESTACIONAL !== '0';
+const RATIO_ESTACIONAL_ATENUACION = Number(process.env.PRONOSTICO_RATIO_ATENUACION ?? 0.6);
+// Clima (Open-Meteo, desde 2023): ajuste del ratio por radiación/lluvia/humedad/temperatura rezagadas y corrimiento de la curva de corte por
+// grados-día. Se pueden apagar con PRONOSTICO_RATIO_CLIMA=0 / PRONOSTICO_EDAD_TERMICA=0.
+const RATIO_CLIMA_ACTIVO = process.env.PRONOSTICO_RATIO_CLIMA !== '0';
+const EDAD_TERMICA_LAMBDA = process.env.PRONOSTICO_EDAD_TERMICA === '0' ? 0 : Number(process.env.PRONOSTICO_EDAD_TERMICA_LAMBDA ?? 0.75);
+const RATIO_ESTACIONAL_MIN = 0.88;
+const RATIO_ESTACIONAL_MAX = 1.12;
 // Componente "estacional": además de la tendencia reciente, se compara la
 // MISMA semana del calendario (numero_semana) en años anteriores — el ratio
 // y el aprovechamiento se calculan combinando (promedio simple) ambas
 // señales, no solo la reciente.
-const ANIOS_ESTACIONAL = 3;
+// Años de historia que usa el ratio estacional: todos los que haya (la base solo tiene datos desde 2023; al crecer, se aprovechan solos).
+const ANIOS_ESTACIONAL = 10;
+// La tasa de corte por edad sí compara solo los últimos años (calibrada así en el backtest).
+const ANIOS_TASA_ESTACIONAL = 3;
 const TOLERANCIA_SEMANA_ESTACIONAL = 1;
 // Ventana total a traer de la base de datos: la reciente + los años de
 // comparación estacional + margen — en una sola consulta, no una por año.
@@ -164,6 +184,10 @@ async function computeForecast(query, user, asOfDate = new Date()) {
   const fincas = await resolveFincas(query.fincaUuids, user);
   const semanaInicio = await resolveSemanaInicio(query.semanaInicioUuid, asOfDate);
   const semanasCount = query.semanas ? Number(query.semanas) : 8;
+  // Ventana de la gráfica del ratio: semanas pasadas y futuras alrededor de hoy (la proyección se calcula hasta cubrir las futuras).
+  const ratioPasadas = Math.max(0, Math.min(156, Number(query.ratioPasadas ?? 26)));
+  const ratioFuturas = Math.max(0, Math.min(53, Number(query.ratioFuturas ?? 0)));
+  const simulacion = Boolean(query.simularDesde);
   const pctNoCosechadoOverride =
     query.pctNoCosechado !== undefined && query.pctNoCosechado !== '' && query.pctNoCosechado !== null
       ? Number(query.pctNoCosechado)
@@ -181,7 +205,9 @@ async function computeForecast(query, user, asOfDate = new Date()) {
   // orden en que se creó cada fila, no el orden cronológico.
   const inicioFecha = new Date(semanaInicio.fechaInicio);
   const desdeFecha = toISODate(new Date(inicioFecha.getTime() - SEMANAS_LOOKBACK_FETCH * MS_POR_SEMANA));
-  const hastaFecha = toISODate(new Date(inicioFecha.getTime() + (semanasCount - 1) * MS_POR_SEMANA));
+  const semanasHastaHoy = Math.max(0, Math.round((new Date(hoy.fechaInicio).getTime() - inicioFecha.getTime()) / MS_POR_SEMANA));
+  const semanasCalculo = Math.max(semanasCount, ratioFuturas > 0 ? semanasHastaHoy + ratioFuturas + 1 : 0);
+  const hastaFecha = toISODate(new Date(inicioFecha.getTime() + (semanasCalculo - 1) * MS_POR_SEMANA));
   const semanas = await Semana.findAll({
     where: { fechaInicio: { [Op.gte]: desdeFecha, [Op.lte]: hastaFecha } },
     attributes: ['id', 'uuid', 'codigo', 'anio', 'numeroSemana', 'fechaInicio'],
@@ -216,6 +242,8 @@ async function computeForecast(query, user, asOfDate = new Date()) {
     racimoMovimientoRepository.getCosechadoPorFincaCohorte({ fincaIds: scopeFincaIds, semanaEmbolseIds: semanaIds }),
   ]);
 
+  const climaSemanal = RATIO_CLIMA_ACTIVO || EDAD_TERMICA_LAMBDA > 0 ? await cargarClimaSemanal(semanaIds, scopeFincaIds).catch(() => new Map()) : new Map();
+
   const embolse = (fincaId, idx) =>
     idx < 0 || idx >= semanas.length ? 0 : embolseMap.get(`${fincaId}-${semanas[idx].id}`) || 0;
   const cosechado = (fincaId, idx) =>
@@ -228,6 +256,21 @@ async function computeForecast(query, user, asOfDate = new Date()) {
   const embolseGrupo = (idList, idx) => idList.reduce((acc, fid) => acc + embolse(fid, idx), 0);
   const cosechadoGrupo = (idList, idx) => idList.reduce((acc, fid) => acc + cosechado(fid, idx), 0);
   const cajasGrupo = (idList, idx) => idList.reduce((acc, fid) => acc + cajas(fid, idx), 0);
+  // Cosechado y cajas de una semana SOLO de las fincas que tienen ambos datos (igual que el ratio del dashboard): una finca con cajas pero
+  // sin racimos registrados (ej. externas) inflaría el ratio al sumar su numerador sin su denominador.
+  const cosechadoYCajasCruzados = (idList, idx) => {
+    let r = 0;
+    let c = 0;
+    for (const fid of idList) {
+      const rf = cosechado(fid, idx);
+      const cf = cajas(fid, idx);
+      if (rf > 0 && cf > 0) {
+        r += rf;
+        c += cf;
+      }
+    }
+    return { r, c };
+  };
 
   const esCerrada = (embolseIdx) => {
     const harvestIdxMax = embolseIdx + EDAD_MAX - 1;
@@ -249,6 +292,7 @@ async function computeForecast(query, user, asOfDate = new Date()) {
   const numeroSemanaObjetivo = semanaInicio.numeroSemana;
   const esEstacional = (idx) =>
     semanas[idx].anio !== semanaInicio.anio &&
+    semanas[idx].anio >= semanaInicio.anio - ANIOS_TASA_ESTACIONAL - 1 &&
     distanciaCircular(semanas[idx].numeroSemana, numeroSemanaObjetivo) <= TOLERANCIA_SEMANA_ESTACIONAL;
 
   // Todas las fincas presentes en los mapas (alcance completo del usuario),
@@ -589,17 +633,26 @@ async function computeForecast(query, user, asOfDate = new Date()) {
 
   // Ratios semanales reales y limpios, de la semana más reciente hacia atrás. Se saltan las 2 últimas semanas reales (los racimos se
   // cargan con rezago y aún están incompletas, lo que dispara el ratio) y las semanas con un ratio fuera de rango.
-  function ratiosRecientes(fincaIdList) {
+  function ratiosRecientes(fincaIdList, topeOverride) {
     const ratios = [];
-    const tope = Math.min(startIdx - 1, hoyIdx - 2);
+    const tope = topeOverride ?? Math.min(startIdx - 1, hoyIdx - SEMANAS_SALTAR_RATIO);
+    // Completitud: solo se aplica a las semanas más recientes (las que pueden tener carga pendiente), comparando sus racimos con la mediana
+    // de las 4 semanas anteriores — así una semana completa recién cerrada sí cuenta, y una a medio cargar no.
+    const incompleta = (idx) => {
+      const prev = [];
+      for (let j = idx - 1; j >= 0 && prev.length < 4; j--) {
+        const { r } = cosechadoYCajasCruzados(fincaIdList, j);
+        if (r > 0) prev.push(r);
+      }
+      if (prev.length < 3) return false;
+      prev.sort((a, b) => a - b);
+      const med = (prev[Math.floor((prev.length - 1) / 2)] + prev[Math.ceil((prev.length - 1) / 2)]) / 2;
+      return cosechadoYCajasCruzados(fincaIdList, idx).r < COMPLETITUD_MIN_RATIO * med;
+    };
     for (let idx = tope; idx >= 0 && ratios.length < SEMANAS_RATIO_NIVEL; idx--) {
       if (!esReal(idx)) continue;
-      let r = 0;
-      let c = 0;
-      for (const fincaId of fincaIdList) {
-        r += cosechado(fincaId, idx);
-        c += cajas(fincaId, idx);
-      }
+      if (topeOverride === undefined && idx > tope - 2 && incompleta(idx)) continue;
+      const { r, c } = cosechadoYCajasCruzados(fincaIdList, idx);
       if (!(r > 0 && c > 0)) continue;
       const q = c / r;
       if (q >= RATIO_MIN && q <= RATIO_MAX) ratios.push(q);
@@ -627,6 +680,25 @@ async function computeForecast(query, user, asOfDate = new Date()) {
   // Ratio de respaldo global: el nivel reciente (mismas semanas limpias) de todas las fincas.
   const listaRatiosGlobal = ratiosRecientes([...fincaIdsConDatos]);
   const ratioGlobalNivel = promedioExponencial(listaRatiosGlobal) ?? 0;
+
+  // Clima: vista de lo observado hasta hoy (+ climatología del resto), ajuste relativo del ratio por semana y ajuste térmico de la curva de corte.
+  const vistaClima = crearVistaClima({ semanas, clima: climaSemanal });
+  const idsGlobales = [...fincaIdsConDatos];
+  const ratioGlobalEn = (idx) => {
+    if (idx < 0 || idx >= semanas.length || !esReal(idx)) return null;
+    const { r, c } = cosechadoYCajasCruzados(idsGlobales, idx);
+    const q = r > 0 && c > 0 ? c / r : null;
+    return q !== null && q >= RATIO_MIN && q <= RATIO_MAX ? q : null;
+  };
+  const ajusteRatioClima = RATIO_CLIMA_ACTIVO
+    ? ajustarRatioClima({
+        vista: vistaClima,
+        hoyIdx,
+        ratioGlobalEn,
+        nivelEn: (origen) => promedioExponencial(ratiosRecientes(idsGlobales, origen - 1)),
+      })
+    : null;
+  const pesosTermicos = crearAjusteTermico({ semanas, clima: climaSemanal, vista: vistaClima, hoyIdx, edades: EDADES, lambda: EDAD_TERMICA_LAMBDA });
 
   // --- Proyección de embolse futuro -----------------------------------------
   // racimosProyectados se calcula multiplicando embolse(semana E) × tasa por
@@ -685,12 +757,7 @@ async function computeForecast(query, user, asOfDate = new Date()) {
     const serie = [];
     for (let idx = 0; idx < semanas.length; idx++) {
       if (!esReal(idx)) continue;
-      let r = 0;
-      let c = 0;
-      for (const fincaId of fincaIdList) {
-        r += cosechado(fincaId, idx);
-        c += cajas(fincaId, idx);
-      }
+      const { r, c } = cosechadoYCajasCruzados(fincaIdList, idx);
       serie.push({ fase: faseSemana(semanas[idx].numeroSemana), valor: r > 0 && c > 0 ? c / r : null });
     }
     // Recorta los huecos iniciales (semanas de calendario ya creadas antes de
@@ -861,6 +928,16 @@ async function computeForecast(query, user, asOfDate = new Date()) {
     return ` · racimos desde ${[...origenes].map((o) => ETIQUETA_ORIGEN[o]).join(' + ')}`;
   }
 
+  function comparacionReal(idList, idx) {
+    const { r, c } = cosechadoYCajasCruzados(idList, idx);
+    const racimosReales = cosechadoGrupo(idList, idx);
+    return {
+      racimosReales: racimosReales > 0 ? racimosReales : null,
+      cajasReales: r > 0 && c > 0 ? Math.round(c * 100) / 100 : null,
+      ratioReal: r > 0 && c > 0 ? Math.round((c / r) * 10000) / 10000 : null,
+    };
+  }
+
   const rows = [];
   for (const grupo of grupos) {
     const { rawRate: rateGrupo, pctNoCosechado: pctGrupoHist, cohortesCerradas, usoEstacional: usoEstacionalTasa } = tasasBlend(grupo.idList);
@@ -897,10 +974,23 @@ async function computeForecast(query, user, asOfDate = new Date()) {
     // la parte que sale en la edad `edad` es el % que esa edad representa del total cortado (tasa[edad] ÷ Σ tasas). Las edades
     // anteriores a la próxima por cortar no aportan.
     const sumaTasas = EDADES.reduce((acc, k) => acc + rate[k], 0);
+    // Tasa por edad de la cinta `srcIdx`: la base, o corrida por grados-día (más calor = madura antes).
+    // Solo se corre la curva de las cintas aún no embolsadas (estimadas): en las ya embolsadas el saldo real ya refleja cómo avanza el corte.
+    const tasaTermica = (srcIdx, edad) => (pesosTermicos ? pesosTermicos(srcIdx, rate)[edad] : rate[edad]);
+    // El efecto térmico se aplica según qué tan lejos está la semana cosechada: a menos de 8 semanas las cintas ya están (casi) embolsadas y el
+    // corte observado manda; entre 8 y 24 entra completo; hacia 30 se retira porque el clima de esas semanas es solo la climatología y la
+    // estacionalidad ya viene en la tasa (backtest 2024-07 a 2026-03). Valores empíricos: revisar al crecer la historia.
+    const pesoTermico = (h) => (h < 8 ? 0 : h <= 24 ? 1 : h >= 30 ? 0 : (30 - h) / 6);
+    function tasaCintaEn(idx, srcIdx, edad) {
+      if (esReal(srcIdx)) return rate[edad];
+      const w = pesoTermico(idx - hoyIdx);
+      return w === 0 ? rate[edad] : rate[edad] * (1 - w) + tasaTermica(srcIdx, edad) * w;
+    }
+    const tasaCinta = (srcIdx, edad) => (esReal(srcIdx) ? rate[edad] : tasaTermica(srcIdx, edad));
     function pesoSaldo(srcIdx, edad) {
       const desde = Math.max(hoyIdx - srcIdx + 2, EDADES[0]);
       if (edad < desde || sumaTasas <= 0) return 0;
-      return rate[edad] / sumaTasas;
+      return tasaCinta(srcIdx, edad) / sumaTasas;
     }
     // Racimos que aporta la cinta de edad `edad` a la semana `idx` (sin el ajuste de % no cosechado) y de dónde salen:
     // 'saldo' (saldo real de la cinta), 'embolse' (embolse real × tasa), 'estimado' (hectáreas × embolse por ha) o 'mixto'.
@@ -917,11 +1007,11 @@ async function computeForecast(query, user, asOfDate = new Date()) {
             racimos += saldo * pesoSaldo(srcIdx, edad);
             origenes.add('saldo');
           } else {
-            racimos += embolse(fid, srcIdx) * rate[edad];
+            racimos += embolse(fid, srcIdx) * tasaCinta(srcIdx, edad);
             origenes.add('embolse');
           }
         } else {
-          racimos += embolseEstimadoFinca(fid, srcIdx) * rate[edad];
+          racimos += embolseEstimadoFinca(fid, srcIdx) * tasaCintaEn(idx, srcIdx, edad);
           origenes.add('estimado');
         }
       }
@@ -943,9 +1033,46 @@ async function computeForecast(query, user, asOfDate = new Date()) {
       const serieHW = construirSerieRatioSemanal(grupo.idList);
       modeloHW = ajustarHoltWintersOptimo(serieHW);
     }
+    // Cambio estacional esperado del ratio para la semana idx: en cada año anterior, ratio de esa semana (promediado con sus vecinas) dividido
+    // por el nivel reciente que había en la semana equivalente a "hoy". Solo con nivel reciente propio suficiente y al menos un año comparable.
+    const idxPorAnioSemana = new Map(semanas.map((sm, i) => [`${sm.anio}-${sm.numeroSemana}`, i]));
+    const factorEstacionalCache = new Map();
+    function factorEstacionalRatio(idx) {
+      if (factorEstacionalCache.has(idx)) return factorEstacionalCache.get(idx);
+      let factor = 1;
+      if (RATIO_ESTACIONAL_ACTIVO && listaReciente.length >= MIN_SEMANAS_RATIO_FINCA) {
+        const objetivo = semanas[idx];
+        const hoySem = semanas[hoyIdx];
+        const factores = [];
+        for (let k = 1; k <= ANIOS_ESTACIONAL; k++) {
+          const refIdx = idxPorAnioSemana.get(`${hoySem.anio - k}-${hoySem.numeroSemana}`);
+          const tIdx = idxPorAnioSemana.get(`${objetivo.anio - k}-${objetivo.numeroSemana}`);
+          if (refIdx === undefined || tIdx === undefined || tIdx <= refIdx) continue;
+          const nivelRef = promedioExponencial(ratiosRecientes(grupo.idList, refIdx - SEMANAS_SALTAR_RATIO));
+          if (!nivelRef) continue;
+          const vecinos = [tIdx - 1, tIdx, tIdx + 1]
+            .filter((j) => j >= 0 && j < semanas.length && esReal(j))
+            .map((j) => {
+              const { r, c } = cosechadoYCajasCruzados(grupo.idList, j);
+              return r > 0 && c > 0 ? c / r : null;
+            })
+            .filter((v) => v !== null && v >= RATIO_MIN && v <= RATIO_MAX);
+          if (vecinos.length === 0) continue;
+          factores.push(promedio(vecinos) / nivelRef);
+        }
+        if (factores.length > 0) {
+          const bruto = 1 + RATIO_ESTACIONAL_ATENUACION * (promedio(factores) - 1);
+          factor = Math.min(RATIO_ESTACIONAL_MAX, Math.max(RATIO_ESTACIONAL_MIN, bruto));
+        }
+      }
+      factorEstacionalCache.set(idx, factor);
+      return factor;
+    }
+    // El nivel reciente manda a 1 semana (el clima no lo mejora); el ajuste entra gradualmente y pesa completo desde 4 semanas.
+    const pesoClimaPorHorizonte = (h) => Math.max(0, Math.min(1, (h - 1) / 3));
     function ratioParaOffset(offset, idx) {
       if (modeloHW) return proyectarHoltWinters(modeloHW, offset, faseSemana(semanas[idx].numeroSemana));
-      return ratioProyectado;
+      return ratioProyectado * factorEstacionalRatio(idx) * (1 + (ajusteRatioClima && listaReciente.length >= MIN_SEMANAS_RATIO_FINCA ? ajusteRatioClima(idx) * pesoClimaPorHorizonte(idx - hoyIdx) : 0));
     }
 
     // Réplicas de bootstrap para el intervalo de confianza: mismo respaldo
@@ -986,7 +1113,7 @@ async function computeForecast(query, user, asOfDate = new Date()) {
     const aprovechamientoProyectado = pctNoCosechadoOverride != null ? 1 - pctNoCosechadoOverride : 1 - pctNoCosechadoHistorico;
     const aprovechamientoHistorico = 1 - pctNoCosechadoHistorico;
 
-    for (let offset = 0; offset < semanasCount; offset++) {
+    for (let offset = 0; offset < semanasCalculo; offset++) {
       const idx = startIdx + offset;
       if (idx >= semanas.length) break;
       const semana = semanas[idx];
@@ -1006,8 +1133,7 @@ async function computeForecast(query, user, asOfDate = new Date()) {
       let cajasCiHighEstimador = null;
 
       if (real) {
-        const rReal = cosechadoGrupo(grupo.idList, idx);
-        const cReal = cajasGrupo(grupo.idList, idx);
+        const { r: rReal, c: cReal } = cosechadoYCajasCruzados(grupo.idList, idx);
         if (rReal > 0 && cReal > 0) {
           racimosCosechados = rReal;
           ratioUsado = cReal / rReal;
@@ -1034,7 +1160,10 @@ async function computeForecast(query, user, asOfDate = new Date()) {
         // para no mezclar incertidumbres de fuentes independientes.
         // Embolse equivalente por edad (racimos de la cinta ÷ tasa): con saldo real o estimado por hectáreas, la tasa remuestreada
         // sigue aplicándose igual que antes.
-        const embolsePorEdad = aportes.map((a) => (rate[a.edad] > 0 ? a.racimos / rate[a.edad] : 0));
+        const embolsePorEdad = aportes.map((a) => {
+          const t = tasaCintaEn(idx, idx - a.edad + 1, a.edad);
+          return t > 0 ? a.racimos / t : 0;
+        });
         const cajasReplicas = new Array(BOOTSTRAP_B);
         for (let b = 0; b < BOOTSTRAP_B; b++) {
           const rateB = rateReplicas[b];
@@ -1080,6 +1209,7 @@ async function computeForecast(query, user, asOfDate = new Date()) {
       const aprovechamiento = real ? aprovechamientoHistorico : aprovechamientoProyectado;
 
       rows.push({
+        _idx: idx,
         fincaUuid: grupo.uuid,
         fincaCodigo: grupo.codigo,
         fincaNombre: grupo.nombre,
@@ -1109,12 +1239,62 @@ async function computeForecast(query, user, asOfDate = new Date()) {
         confianza,
         detalle,
         ageBreakdown,
+        // Simulación: lo que realmente ocurrió en esa semana (solo fincas con cajas y racimos, como el ratio), para compararlo.
+        ...(simulacion && !real ? comparacionReal(grupo.idList, idx) : {}),
       });
     }
   }
 
+  // Serie del ratio para el gráfico: `ratioPasadas` semanas antes de hoy y `ratioFuturas` después, cada una con el ratio real (hasta hoy), el
+  // proyectado (después) y el promedio histórico de la misma semana del año en años anteriores. Siempre del conjunto de fincas con datos
+  // (cruzando cajas y racimos por finca, sin externas).
+  const ratioSerie = (() => {
+    const ids = [...fincaIdsConDatos];
+    const ratioEn = (idx, soloReal) => {
+      if (idx < 0 || idx >= semanas.length || (soloReal && !esReal(idx))) return null;
+      const { r, c } = cosechadoYCajasCruzados(ids, idx);
+      const q = r > 0 && c > 0 ? c / r : null;
+      return q !== null && q >= RATIO_MIN && q <= RATIO_MAX ? q : null;
+    };
+    const proyectadoPorIdx = new Map();
+    for (const row of rows) {
+      if (row.real) continue;
+      if (!proyectadoPorIdx.has(row._idx)) proyectadoPorIdx.set(row._idx, []);
+      proyectadoPorIdx.get(row._idx).push(row.ratio);
+    }
+    const desde = Math.max(0, hoyIdx - ratioPasadas);
+    const hasta = Math.min(semanas.length - 1, hoyIdx + (ratioFuturas > 0 ? ratioFuturas : 12));
+    const serie = [];
+    let aniosConDatos = 0;
+    for (let idx = desde; idx <= hasta; idx++) {
+      const sm = semanas[idx];
+      const hist = [];
+      for (let k = 1; k <= ANIOS_ESTACIONAL; k++) {
+        const j = semanas.findIndex((x) => x.anio === sm.anio - k && x.numeroSemana === sm.numeroSemana);
+        const v = ratioEn(j, true);
+        if (v !== null) hist.push(v);
+      }
+      aniosConDatos = Math.max(aniosConDatos, hist.length);
+      const actual = ratioEn(idx, true);
+      const proy = proyectadoPorIdx.get(idx);
+      serie.push({
+        numeroSemana: sm.numeroSemana,
+        anio: sm.anio,
+        etiqueta: `S${String(sm.numeroSemana).padStart(2, '0')}${idx === desde || sm.numeroSemana === 1 ? `-${String(sm.anio).slice(2)}` : ''}`,
+        ratioActual: actual === null ? null : Math.round(actual * 1000) / 1000,
+        ratioProyectado: proy ? Math.round(promedio(proy) * 1000) / 1000 : null,
+        // Simulación: ratio que realmente se dio después de la fecha simulada.
+        ratioPosterior: simulacion && idx > hoyIdx ? (ratioEn(idx, false) === null ? null : Math.round(ratioEn(idx, false) * 1000) / 1000) : null,
+        promedio: hist.length > 0 ? Math.round(promedio(hist) * 1000) / 1000 : null,
+      });
+    }
+    return { anio: semanas[hoyIdx].anio, aniosHistoricos: aniosConDatos, pasadas: ratioPasadas, futuras: ratioFuturas, serie };
+  })();
+
   return {
+    ratioSerie,
     meta: {
+      simulacion: simulacion ? { fecha: query.simularDesde, semana: semanaInicio.codigo } : null,
       fincas: fincas.map((f) => ({ uuid: f.uuid, codigo: f.codigo, nombre: f.nombre })),
       semanaInicio: {
         uuid: semanaInicio.uuid,
@@ -1152,7 +1332,7 @@ async function computeForecast(query, user, asOfDate = new Date()) {
           }
         : null,
     },
-    rows,
+    rows: rows.filter((r) => r._idx < startIdx + semanasCount).map(({ _idx, ...resto }) => resto),
   };
 }
 
@@ -1163,6 +1343,11 @@ export { computeForecast };
 
 export const pronosticoService = {
   getPronostico(query, user) {
+    if (query.simularDesde) {
+      // Se pronostica como si hoy fuera esa fecha; la semana inicial es la de esa fecha.
+      const { semanaInicioUuid: _omitida, ...resto } = query;
+      return computeForecast(resto, user, new Date(`${query.simularDesde.slice(0, 10)}T12:00:00`));
+    }
     return computeForecast(query, user);
   },
 

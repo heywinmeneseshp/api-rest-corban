@@ -133,7 +133,8 @@ export const ordenMantenimientoService = {
 
     const costoTotal = await calcularCostoTotal(payload.detalles, payload.manoObra, payload.servicios);
 
-    return sequelize.transaction(async (t) => {
+    // Se relee la orden después del commit: dentro de la transacción la consulta (sin `transaction`) no ve los cambios y devolvía null.
+    const uuidResultado = await sequelize.transaction(async (t) => {
       const numero = await generarCorrelativo(OrdenMantenimiento, { prefijo: 'OM', transaction: t });
       const orden = await ordenMantenimientoRepository.create(
         {
@@ -205,8 +206,9 @@ export const ordenMantenimientoService = {
         }
       }
 
-      return ordenMantenimientoRepository.findByUuid(orden.uuid);
+      return orden.uuid;
     });
+    return ordenMantenimientoRepository.findByUuid(uuidResultado);
   },
 
   async update(uuid, payload, actorId, user) {
@@ -285,7 +287,8 @@ export const ordenMantenimientoService = {
       }
     }
 
-    return sequelize.transaction(async (t) => {
+    // Se relee la orden después del commit: dentro de la transacción la consulta (sin `transaction`) no ve los cambios y devolvía null.
+    const uuidResultado = await sequelize.transaction(async (t) => {
       const data = {
         equipoId,
         planId,
@@ -359,8 +362,9 @@ export const ordenMantenimientoService = {
         }
       }
 
-      return ordenMantenimientoRepository.findByUuid(uuid);
+      return uuid;
     });
+    return ordenMantenimientoRepository.findByUuid(uuidResultado);
   },
 
   async delete(uuid, actorId, user) {
@@ -377,7 +381,8 @@ export const ordenMantenimientoService = {
     // Al cerrar orden, genera salida de inventario vía movimientoService
     const almacenParaSalidaUuid = payload.almacenUuid || (orden.almacen ? orden.almacen.uuid : null);
 
-    return sequelize.transaction(async (t) => {
+    // Se relee la orden después del commit: dentro de la transacción la consulta (sin `transaction`) no ve los cambios y devolvía null.
+    const uuidResultado = await sequelize.transaction(async (t) => {
       // Validar stock y generar movimientos de salida para cada detalle de repuesto
       const detalles = await OrdenDetalle.findAll({ where: { ordenId: orden.id }, transaction: t });
 
@@ -432,6 +437,45 @@ export const ordenMantenimientoService = {
         await registrarMovimientoEnCache(almacen.id, articulo.id, 'SALIDA', cantidad, t);
       }
 
+      // La programación que originó la orden queda COMPLETADA, y si hay plan con periodicidad por tiempo (días/meses) se agenda la
+      // siguiente desde hoy. Las periodicidades por horas/kilómetros/horómetro dependen de lecturas del equipo y se programan a mano.
+      const hoyIso = new Date().toISOString().slice(0, 10);
+      if (orden.programacionId) {
+        await ProgramacionMantenimiento.update(
+          { estado: 'COMPLETADA', fechaEjecucion: hoyIso, updatedBy: actorId },
+          { where: { id: orden.programacionId }, transaction: t },
+        );
+      }
+      if (orden.planId) {
+        const plan = await PlanMantenimiento.findByPk(orden.planId, { transaction: t });
+        if (plan && plan.estado && ['DIAS', 'MESES'].includes(plan.periodicidadUnidad)) {
+          const siguiente = new Date(`${hoyIso}T12:00:00`);
+          if (plan.periodicidadUnidad === 'DIAS') siguiente.setDate(siguiente.getDate() + Number(plan.periodicidadValor));
+          else siguiente.setMonth(siguiente.getMonth() + Number(plan.periodicidadValor));
+          const yaProgramada = await ProgramacionMantenimiento.findOne({
+            where: { planId: plan.id, estado: ['PENDIENTE', 'PROGRAMADA'] },
+            transaction: t,
+          });
+          if (!yaProgramada) {
+            await ProgramacionMantenimiento.create(
+              {
+                planId: plan.id,
+                equipoId: orden.equipoId,
+                fechaProgramada: siguiente.toISOString().slice(0, 10),
+                estado: 'PROGRAMADA',
+                prioridad: orden.prioridad || 'MEDIA',
+                observaciones: `Generada al cerrar la orden ${orden.numero}`,
+                createdBy: actorId,
+              },
+              { transaction: t },
+            );
+          }
+        }
+      }
+      // Si el equipo estaba en mantenimiento, vuelve a operativo.
+      const equipo = await Equipo.findByPk(orden.equipoId, { transaction: t });
+      if (equipo && equipo.estado === 'MANTENIMIENTO') await equipo.update({ estado: 'OPERATIVO', updatedBy: actorId }, { transaction: t });
+
       // Actualizar orden a CERRADA
       await orden.update(
         {
@@ -443,8 +487,9 @@ export const ordenMantenimientoService = {
         { transaction: t },
       );
 
-      return ordenMantenimientoRepository.findByUuid(uuid);
+      return uuid;
     });
+    return ordenMantenimientoRepository.findByUuid(uuidResultado);
   },
 };
 

@@ -33,6 +33,25 @@ export const getRacimoMovimientoSchema = Joi.object({
   query: Joi.object({}),
 });
 
+export const updateRacimoMovimientoSchema = Joi.object({
+  body: Joi.object({
+    fincaUuid: uuidRef,
+    loteUuid: uuidRef,
+    semanaEmbolseUuid: uuidRef,
+    semanaRegistroUuid: uuidRef,
+    tipo: Joi.string().valid(...TIPOS),
+    motivoRepiqueUuid: uuidRef.allow(null, ''),
+    motivoRecuseUuid: uuidRef.allow(null, ''),
+    // Distinto de cero; negativo solo tiene sentido en una línea de ajuste.
+    cantidad: Joi.number().integer().invalid(0),
+    fecha: Joi.date().iso().raw(),
+    observacion: Joi.string().max(255).allow('', null),
+    forzarSaldoNegativo: Joi.boolean().default(false),
+  }).min(1),
+  params: Joi.object({ uuid: uuidParam }),
+  query: Joi.object({}),
+});
+
 export const deleteRacimoMovimientosEnLoteSchema = Joi.object({
   body: Joi.object({
     uuids: Joi.array().items(uuidRef).min(1).max(500).required(),
@@ -123,6 +142,16 @@ export const reporteMovimientosSemanaSchema = Joi.object({
     anio: Joi.number().integer().min(2000).max(2100),
     cantidadSemanas: Joi.number().integer().min(1).max(53).default(13),
     semanaRegistroUuid: uuidRef,
+  }),
+});
+
+export const reporteEscaleraSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({}),
+  query: Joi.object({
+    fincaUuid: uuidRef,
+    anio: Joi.number().integer().min(2000).max(2100),
+    cantidadSemanas: Joi.number().integer().min(1).max(53).default(13),
   }),
 });
 

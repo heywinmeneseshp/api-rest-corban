@@ -52,6 +52,11 @@ export const racimoMovimientoController = {
     });
   }),
 
+  update: asyncHandler(async (req, res) => {
+    const data = await racimoMovimientoService.updateMovimiento(req.params.uuid, req.body, req.user?.id, req.user);
+    ApiResponse.send(res, { message: 'Movimiento de racimos actualizado correctamente', data });
+  }),
+
   remove: asyncHandler(async (req, res) => {
     await racimoMovimientoService.deleteMovimiento(req.params.uuid, req.user?.id, req.user);
     ApiResponse.send(res, { message: 'Movimiento de racimos eliminado correctamente' });
@@ -80,6 +85,11 @@ export const racimoMovimientoController = {
   reporteMovimientosSemana: asyncHandler(async (req, res) => {
     const data = await racimoMovimientoService.getReporteMovimientosSemana(req.query, req.user);
     ApiResponse.send(res, { message: 'Reporte de movimientos de la semana obtenido correctamente', data });
+  }),
+
+  reporteEscalera: asyncHandler(async (req, res) => {
+    const data = await racimoMovimientoService.getReporteEscalera(req.query, req.user);
+    ApiResponse.send(res, { message: 'Escalera de movimientos obtenida correctamente', data });
   }),
 
   reporteEmbolses: asyncHandler(async (req, res) => {

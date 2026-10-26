@@ -38,8 +38,8 @@ import {
   embolseActualPara,
 } from './lib/backtest-common.mjs';
 
-const HORIZONTES = [1, 4, 8, 12];
-const SEMANAS_A_PROYECTAR = 13; // rows[0] es la semana actual (real); rows[h] = h semanas adelante
+const HORIZONTES = process.env.PRONOSTICO_BACKTEST_HORIZONTES ? process.env.PRONOSTICO_BACKTEST_HORIZONTES.split(',').map(Number) : [1, 4, 8, 12];
+const SEMANAS_A_PROYECTAR = Math.max(...HORIZONTES) + 1; // rows[0] es la semana actual (real); rows[h] = h semanas adelante
 const PASO_DIAS = process.env.PRONOSTICO_BACKTEST_PASO_DIAS ? Number(process.env.PRONOSTICO_BACKTEST_PASO_DIAS) : 28;
 
 const adminUser = { roles: ['Administrador'], fincaIds: [] };
