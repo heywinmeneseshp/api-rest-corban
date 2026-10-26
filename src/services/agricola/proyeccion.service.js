@@ -375,7 +375,16 @@ export async function calcularProyeccion({ anio, params, areas }, user, { fincaU
     });
 
     // Series de embolse (base/bajo/alto): real hasta hoy, proyectado después.
-    const embolseVariante = (clave) => semanas.map((s, i) => (i <= hoyIdx ? E[i] : haEfectiva[i] * (statSemana(s.numeroSemana)?.[clave] ?? 0)));
+    // La semana en curso y la anterior pueden tener el embolse aún incompleto (se registra durante la semana o con rezago): si lo
+    // registrado es menos de lo esperado por hectárea, se usa lo esperado. Sin esto, las cintas de esas semanas (que se cortan a
+    // edad 11-12, la mayor parte del corte) entraban casi en 0 y las primeras semanas del año siguiente caían a la mitad.
+    const embolseIncompleto = (i) => i >= hoyIdx - 1 && i <= hoyIdx;
+    const embolseVariante = (clave) =>
+      semanas.map((s, i) => {
+        const esperado = haEfectiva[i] * (statSemana(s.numeroSemana)?.[clave] ?? 0);
+        if (i > hoyIdx) return esperado;
+        return embolseIncompleto(i) ? Math.max(E[i], esperado) : E[i];
+      });
     const embBase = embolseVariante('mean');
     const embLow = embolseVariante('p25');
     const embHigh = embolseVariante('p75');
@@ -433,7 +442,7 @@ export async function calcularProyeccion({ anio, params, areas }, user, { fincaU
           edad: e,
           semanaCodigo: semanas[src].codigo,
           embolse: Math.round(embBase[src]),
-          embolseReal: src <= hoyIdx,
+          embolseReal: src <= hoyIdx && !(embolseIncompleto(src) && embBase[src] > E[src]),
           tasa: r4(tasas[e]),
           racimos: aporta(src, i) ? Math.round(embBase[src] * tasas[e]) : 0,
           descartado: !aporta(src, i), // embolsado antes de un cierre: no se cosecha
