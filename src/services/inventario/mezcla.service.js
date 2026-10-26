@@ -12,6 +12,7 @@ import {
   Motivo,
   MovimientoInventario,
 } from '../../database/associations.js';
+import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { evaluarMargen } from '../../utils/margenComercial.js';
@@ -1795,8 +1796,11 @@ export const mezclaService = {
       throw ApiError.badRequest('Esta prueba no está pendiente de aprobación');
     }
 
+    // Pueden aprobar: el Administrador siempre, quien tenga el permiso «Aprobar mezclas», o un rol de la lista de aprobadores
+    // configurada en Parámetros de Mezcla.
     const esAdmin = await esAdministrador(user, actorId);
-    if (!esAdmin) {
+    const tienePermiso = (user?.permissions || []).includes(PERMISSIONS.INVENTARIO_MEZCLAS_APROBAR);
+    if (!esAdmin && !tienePermiso) {
       const { aprobadoresRolesUuids = [] } = await configuracionService.getMezclaParametros();
       const rolesUsuario = await mezclaRepository.findRolUuidsByUserId(actorId);
       const autorizado = aprobadoresRolesUuids.length > 0 && rolesUsuario.some((r) => aprobadoresRolesUuids.includes(r));

@@ -362,6 +362,7 @@ export const PERMISSIONS = {
   INVENTARIO_MEZCLAS_EDITAR: 'inventario.mezclas.editar',
   INVENTARIO_MEZCLAS_ELIMINAR: 'inventario.mezclas.eliminar',
   INVENTARIO_MEZCLAS_ELABORAR: 'inventario.mezclas.elaborar',
+  INVENTARIO_MEZCLAS_APROBAR: 'inventario.mezclas.aprobar',
 
   MENU_INVENTARIOS_MEZCLAS: 'menu.inventarios.mezclas',
   MENU_INVENTARIOS_ELABORACIONES: 'menu.inventarios.elaboraciones',
@@ -671,6 +672,7 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.INVENTARIO_MEZCLAS_EDITAR, nombre: 'Editar mezclas' },
   { codigo: PERMISSIONS.INVENTARIO_MEZCLAS_ELIMINAR, nombre: 'Eliminar mezclas' },
   { codigo: PERMISSIONS.INVENTARIO_MEZCLAS_ELABORAR, nombre: 'Elaborar mezclas (genera movimientos de inventario)' },
+  { codigo: PERMISSIONS.INVENTARIO_MEZCLAS_APROBAR, nombre: 'Aprobar mezclas (activa la receta y su artículo elaborado)' },
   { codigo: PERMISSIONS.MENU_INVENTARIOS_MEZCLAS, nombre: 'Ver submenú Pruebas de laboratorio (Sanidad Vegetal)' },
   { codigo: PERMISSIONS.MENU_INVENTARIOS_ELABORACIONES, nombre: 'Ver submenú Mezclas (Sanidad Vegetal)' },
   { codigo: PERMISSIONS.INVENTARIO_PROFORMAS_VER, nombre: 'Ver proformas (Inventarios)' },
