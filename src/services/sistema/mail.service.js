@@ -606,6 +606,46 @@ export const mailService = {
         : [],
     });
   },
+
+  // Informe semanal de producción de una finca (Reportes → Resumen semanal): el cuerpo trae la misma presentación de la página
+  // (`contenidoHtml`, ver informeSemanalHtml.js) y el PDF del informe adjunto. Se envía solo cuando alguien pulsa «Enviar».
+  async sendInformeSemanal({ destinatarios, fincaNombre, semanaCodigo, contenidoHtml, pdfBuffer, pdfNombre, enviadoPor }) {
+    if (!destinatarios?.length) return;
+    const { nombre: marca, nombreHtml: marcaHtml, from } = await obtenerMarca();
+    const html = `
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 980px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.08);">
+        <div style="background: linear-gradient(135deg, #14532d 0%, #16a34a 100%); padding: 22px 28px;">
+          <h1 style="color: #fff; margin: 0; font-size: 20px; font-weight: 700;">${marcaHtml} · Informe semanal ${escaparHtml(semanaCodigo)}</h1>
+          <p style="color: rgba(255,255,255,.85); margin: 4px 0 0; font-size: 13px;">${escaparHtml(fincaNombre)} — producción, cortes, cinta barrida y saldos</p>
+        </div>
+        <div style="padding: 22px 28px;">
+          ${contenidoHtml}
+          <p style="margin:20px 0 0;color:#6b7280;font-size:12px;">El informe completo va adjunto en PDF.${enviadoPor ? ` Enviado por ${escaparHtml(enviadoPor)}.` : ''}</p>
+        </div>
+        <div style="background: #f9fafb; padding: 14px 28px; text-align: center; border-top: 1px solid #e5e7eb;">
+          <p style="margin: 0; color: #9ca3af; font-size: 11px;">Este mensaje se generó desde el sistema, por favor no respondas a este correo.</p>
+        </div>
+      </div>
+    `;
+
+    if (!isConfigured || !transporter) {
+      console.log('═══════════════════════════════════════════════');
+      console.log('📧  MAIL SERVICE (no configurado) — informe semanal');
+      console.log(`To:  ${destinatarios.join(', ')}`);
+      console.log(`Finca: ${fincaNombre} · Semana: ${semanaCodigo}`);
+      console.log(`Adjunto: ${pdfNombre} (${pdfBuffer?.length ?? 0} bytes)`);
+      console.log('═══════════════════════════════════════════════');
+      return;
+    }
+
+    await transporter.sendMail({
+      from,
+      to: destinatarios,
+      subject: `${marca} — Informe semanal ${semanaCodigo} · ${fincaNombre}`,
+      html,
+      attachments: pdfBuffer ? [{ filename: pdfNombre || `Informe-${semanaCodigo}.pdf`, content: pdfBuffer, contentType: 'application/pdf' }] : [],
+    });
+  },
 };
 
 export default mailService;
