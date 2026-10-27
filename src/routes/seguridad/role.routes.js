@@ -11,6 +11,7 @@ import {
   updateRoleSchema,
   assignPermisoSchema,
   removePermisoSchema,
+  setPermisosSchema,
 } from '../../validators/seguridad/role.validator.js';
 
 const router = Router();
@@ -106,6 +107,14 @@ router.get(
   permission(PERMISSIONS.ROLES_VER),
   validate(getRoleSchema),
   roleController.listPermisos,
+);
+// Reemplaza el conjunto completo de permisos del rol (lo que se ve en la matriz de permisos) en una sola transacción.
+router.put(
+  '/:uuid/permisos',
+  auth,
+  permission(PERMISSIONS.ROLES_ASIGNAR_PERMISO),
+  validate(setPermisosSchema),
+  roleController.setPermisos,
 );
 router.post(
   '/:uuid/permisos',

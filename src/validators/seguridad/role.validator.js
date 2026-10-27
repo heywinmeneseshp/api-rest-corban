@@ -44,6 +44,14 @@ export const assignPermisoSchema = Joi.object({
   query: Joi.object({}),
 });
 
+export const setPermisosSchema = Joi.object({
+  body: Joi.object({
+    permisoUuids: Joi.array().items(Joi.string().guid({ version: 'uuidv4' })).unique().max(1000).required(),
+  }),
+  params: Joi.object({ uuid: uuidParam }),
+  query: Joi.object({}),
+});
+
 export const removePermisoSchema = Joi.object({
   body: Joi.object({}),
   params: Joi.object({

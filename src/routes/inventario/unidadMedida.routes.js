@@ -8,12 +8,14 @@ import { createUnidadSchema, updateUnidadSchema, getUnidadSchema, listUnidadSche
 
 const router = Router();
 
-router.get('/', auth, permission(PERMISSIONS.INVENTARIO_UNIDADES_VER), validate(listUnidadSchema), unidadMedidaController.list);
+// Lectura de catálogo de referencia: basta con tener sesión. Otros módulos (Mezclas, Aspersiones, Insumos, Usuarios, la app
+// móvil y las demás pantallas de Inventarios/Equipos) usan estas listas en sus desplegables. Crear/editar/eliminar sí exige permiso.
+router.get('/', auth, validate(listUnidadSchema), unidadMedidaController.list);
 router.post('/', auth, permission(PERMISSIONS.INVENTARIO_UNIDADES_CREAR), validate(createUnidadSchema), unidadMedidaController.create);
-router.get('/conversiones', auth, permission(PERMISSIONS.INVENTARIO_UNIDADES_VER), unidadMedidaController.listConversiones);
+router.get('/conversiones', auth, unidadMedidaController.listConversiones);
 router.post('/conversiones', auth, permission(PERMISSIONS.INVENTARIO_UNIDADES_CREAR), validate(createConversionSchema), unidadMedidaController.createConversion);
 router.delete('/conversiones/:uuid', auth, permission(PERMISSIONS.INVENTARIO_UNIDADES_ELIMINAR), validate(getConversionSchema), unidadMedidaController.deleteConversion);
-router.get('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_UNIDADES_VER), validate(getUnidadSchema), unidadMedidaController.getByUuid);
+router.get('/:uuid', auth, validate(getUnidadSchema), unidadMedidaController.getByUuid);
 router.put('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_UNIDADES_EDITAR), validate(updateUnidadSchema), unidadMedidaController.update);
 router.delete('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_UNIDADES_ELIMINAR), validate(getUnidadSchema), unidadMedidaController.remove);
 

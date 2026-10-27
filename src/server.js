@@ -7,11 +7,16 @@ import { iniciarJobAlertasSanidadVegetal } from './jobs/alertasSanidadVegetal.jo
 import { iniciarJobEstacionSinDatos } from './jobs/estacionSinDatos.job.js';
 import { iniciarJobOpenMeteo } from './jobs/openMeteo.job.js';
 import { logger } from './utils/logger.js';
+import { verificarCatalogo, describirProblemas } from './constants/permisosCatalogo.check.js';
 
 const start = async () => {
   try {
     setupAssociations();
     await testConnection();
+
+    // Candado del catálogo de permisos (Maestros → Roles): avisa si un permiso nuevo no tiene lugar en la matriz.
+    const catalogo = verificarCatalogo();
+    if (!catalogo.ok) for (const linea of describirProblemas(catalogo)) logger.error(`Catálogo de permisos: ${linea}`);
 
     // El chequeo automático de migraciones/seeders (ver api/index.js) tiene
     // sentido en Vercel, donde nadie corre `npm run db:migrate` a mano en

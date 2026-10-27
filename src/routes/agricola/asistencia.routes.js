@@ -14,6 +14,7 @@ import {
   probarRostroSchema,
   registrarMarcacionesSchema,
   listarAsistenciaSchema,
+  jornadasAsistenciaSchema,
   eliminarMarcacionSchema,
 } from '../../validators/agricola/asistencia.validator.js';
 
@@ -132,6 +133,26 @@ router.get(
   validate(listarAsistenciaSchema),
   asyncHandler(async (req, res) => {
     ApiResponse.send(res, { message: 'Asistencia obtenida correctamente', data: await asistenciaService.listar(req.query, req.user) });
+  }),
+);
+
+/**
+ * @openapi
+ * /asistencia/jornadas:
+ *   get:
+ *     tags: [Asistencia]
+ *     summary: Jornadas por colaborador y día (estancias por finca y tránsito entre fincas)
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.get(
+  '/jornadas',
+  auth,
+  permission(PERMISSIONS.ASISTENCIA_VER),
+  validate(jornadasAsistenciaSchema),
+  asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { message: 'Jornadas obtenidas correctamente', data: await asistenciaService.jornadas(req.query, req.user) });
   }),
 );
 

@@ -8,9 +8,11 @@ import { createMotivoSchema, updateMotivoSchema, getMotivoSchema, listMotivoSche
 
 const router = Router();
 
-router.get('/', auth, permission(PERMISSIONS.INVENTARIO_MOTIVOS_VER), validate(listMotivoSchema), motivoController.list);
+// Lectura de catálogo de referencia: basta con tener sesión. Otros módulos (Mezclas, Aspersiones, Insumos, Usuarios, la app
+// móvil y las demás pantallas de Inventarios/Equipos) usan estas listas en sus desplegables. Crear/editar/eliminar sí exige permiso.
+router.get('/', auth, validate(listMotivoSchema), motivoController.list);
 router.post('/', auth, permission(PERMISSIONS.INVENTARIO_MOTIVOS_CREAR), validate(createMotivoSchema), motivoController.create);
-router.get('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_MOTIVOS_VER), validate(getMotivoSchema), motivoController.getByUuid);
+router.get('/:uuid', auth, validate(getMotivoSchema), motivoController.getByUuid);
 router.put('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_MOTIVOS_EDITAR), validate(updateMotivoSchema), motivoController.update);
 router.delete('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_MOTIVOS_ELIMINAR), validate(getMotivoSchema), motivoController.remove);
 

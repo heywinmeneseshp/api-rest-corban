@@ -43,6 +43,11 @@ export const roleController = {
     ApiResponse.send(res, { message: 'Permiso asignado correctamente', data: null });
   }),
 
+  setPermisos: asyncHandler(async (req, res) => {
+    const data = await roleService.setPermisos(req.params.uuid, req.body.permisoUuids, req.user?.id);
+    ApiResponse.send(res, { message: 'Permisos del rol guardados correctamente', data });
+  }),
+
   removePermiso: asyncHandler(async (req, res) => {
     await roleService.removePermiso(req.params.uuid, req.params.permisoUuid);
     ApiResponse.send(res, { message: 'Permiso removido correctamente', data: null });

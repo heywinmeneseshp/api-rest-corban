@@ -3,6 +3,7 @@ import { permisoController } from '../../controllers/seguridad/permiso.controlle
 import { auth } from '../../middlewares/auth.middleware.js';
 import { permission } from '../../middlewares/permission.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
+import { requireAdmin } from '../../middlewares/requireAdmin.middleware.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import {
   listPermisosSchema,
@@ -29,17 +30,33 @@ const router = Router();
  *     responses:
  *       201: { description: Creado }
  */
+// Leer permisos: quien ve o arma roles. Crear/editar/eliminar: solo Administrador (los permisos los define el código).
+const PUEDE_LEER = [PERMISSIONS.ROLES_VER, PERMISSIONS.ROLES_ASIGNAR_PERMISO];
+
 router.get(
   '/',
   auth,
-  permission(PERMISSIONS.PERMISOS_VER),
+  permission(...PUEDE_LEER),
   validate(listPermisosSchema),
   permisoController.list,
 );
+
+/**
+ * @openapi
+ * /permisos/catalogo:
+ *   get:
+ *     tags: [Permisos]
+ *     summary: Catálogo para armar roles (secciones y pantallas del menú con sus permisos)
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: OK }
+ */
+router.get('/catalogo', auth, permission(...PUEDE_LEER), permisoController.catalogo);
+
 router.post(
   '/',
   auth,
-  permission(PERMISSIONS.PERMISOS_CREAR),
+  requireAdmin,
   validate(createPermisoSchema),
   permisoController.create,
 );
@@ -69,21 +86,21 @@ router.post(
 router.get(
   '/:uuid',
   auth,
-  permission(PERMISSIONS.PERMISOS_VER),
+  permission(...PUEDE_LEER),
   validate(getPermisoSchema),
   permisoController.getByUuid,
 );
 router.put(
   '/:uuid',
   auth,
-  permission(PERMISSIONS.PERMISOS_EDITAR),
+  requireAdmin,
   validate(updatePermisoSchema),
   permisoController.update,
 );
 router.delete(
   '/:uuid',
   auth,
-  permission(PERMISSIONS.PERMISOS_ELIMINAR),
+  requireAdmin,
   validate(getPermisoSchema),
   permisoController.remove,
 );

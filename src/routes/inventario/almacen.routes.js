@@ -8,10 +8,12 @@ import { createAlmacenSchema, updateAlmacenSchema, getAlmacenSchema, listAlmacen
 
 const router = Router();
 
-router.get('/tree', auth, permission(PERMISSIONS.INVENTARIO_ALMACENES_VER), almacenController.tree);
-router.get('/', auth, permission(PERMISSIONS.INVENTARIO_ALMACENES_VER), validate(listAlmacenSchema), almacenController.list);
+// Lectura de catálogo de referencia: basta con tener sesión. Otros módulos (Mezclas, Aspersiones, Insumos, Usuarios, la app
+// móvil y las demás pantallas de Inventarios/Equipos) usan estas listas en sus desplegables. Crear/editar/eliminar sí exige permiso.
+router.get('/tree', auth, almacenController.tree);
+router.get('/', auth, validate(listAlmacenSchema), almacenController.list);
 router.post('/', auth, permission(PERMISSIONS.INVENTARIO_ALMACENES_CREAR), validate(createAlmacenSchema), almacenController.create);
-router.get('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_ALMACENES_VER), validate(getAlmacenSchema), almacenController.getByUuid);
+router.get('/:uuid', auth, validate(getAlmacenSchema), almacenController.getByUuid);
 router.put('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_ALMACENES_EDITAR), validate(updateAlmacenSchema), almacenController.update);
 router.delete('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_ALMACENES_ELIMINAR), validate(getAlmacenSchema), almacenController.remove);
 

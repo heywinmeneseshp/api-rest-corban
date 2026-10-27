@@ -7,6 +7,16 @@ import { Finca, ColaboradorRostro, User, Colaborador } from '../../database/asso
 import { sequelize } from '../../database/connection.js';
 import { userService } from '../seguridad/user.service.js';
 
+// Nombres y apellidos con la primera letra de cada palabra en mayúscula y el resto en minúscula ("maría JOSÉ" → "María José").
+const capitalizarPalabras = (texto) =>
+  texto
+    ? texto
+        .trim()
+        .split(/\s+/)
+        .map((p) => p.charAt(0).toLocaleUpperCase('es-CO') + p.slice(1).toLocaleLowerCase('es-CO'))
+        .join(' ')
+    : texto;
+
 const CALIFICACION_MIN = 1;
 const CALIFICACION_MAX = 5;
 
@@ -87,8 +97,8 @@ export const colaboradorService = {
     return sequelize.transaction(async (transaction) => {
       const colaborador = await colaboradorRepository.create(
         {
-          nombre: payload.nombre,
-          apellido: payload.apellido || null,
+          nombre: capitalizarPalabras(payload.nombre),
+          apellido: capitalizarPalabras(payload.apellido) || null,
           documento: payload.documento || null,
           telefono: payload.telefono || null,
           email: payload.email || null,
@@ -113,8 +123,8 @@ export const colaboradorService = {
     const colaborador = await this.getColaboradorByUuid(uuid);
 
     const data = { updatedBy: actorId };
-    if (payload.nombre !== undefined) data.nombre = payload.nombre;
-    if (payload.apellido !== undefined) data.apellido = payload.apellido || null;
+    if (payload.nombre !== undefined) data.nombre = capitalizarPalabras(payload.nombre);
+    if (payload.apellido !== undefined) data.apellido = capitalizarPalabras(payload.apellido) || null;
     if (payload.documento !== undefined) data.documento = payload.documento || null;
     if (payload.telefono !== undefined) data.telefono = payload.telefono || null;
     if (payload.email !== undefined) data.email = payload.email || null;

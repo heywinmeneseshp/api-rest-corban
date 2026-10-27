@@ -12,16 +12,6 @@ export const PERMISSIONS = {
   ROLES_ELIMINAR: 'roles.eliminar',
   ROLES_ASIGNAR_PERMISO: 'roles.asignar_permiso',
 
-  PERMISOS_VER: 'permisos.ver',
-  PERMISOS_CREAR: 'permisos.crear',
-  PERMISOS_EDITAR: 'permisos.editar',
-  PERMISOS_ELIMINAR: 'permisos.eliminar',
-
-  MENU_VER: 'menu.ver',
-  MENU_CREAR: 'menu.crear',
-  MENU_EDITAR: 'menu.editar',
-  MENU_ELIMINAR: 'menu.eliminar',
-
   FINCA_VER: 'finca.ver',
   FINCA_CREAR: 'finca.crear',
   FINCA_EDITAR: 'finca.editar',
@@ -231,7 +221,6 @@ export const PERMISSIONS = {
   PROGRAMACION_CORTE_CREAR: 'programacion_corte.crear',
   PROGRAMACION_CORTE_ELIMINAR: 'programacion_corte.eliminar',
 
-
   // Maestro de Ingredientes Activos (Sanidad Vegetal) — catálogo simple de
   // referencia (ej. Mancozeb, Propiconazol).
   INGREDIENTE_ACTIVO_VER: 'ingrediente_activo.ver',
@@ -266,7 +255,6 @@ export const PERMISSIONS = {
   MENU_MAESTROS_CATEGORIAS_LABOR: 'menu.maestros.categorias_labor',
   MENU_MAESTROS_LABORES: 'menu.maestros.labores',
   MENU_MAESTROS_ESTADIOS_SIGATOKA: 'menu.maestros.estadios_sigatoka',
-  MENU_MAESTROS_VERSION_APP: 'menu.maestros.version_app',
   MENU_MAESTROS_COLABORADORES: 'menu.maestros.colaboradores',
 
   MENU_RACIMOS: 'menu.racimos',
@@ -300,7 +288,6 @@ export const PERMISSIONS = {
   MENU_ESTACION_METEOROLOGICA: 'menu.estacion_meteorologica',
   MENU_PRODUCCION_SEMANAL: 'menu.produccion_semanal',
   MENU_PRONOSTICO: 'menu.pronostico',
-  MENU_CARGUE_MASIVO: 'menu.cargue_masivo',
   MENU_PROGRAMACION_CORTE: 'menu.programacion_corte',
   MENU_PRECALIBRACION: 'menu.precalibracion',
   // Precalibración: registros por racimo apto tomados en campo (app móvil).
@@ -427,7 +414,6 @@ export const PERMISSIONS = {
   // Inventarios - Facturas (generadas al convertir una proforma)
   INVENTARIO_FACTURAS_VER: 'inventario.facturas.ver',
 
-  MENU_INVENTARIOS_FACTURAS: 'menu.inventarios.facturas',
 };
 
 export const PERMISSIONS_SEED = [
@@ -436,16 +422,6 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.ROLES_EDITAR, nombre: 'Editar roles' },
   { codigo: PERMISSIONS.ROLES_ELIMINAR, nombre: 'Eliminar roles' },
   { codigo: PERMISSIONS.ROLES_ASIGNAR_PERMISO, nombre: 'Asignar permisos a roles' },
-
-  { codigo: PERMISSIONS.PERMISOS_VER, nombre: 'Ver permisos' },
-  { codigo: PERMISSIONS.PERMISOS_CREAR, nombre: 'Crear permisos' },
-  { codigo: PERMISSIONS.PERMISOS_EDITAR, nombre: 'Editar permisos' },
-  { codigo: PERMISSIONS.PERMISOS_ELIMINAR, nombre: 'Eliminar permisos' },
-
-  { codigo: PERMISSIONS.MENU_VER, nombre: 'Ver menú' },
-  { codigo: PERMISSIONS.MENU_CREAR, nombre: 'Crear ítems de menú' },
-  { codigo: PERMISSIONS.MENU_EDITAR, nombre: 'Editar ítems de menú' },
-  { codigo: PERMISSIONS.MENU_ELIMINAR, nombre: 'Eliminar ítems de menú' },
 
   { codigo: PERMISSIONS.FINCA_VER, nombre: 'Ver fincas' },
   { codigo: PERMISSIONS.FINCA_CREAR, nombre: 'Crear fincas' },
@@ -565,7 +541,6 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.PROGRAMACION_CORTE_CREAR, nombre: 'Cargar programación de corte' },
   { codigo: PERMISSIONS.PROGRAMACION_CORTE_ELIMINAR, nombre: 'Eliminar programación de corte' },
 
-
   { codigo: PERMISSIONS.INGREDIENTE_ACTIVO_VER, nombre: 'Ver ingredientes activos' },
   { codigo: PERMISSIONS.INGREDIENTE_ACTIVO_CREAR, nombre: 'Crear ingredientes activos' },
   { codigo: PERMISSIONS.INGREDIENTE_ACTIVO_EDITAR, nombre: 'Editar ingredientes activos' },
@@ -588,7 +563,6 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.MENU_MAESTROS_CATEGORIAS_LABOR, nombre: 'Ver submenú Categorías de Labor' },
   { codigo: PERMISSIONS.MENU_MAESTROS_LABORES, nombre: 'Ver submenú Labores' },
   { codigo: PERMISSIONS.MENU_MAESTROS_ESTADIOS_SIGATOKA, nombre: 'Ver submenú Estadios de Sigatoka' },
-  { codigo: PERMISSIONS.MENU_MAESTROS_VERSION_APP, nombre: 'Ver submenú Versión App Móvil' },
   { codigo: PERMISSIONS.MENU_MAESTROS_COLABORADORES, nombre: 'Ver submenú Colaboradores' },
 
   { codigo: PERMISSIONS.MENU_RACIMOS, nombre: 'Ver sección Racimos en el menú' },
@@ -619,7 +593,6 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.MENU_ESTACION_METEOROLOGICA, nombre: 'Ver ítem de menú Estación Meteorológica' },
   { codigo: PERMISSIONS.MENU_PRODUCCION_SEMANAL, nombre: 'Ver ítem de menú Producción Semanal' },
   { codigo: PERMISSIONS.MENU_PRONOSTICO, nombre: 'Ver ítem de menú Pronóstico de Cajas' },
-  { codigo: PERMISSIONS.MENU_CARGUE_MASIVO, nombre: 'Ver ítem de menú Cargue Masivo' },
   { codigo: PERMISSIONS.MENU_PROGRAMACION_CORTE, nombre: 'Ver ítem de menú Programación de Corte' },
   { codigo: PERMISSIONS.MENU_PRECALIBRACION, nombre: 'Ver ítem de menú Precalibración' },
   { codigo: PERMISSIONS.PRECALIBRACION_VER, nombre: 'Ver precalibración' },
@@ -721,5 +694,4 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.MENU_INVENTARIOS_PROVEEDORES, nombre: 'Ver submenú Proveedores (Inventarios)' },
 
   { codigo: PERMISSIONS.INVENTARIO_FACTURAS_VER, nombre: 'Ver facturas generadas desde proformas (Inventarios)' },
-  { codigo: PERMISSIONS.MENU_INVENTARIOS_FACTURAS, nombre: 'Ver submenú Facturas (Inventarios)' },
 ];

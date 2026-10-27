@@ -35,6 +35,9 @@ export const distancia = (a, b) => {
   return Math.sqrt(suma);
 };
 
+// La BD guarda DATETIME en UTC y mysql2 lo entrega como texto sin zona (dateStrings): se devuelve en ISO con «Z» para que
+// el navegador no lo tome como hora local (salía 5 horas adelantado en Colombia).
+const isoUtc = (v) => (typeof v === 'string' && !v.includes('T') ? new Date(`${v.replace(' ', 'T')}Z`).toISOString() : new Date(v).toISOString());
 const redondear = (n, d = 4) => Math.round(n * 10 ** d) / 10 ** d;
 const inicioDiaBogota = (fecha) => new Date(`${fecha}T00:00:00-05:00`);
 const finDiaBogota = (fecha) => new Date(`${fecha}T23:59:59.999-05:00`);
@@ -85,6 +88,101 @@ async function findFincaOrFail(uuid) {
   const finca = await Finca.findOne({ where: { uuid }, attributes: ['id', 'uuid', 'nombre'] });
   if (!finca) throw ApiError.badRequest('Finca no encontrada');
   return finca;
+}
+
+// ─── Jornadas ───
+// Una jornada es lo que hizo un colaborador en un día (Bogotá): estancias en cada finca (ENTRADA → SALIDA en la misma finca) y
+// el tránsito entre la salida de una y la entrada de la siguiente.
+const MAX_TURNO_MS = 16 * 3600 * 1000; // una SALIDA cierra la ENTRADA abierta si está a 16 h o menos (turnos que cruzan medianoche)
+const DIAS_MAX_JORNADAS = 62;
+const MS_DIA = 86400000;
+const diaBogota = (ms) => new Date(ms - 5 * 3600 * 1000).toISOString().slice(0, 10);
+const minutosEntre = (a, b) => Math.round((b - a) / 60000);
+
+// `marcaciones`: [{ colaborador: { id, ... }, finca: { id, uuid, nombre }, tipo, ms }] (cualquier orden).
+// Devuelve las jornadas sin filtrar, con tiempos en ms (los convierte a ISO quien responde).
+export function armarJornadas(marcaciones, hoy = diaBogota(Date.now())) {
+  const porColaborador = new Map();
+  for (const m of [...marcaciones].sort((a, b) => a.ms - b.ms)) {
+    if (!porColaborador.has(m.colaborador.id)) porColaborador.set(m.colaborador.id, []);
+    porColaborador.get(m.colaborador.id).push(m);
+  }
+
+  const jornadas = [];
+  for (const marcas of porColaborador.values()) {
+    const colaborador = marcas[0].colaborador;
+    const porDia = new Map();
+    const agregar = (estancia) => {
+      const fecha = diaBogota(estancia.entrada ?? estancia.salida);
+      if (!porDia.has(fecha)) porDia.set(fecha, []);
+      porDia.get(fecha).push(estancia);
+    };
+    let abierta = null;
+    const cerrarSinSalida = () => {
+      if (abierta) agregar({ finca: abierta.finca, entrada: abierta.ms, salida: null, estado: 'SIN_SALIDA' });
+      abierta = null;
+    };
+
+    for (const m of marcas) {
+      const mismaAbierta = abierta && abierta.finca.id === m.finca.id && m.ms - abierta.ms <= MAX_TURNO_MS;
+      if (m.tipo === 'ENTRADA') {
+        if (mismaAbierta) continue; // entrada repetida: cuenta la primera
+        cerrarSinSalida();
+        abierta = { finca: m.finca, ms: m.ms };
+      } else if (mismaAbierta) {
+        agregar({ finca: m.finca, entrada: abierta.ms, salida: m.ms, estado: 'COMPLETA' });
+        abierta = null;
+      } else {
+        cerrarSinSalida();
+        agregar({ finca: m.finca, entrada: null, salida: m.ms, estado: 'SIN_ENTRADA' });
+      }
+    }
+    cerrarSinSalida();
+
+    for (const [fecha, estancias] of porDia) {
+      estancias.sort((a, b) => (a.entrada ?? a.salida) - (b.entrada ?? b.salida));
+      const tramos = [];
+      estancias.forEach((e, i) => {
+        const anterior = estancias[i - 1];
+        if (anterior && anterior.salida !== null && e.entrada !== null && e.entrada >= anterior.salida) {
+          tramos.push({
+            tipo: 'TRANSITO',
+            desde: anterior.finca,
+            hasta: e.finca,
+            salida: anterior.salida,
+            entrada: e.entrada,
+            minutos: minutosEntre(anterior.salida, e.entrada),
+            mismaFinca: anterior.finca.id === e.finca.id,
+          });
+        }
+        const enCurso = e.estado === 'SIN_SALIDA' && fecha === hoy && i === estancias.length - 1;
+        tramos.push({
+          tipo: 'ESTANCIA',
+          ...e,
+          estado: enCurso ? 'EN_CURSO' : e.estado,
+          minutos: e.estado === 'COMPLETA' ? minutosEntre(e.entrada, e.salida) : null,
+        });
+      });
+      const est = tramos.filter((t) => t.tipo === 'ESTANCIA');
+      const tra = tramos.filter((t) => t.tipo === 'TRANSITO');
+      const entradas = est.map((t) => t.entrada).filter((x) => x !== null);
+      const salidas = est.map((t) => t.salida).filter((x) => x !== null);
+      jornadas.push({
+        fecha,
+        colaborador,
+        primeraEntrada: entradas.length ? Math.min(...entradas) : null,
+        ultimaSalida: salidas.length ? Math.max(...salidas) : null,
+        minutosEnFincas: est.reduce((s, t) => s + (t.minutos || 0), 0),
+        minutosTransito: tra.filter((t) => !t.mismaFinca).reduce((s, t) => s + t.minutos, 0),
+        minutosFuera: tra.filter((t) => t.mismaFinca).reduce((s, t) => s + t.minutos, 0),
+        lugares: new Set(est.map((t) => t.finca.id)).size,
+        incompleta: est.some((t) => t.estado === 'SIN_SALIDA' || t.estado === 'SIN_ENTRADA'),
+        enCurso: est.some((t) => t.estado === 'EN_CURSO'),
+        tramos,
+      });
+    }
+  }
+  return jornadas;
 }
 
 export const asistenciaService = {
@@ -301,7 +399,7 @@ export const asistenciaService = {
       offset,
       order: [['fechaHora', 'DESC']],
       include: [
-        { model: Colaborador, as: 'colaborador', attributes: ['uuid', 'nombre', 'apellido', 'documento'] },
+        { model: Colaborador, as: 'colaborador', attributes: ['uuid', 'nombre', 'apellido', 'documento', 'cargo'] },
         { model: Finca, as: 'finca', attributes: ['uuid', 'nombre'] },
       ],
     });
@@ -314,16 +412,84 @@ export const asistenciaService = {
 
     const items = rows.map((m) => ({
       uuid: m.uuid,
-      colaborador: m.colaborador ? { uuid: m.colaborador.uuid, nombre: nombreCompleto(m.colaborador), documento: m.colaborador.documento } : null,
+      colaborador: m.colaborador ? { uuid: m.colaborador.uuid, nombre: nombreCompleto(m.colaborador), documento: m.colaborador.documento, cargo: m.colaborador.cargo || null } : null,
       finca: m.finca ? { uuid: m.finca.uuid, nombre: m.finca.nombre } : null,
       tipo: m.tipo,
-      fechaHora: m.fechaHora,
+      fechaHora: isoUtc(m.fechaHora),
       lat: m.lat === null ? null : Number(m.lat),
       lng: m.lng === null ? null : Number(m.lng),
       distancia: m.distancia === null ? null : Number(m.distancia),
       marcadoPor: nombreAutor.get(m.createdBy) || '',
     }));
     return { items, meta: buildPaginationMeta({ page, limit, total: count }) };
+  },
+
+  async jornadas(query, user) {
+    const { page, limit, offset } = getPagination(query);
+    const hoy = diaBogota(Date.now());
+    const hasta = query.hasta || hoy;
+    const desde = query.desde || diaBogota(new Date(`${hasta}T12:00:00Z`).getTime() - 6 * MS_DIA);
+    if (desde > hasta) throw ApiError.badRequest('La fecha Desde no puede ser mayor que Hasta');
+    if ((new Date(hasta) - new Date(desde)) / MS_DIA + 1 > DIAS_MAX_JORNADAS) {
+      throw ApiError.badRequest(`El rango de fechas no puede pasar de ${DIAS_MAX_JORNADAS} días`);
+    }
+
+    let fincaFiltro = null;
+    if (query.fincaUuid) {
+      fincaFiltro = await findFincaOrFail(query.fincaUuid);
+      assertFincaPermitida(user, fincaFiltro.id);
+    }
+    // Se traen TODAS las fincas permitidas (no solo la filtrada) para no perder el tránsito hacia/desde otras fincas, y 16 h antes y
+    // después del rango para emparejar turnos que cruzan medianoche.
+    const where = {
+      fechaHora: { [Op.between]: [new Date(inicioDiaBogota(desde).getTime() - MAX_TURNO_MS), new Date(finDiaBogota(hasta).getTime() + MAX_TURNO_MS)] },
+    };
+    const fincaIds = getFincaIdsPermitidas(user);
+    if (fincaIds) where.fincaId = { [Op.in]: fincaIds };
+    if (query.colaboradorUuid) where.colaboradorId = (await findColaboradorOrFail(query.colaboradorUuid)).id;
+
+    const rows = await AsistenciaMarcacion.findAll({
+      where,
+      attributes: ['tipo', 'fechaHora'],
+      include: [
+        { model: Colaborador, as: 'colaborador', attributes: ['id', 'uuid', 'nombre', 'apellido', 'documento', 'cargo'] },
+        { model: Finca, as: 'finca', attributes: ['id', 'uuid', 'nombre'] },
+      ],
+    });
+    const marcaciones = rows
+      .filter((r) => r.colaborador && r.finca)
+      .map((r) => ({
+        tipo: r.tipo,
+        ms: new Date(isoUtc(r.fechaHora)).getTime(),
+        finca: { id: r.finca.id, uuid: r.finca.uuid, nombre: r.finca.nombre },
+        colaborador: {
+          id: r.colaborador.id,
+          uuid: r.colaborador.uuid,
+          nombre: nombreCompleto(r.colaborador),
+          documento: r.colaborador.documento,
+          cargo: r.colaborador.cargo || null,
+        },
+      }));
+
+    const todas = armarJornadas(marcaciones, hoy)
+      .filter((j) => j.fecha >= desde && j.fecha <= hasta)
+      .filter((j) => !fincaFiltro || j.tramos.some((t) => t.tipo === 'ESTANCIA' && t.finca.id === fincaFiltro.id))
+      .sort((a, b) => b.fecha.localeCompare(a.fecha) || a.colaborador.nombre.localeCompare(b.colaborador.nombre, 'es'));
+
+    const iso = (ms) => (ms === null ? null : new Date(ms).toISOString());
+    const finca = (f) => ({ uuid: f.uuid, nombre: f.nombre });
+    const items = todas.slice(offset, offset + limit).map(({ colaborador: { id: _id, ...colaborador }, ...j }) => ({
+      ...j,
+      colaborador,
+      primeraEntrada: iso(j.primeraEntrada),
+      ultimaSalida: iso(j.ultimaSalida),
+      tramos: j.tramos.map((t) =>
+        t.tipo === 'TRANSITO'
+          ? { ...t, desde: finca(t.desde), hasta: finca(t.hasta), salida: iso(t.salida), entrada: iso(t.entrada) }
+          : { ...t, finca: finca(t.finca), entrada: iso(t.entrada), salida: iso(t.salida) },
+      ),
+    }));
+    return { desde, hasta, items, meta: buildPaginationMeta({ page, limit, total: todas.length }) };
   },
 
   async eliminar(uuid, actorId) {

@@ -1,9 +1,8 @@
 import { Router } from 'express';
 import { menuItemController } from '../../controllers/seguridad/menuItem.controller.js';
 import { auth } from '../../middlewares/auth.middleware.js';
-import { permission } from '../../middlewares/permission.middleware.js';
+import { requireAdmin } from '../../middlewares/requireAdmin.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
-import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import {
   getMenuItemSchema,
   createMenuItemSchema,
@@ -32,7 +31,7 @@ router.get('/', auth, menuItemController.getTree);
 router.post(
   '/',
   auth,
-  permission(PERMISSIONS.MENU_CREAR),
+  requireAdmin,
   validate(createMenuItemSchema),
   menuItemController.create,
 );
@@ -62,21 +61,21 @@ router.post(
 router.get(
   '/:uuid',
   auth,
-  permission(PERMISSIONS.MENU_VER),
+  requireAdmin,
   validate(getMenuItemSchema),
   menuItemController.getByUuid,
 );
 router.put(
   '/:uuid',
   auth,
-  permission(PERMISSIONS.MENU_EDITAR),
+  requireAdmin,
   validate(updateMenuItemSchema),
   menuItemController.update,
 );
 router.delete(
   '/:uuid',
   auth,
-  permission(PERMISSIONS.MENU_ELIMINAR),
+  requireAdmin,
   validate(getMenuItemSchema),
   menuItemController.remove,
 );

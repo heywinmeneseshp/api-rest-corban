@@ -9,6 +9,10 @@ export const permisoController = {
     ApiResponse.send(res, { message: 'Permisos obtenidos correctamente', data: { items, meta } });
   }),
 
+  catalogo: asyncHandler(async (_req, res) => {
+    ApiResponse.send(res, { message: 'Catálogo de permisos obtenido correctamente', data: await permisoService.catalogo() });
+  }),
+
   getByUuid: asyncHandler(async (req, res) => {
     const permiso = await permisoService.getPermisoByUuid(req.params.uuid);
     ApiResponse.send(res, { message: 'Permiso obtenido correctamente', data: permiso });

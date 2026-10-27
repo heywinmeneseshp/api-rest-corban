@@ -1,4 +1,7 @@
-import { Permiso } from '../../database/associations.js';
+import { Op } from 'sequelize';
+import { Permiso, RolPermiso } from '../../database/associations.js';
+import { sequelize } from '../../database/connection.js';
+import { ROLES } from '../../constants/roles.constants.js';
 import { roleRepository } from '../../repositories/seguridad/role.repository.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
@@ -68,6 +71,28 @@ export const roleService = {
     if (!role) throw ApiError.notFound('Rol no encontrado');
     const permiso = await findPermisoByUuidOrFail(permisoUuid);
     await roleRepository.assignPermiso(role.id, permiso.id, actorId);
+  },
+
+  // Deja al rol exactamente con `permisoUuids`: agrega los que faltan y quita los que sobran, todo o nada.
+  async setPermisos(uuid, permisoUuids, actorId) {
+    const role = await roleRepository.findByUuid(uuid, { includePermisos: false });
+    if (!role) throw ApiError.notFound('Rol no encontrado');
+    if (role.nombre === ROLES.ADMINISTRADOR) throw ApiError.badRequest('El rol Administrador tiene todos los permisos siempre; no se editan.');
+    const permisos = permisoUuids.length ? await Permiso.findAll({ where: { uuid: { [Op.in]: permisoUuids } }, attributes: ['id', 'uuid'] }) : [];
+    if (permisos.length !== permisoUuids.length) throw ApiError.badRequest('Uno o más permisos no existen');
+
+    const nuevos = new Set(permisos.map((p) => p.id));
+    return sequelize.transaction(async (transaction) => {
+      const actuales = await RolPermiso.findAll({ where: { roleId: role.id }, attributes: ['permisoId'], transaction });
+      const actualesIds = new Set(actuales.map((r) => r.permisoId));
+      const aQuitar = [...actualesIds].filter((id) => !nuevos.has(id));
+      const aAgregar = [...nuevos].filter((id) => !actualesIds.has(id));
+      if (aQuitar.length) await RolPermiso.destroy({ where: { roleId: role.id, permisoId: { [Op.in]: aQuitar } }, transaction });
+      if (aAgregar.length) {
+        await RolPermiso.bulkCreate(aAgregar.map((permisoId) => ({ roleId: role.id, permisoId, createdBy: actorId })), { transaction });
+      }
+      return { agregados: aAgregar.length, quitados: aQuitar.length, total: nuevos.size };
+    });
   },
 
   async removePermiso(uuid, permisoUuid) {

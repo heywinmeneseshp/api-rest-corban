@@ -10,9 +10,10 @@ import { createEquipoTipoSchema, updateEquipoTipoSchema, getEquipoTipoSchema, li
 // reutiliza los permisos de Equipos en vez de sumar códigos nuevos.
 const router = Router();
 
-router.get('/', auth, permission(PERMISSIONS.INVENTARIO_EQUIPOS_VER), validate(listEquipoTipoSchema), equipoTipoController.list);
+// Ver también lo permite quien trabaja con planes, programaciones u órdenes (eligen el equipo / plan en sus formularios).
+router.get('/', auth, permission(PERMISSIONS.INVENTARIO_EQUIPOS_VER, PERMISSIONS.INVENTARIO_PLANES_VER, PERMISSIONS.INVENTARIO_PROGRAMACIONES_VER, PERMISSIONS.INVENTARIO_ORDENES_VER), validate(listEquipoTipoSchema), equipoTipoController.list);
 router.post('/', auth, permission(PERMISSIONS.INVENTARIO_EQUIPOS_CREAR), validate(createEquipoTipoSchema), equipoTipoController.create);
-router.get('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_EQUIPOS_VER), validate(getEquipoTipoSchema), equipoTipoController.getByUuid);
+router.get('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_EQUIPOS_VER, PERMISSIONS.INVENTARIO_PLANES_VER, PERMISSIONS.INVENTARIO_PROGRAMACIONES_VER, PERMISSIONS.INVENTARIO_ORDENES_VER), validate(getEquipoTipoSchema), equipoTipoController.getByUuid);
 router.put('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_EQUIPOS_EDITAR), validate(updateEquipoTipoSchema), equipoTipoController.update);
 router.delete('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_EQUIPOS_ELIMINAR), validate(getEquipoTipoSchema), equipoTipoController.remove);
 

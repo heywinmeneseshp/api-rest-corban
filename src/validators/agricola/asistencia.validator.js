@@ -73,6 +73,19 @@ export const listarAsistenciaSchema = Joi.object({
   }),
 });
 
+export const jornadasAsistenciaSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({}),
+  query: Joi.object({
+    page: Joi.number().integer().min(1),
+    limit: Joi.number().integer().min(1).max(200),
+    fincaUuid: uuidRef,
+    colaboradorUuid: uuidRef,
+    desde: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/),
+    hasta: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/),
+  }),
+});
+
 export const eliminarMarcacionSchema = Joi.object({
   body: Joi.object({}),
   params: Joi.object({ uuid: uuidRef.required() }),

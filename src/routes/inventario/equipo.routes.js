@@ -15,9 +15,10 @@ import {
 
 const router = Router();
 
-router.get('/', auth, permission(PERMISSIONS.INVENTARIO_EQUIPOS_VER), validate(listEquipoSchema), equipoController.list);
+// Ver también lo permite quien trabaja con planes, programaciones u órdenes (eligen el equipo / plan en sus formularios).
+router.get('/', auth, permission(PERMISSIONS.INVENTARIO_EQUIPOS_VER, PERMISSIONS.INVENTARIO_PLANES_VER, PERMISSIONS.INVENTARIO_PROGRAMACIONES_VER, PERMISSIONS.INVENTARIO_ORDENES_VER), validate(listEquipoSchema), equipoController.list);
 router.post('/', auth, permission(PERMISSIONS.INVENTARIO_EQUIPOS_CREAR), validate(createEquipoSchema), equipoController.create);
-router.get('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_EQUIPOS_VER), validate(getEquipoSchema), equipoController.getByUuid);
+router.get('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_EQUIPOS_VER, PERMISSIONS.INVENTARIO_PLANES_VER, PERMISSIONS.INVENTARIO_PROGRAMACIONES_VER, PERMISSIONS.INVENTARIO_ORDENES_VER), validate(getEquipoSchema), equipoController.getByUuid);
 router.put('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_EQUIPOS_EDITAR), validate(updateEquipoSchema), equipoController.update);
 router.delete('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_EQUIPOS_ELIMINAR), validate(getEquipoSchema), equipoController.remove);
 

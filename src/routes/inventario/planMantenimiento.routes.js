@@ -8,9 +8,10 @@ import { createPlanSchema, updatePlanSchema, getPlanSchema, listPlanSchema } fro
 
 const router = Router();
 
-router.get('/', auth, permission(PERMISSIONS.INVENTARIO_PLANES_VER), validate(listPlanSchema), planMantenimientoController.list);
+// Ver también lo permite quien trabaja con planes, programaciones u órdenes (eligen el equipo / plan en sus formularios).
+router.get('/', auth, permission(PERMISSIONS.INVENTARIO_PLANES_VER, PERMISSIONS.INVENTARIO_PROGRAMACIONES_VER, PERMISSIONS.INVENTARIO_ORDENES_VER), validate(listPlanSchema), planMantenimientoController.list);
 router.post('/', auth, permission(PERMISSIONS.INVENTARIO_PLANES_CREAR), validate(createPlanSchema), planMantenimientoController.create);
-router.get('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_PLANES_VER), validate(getPlanSchema), planMantenimientoController.getByUuid);
+router.get('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_PLANES_VER, PERMISSIONS.INVENTARIO_PROGRAMACIONES_VER, PERMISSIONS.INVENTARIO_ORDENES_VER), validate(getPlanSchema), planMantenimientoController.getByUuid);
 router.put('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_PLANES_EDITAR), validate(updatePlanSchema), planMantenimientoController.update);
 router.delete('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_PLANES_ELIMINAR), validate(getPlanSchema), planMantenimientoController.remove);
 

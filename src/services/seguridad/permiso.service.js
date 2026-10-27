@@ -1,8 +1,16 @@
 import { permisoRepository } from '../../repositories/seguridad/permiso.repository.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
+import { Permiso } from '../../database/associations.js';
+import { PERMISOS_CATALOGO } from '../../constants/permisosCatalogo.js';
 
 export const permisoService = {
+  // Catálogo para la matriz de permisos de un rol: las secciones/pantallas (orden del menú) y, por código, su uuid y nombre.
+  async catalogo() {
+    const permisos = await Permiso.findAll({ attributes: ['uuid', 'codigo', 'nombre'], raw: true });
+    return { secciones: PERMISOS_CATALOGO, permisos: Object.fromEntries(permisos.map((p) => [p.codigo, { uuid: p.uuid, nombre: p.nombre }])) };
+  },
+
   async listPermisos(query) {
     const { page, limit, offset } = getPagination(query);
     const { rows, count } = await permisoRepository.findAndCountAll({

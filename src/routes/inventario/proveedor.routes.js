@@ -8,9 +8,11 @@ import { createProveedorSchema, updateProveedorSchema, getProveedorSchema, listP
 
 const router = Router();
 
-router.get('/', auth, permission(PERMISSIONS.INVENTARIO_PROVEEDORES_VER), validate(listProveedorSchema), proveedorController.list);
+// Lectura de catálogo de referencia: basta con tener sesión. Otros módulos (Mezclas, Aspersiones, Insumos, Usuarios, la app
+// móvil y las demás pantallas de Inventarios/Equipos) usan estas listas en sus desplegables. Crear/editar/eliminar sí exige permiso.
+router.get('/', auth, validate(listProveedorSchema), proveedorController.list);
 router.post('/', auth, permission(PERMISSIONS.INVENTARIO_PROVEEDORES_CREAR), validate(createProveedorSchema), proveedorController.create);
-router.get('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_PROVEEDORES_VER), validate(getProveedorSchema), proveedorController.getByUuid);
+router.get('/:uuid', auth, validate(getProveedorSchema), proveedorController.getByUuid);
 router.put('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_PROVEEDORES_EDITAR), validate(updateProveedorSchema), proveedorController.update);
 router.delete('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_PROVEEDORES_ELIMINAR), validate(getProveedorSchema), proveedorController.remove);
 
