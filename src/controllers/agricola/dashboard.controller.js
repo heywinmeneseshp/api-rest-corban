@@ -1,5 +1,4 @@
 import { dashboardService } from '../../services/agricola/dashboard.service.js';
-import { alertasService } from '../../services/agricola/alertas.service.js';
 import { informeSemanalService } from '../../services/agricola/informeSemanal.service.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { configuracionService } from '../../services/sistema/configuracion.service.js';
@@ -32,10 +31,6 @@ export const dashboardController = {
       req.user,
     );
     ApiResponse.send(res, { message: 'Informe enviado por correo correctamente', data });
-  }),
-  alertas: asyncHandler(async (req, res) => {
-    const data = await alertasService.centro(req.user);
-    ApiResponse.send(res, { message: 'Alertas obtenidas correctamente', data });
   }),
 };
 

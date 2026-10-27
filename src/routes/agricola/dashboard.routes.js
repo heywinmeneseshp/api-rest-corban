@@ -9,8 +9,6 @@ import { uploadPdfAspersion } from '../../middlewares/upload.middleware.js';
 const router = Router();
 
 router.get('/resumen', auth, dashboardController.resumen);
-// Resumen semanal (Reportes → Resumen semanal).
-router.get('/alertas', auth, permission(PERMISSIONS.MENU_REPORTES), dashboardController.alertas);
 // Informe semanal de producción de una finca (?fincaUuid=&semanaUuid=).
 router.get('/informe-semanal', auth, permission(PERMISSIONS.MENU_REPORTES), dashboardController.informeSemanal);
 // Destinatarios del informe (solo Administrador) y envío manual con el PDF armado en el navegador (campo «pdf»).
