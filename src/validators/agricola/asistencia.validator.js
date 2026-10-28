@@ -51,6 +51,8 @@ export const registrarMarcacionesSchema = Joi.object({
           lat: Joi.number().min(-90).max(90).allow(null),
           lng: Joi.number().min(-180).max(180).allow(null),
           descriptor: descriptor.required(),
+          // Salida sin entrada previa: solo se registra si la persona confirmó que sí quiere marcarla.
+          confirmarSinEntrada: Joi.boolean().default(false),
         }).or('fincaUuid', 'lugarUuid'),
       )
       .min(1)

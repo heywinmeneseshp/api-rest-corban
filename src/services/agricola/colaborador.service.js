@@ -3,7 +3,7 @@ import { laborRepository } from '../../repositories/agricola/labor.repository.js
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { Op, fn, col } from 'sequelize';
-import { Finca, ColaboradorRostro, User, Colaborador } from '../../database/associations.js';
+import { Finca, ColaboradorRostro, User, Colaborador, AsistenciaLugar } from '../../database/associations.js';
 import { sequelize } from '../../database/connection.js';
 import { userService } from '../seguridad/user.service.js';
 import { assertFincaPermitida, getFincaIdsPermitidas } from '../../utils/fincaScope.js';
@@ -22,6 +22,23 @@ export const enAlcance = (colaborador, user) => {
 
 // Documento de identificación normalizado (sin espacios, puntos ni guiones) para no permitir dos colaboradores con la misma.
 export const normalizarDocumento = (d) => (d ? String(d).replace(/[\s.-]/g, '').toUpperCase() : '');
+
+// Lugar predeterminado: finca o lugar de asistencia (oficina...), nunca ambos. `soloFincasPropias`: el usuario restringido que
+// administra colaboradores solo puede dejarlos en sus fincas (no en oficinas). Devuelve { fincaId, lugarId }.
+async function resolverLugarPredeterminado({ fincaUuid, lugarUuid }, user, { soloFincasPropias = false } = {}) {
+  if (fincaUuid && lugarUuid) throw ApiError.badRequest('Elige una finca o una oficina, no ambas');
+  const restringido = user && getFincaIdsPermitidas(user);
+  if (lugarUuid) {
+    if (soloFincasPropias && restringido) throw ApiError.badRequest('Elige una de tus fincas asignadas');
+    const lugar = await AsistenciaLugar.findOne({ where: { uuid: lugarUuid, estado: true }, attributes: ['id'] });
+    if (!lugar) throw ApiError.badRequest('Lugar no encontrado o desactivado');
+    return { fincaId: null, lugarId: lugar.id };
+  }
+  const fincaId = fincaUuid ? (await findFincaOrFail(fincaUuid)).id : null;
+  if (fincaId && user) assertFincaPermitida(user, fincaId);
+  if (!fincaId && soloFincasPropias && restringido) throw ApiError.badRequest('Elige la finca del colaborador (una de tus fincas asignadas)');
+  return { fincaId, lugarId: null };
+}
 
 async function validarDocumentoUnico(documento, exceptoId = null) {
   const doc = normalizarDocumento(documento);
@@ -120,12 +137,8 @@ export const colaboradorService = {
   },
 
   async createColaborador(payload, actorId, actor = null) {
-    const fincaId = payload.fincaUuid ? (await findFincaOrFail(payload.fincaUuid)).id : null;
-    // Con fincas asignadas solo se crean colaboradores en esas fincas (la finca es obligatoria).
-    if (actor && getFincaIdsPermitidas(actor)) {
-      if (!fincaId) throw ApiError.badRequest('Elige la finca del colaborador (una de tus fincas asignadas)');
-      assertFincaPermitida(actor, fincaId);
-    }
+    // Con fincas asignadas solo se crean colaboradores en esas fincas (la finca es obligatoria); sin restricción, finca u oficina.
+    const { fincaId, lugarId } = await resolverLugarPredeterminado(payload, actor, { soloFincasPropias: true });
     await validarDocumentoUnico(payload.documento);
     const labores = await resolverLabores(payload.labores);
     // Colaborador creado desde un usuario existente: queda vinculado a él.
@@ -141,6 +154,7 @@ export const colaboradorService = {
           email: payload.email || null,
           cargo: payload.cargo || null,
           fincaId,
+          lugarId,
           estado: payload.estado ?? true,
           userId: user?.id ?? null,
           createdBy: actorId,
@@ -168,13 +182,9 @@ export const colaboradorService = {
     if (payload.email !== undefined) data.email = payload.email || null;
     if (payload.cargo !== undefined) data.cargo = payload.cargo || null;
     if (payload.estado !== undefined) data.estado = payload.estado;
-    if (payload.fincaUuid !== undefined) {
-      data.fincaId = payload.fincaUuid ? (await findFincaOrFail(payload.fincaUuid)).id : null;
+    if (payload.fincaUuid !== undefined || payload.lugarUuid !== undefined) {
       // No se puede mover a una finca fuera de las asignadas (ni dejarlo sin finca si el usuario está restringido).
-      if (user && getFincaIdsPermitidas(user)) {
-        if (!data.fincaId) throw ApiError.badRequest('El colaborador debe quedar en una de tus fincas asignadas');
-        assertFincaPermitida(user, data.fincaId);
-      }
+      Object.assign(data, await resolverLugarPredeterminado(payload, user, { soloFincasPropias: true }));
     }
 
     const labores = payload.labores !== undefined ? await resolverLabores(payload.labores) : undefined;
@@ -233,7 +243,13 @@ export const colaboradorService = {
 
   // ─── Autoservicio: la ficha propia (colaborador vinculado al usuario de la sesión) ───
   async miFicha(user) {
-    const c = await Colaborador.findOne({ where: { userId: user.id }, include: [{ model: Finca, as: 'finca', attributes: ['uuid', 'nombre'] }] });
+    const c = await Colaborador.findOne({
+      where: { userId: user.id },
+      include: [
+        { model: Finca, as: 'finca', attributes: ['uuid', 'nombre'] },
+        { model: AsistenciaLugar, as: 'lugar', attributes: ['uuid', 'nombre', 'tipo'], paranoid: false },
+      ],
+    });
     if (!c) return null;
     const muestras = await ColaboradorRostro.count({ where: { colaboradorId: c.id } });
     const { asistenciaService } = await import('./asistencia.service.js');
@@ -243,7 +259,9 @@ export const colaboradorService = {
       apellido: c.apellido,
       documento: c.documento,
       cargo: c.cargo,
+      telefono: c.telefono,
       finca: c.finca ? { uuid: c.finca.uuid, nombre: c.finca.nombre } : null,
+      lugar: c.lugar ? { uuid: c.lugar.uuid, nombre: c.lugar.nombre, tipo: c.lugar.tipo } : null,
       rostroMuestras: muestras,
       rostroEnrolado: muestras > 0,
       rostroConsentimiento: Boolean(c.rostroConsentimientoAt),
@@ -253,8 +271,7 @@ export const colaboradorService = {
 
   async crearMiFicha(payload, user) {
     if (await Colaborador.findOne({ where: { userId: user.id }, attributes: ['id'] })) throw ApiError.conflict('Ya tienes una ficha de colaborador');
-    const fincaId = payload.fincaUuid ? (await findFincaOrFail(payload.fincaUuid)).id : null;
-    if (fincaId) assertFincaPermitida(user, fincaId);
+    const { fincaId, lugarId } = await resolverLugarPredeterminado(payload, user);
     await validarDocumentoUnico(payload.documento);
     const yo = await User.findByPk(user.id, { attributes: ['id', 'nombre', 'apellido', 'email', 'cargo'] });
     await colaboradorRepository.create({
@@ -265,10 +282,24 @@ export const colaboradorService = {
       email: yo.email || null,
       cargo: payload.cargo || yo.cargo || null,
       fincaId,
+      lugarId,
       estado: true,
       userId: user.id,
       createdBy: user.id,
     });
+    return this.miFicha(user);
+  },
+
+  // Editar la ficha propia: teléfono, cargo y lugar predeterminado. Nombre, apellido e identificación los cambia quien tenga
+  // «Editar colaboradores».
+  async actualizarMiFicha(payload, user) {
+    const c = await Colaborador.findOne({ where: { userId: user.id } });
+    if (!c) throw ApiError.notFound('Aún no tienes ficha de colaborador');
+    const data = { updatedBy: user.id };
+    if (payload.telefono !== undefined) data.telefono = payload.telefono || null;
+    if (payload.cargo !== undefined) data.cargo = payload.cargo || null;
+    if (payload.fincaUuid !== undefined || payload.lugarUuid !== undefined) Object.assign(data, await resolverLugarPredeterminado(payload, user));
+    await c.update(data);
     return this.miFicha(user);
   },
 };

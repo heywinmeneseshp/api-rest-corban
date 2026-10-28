@@ -451,6 +451,7 @@ export const setupAssociations = () => {
   AsistenciaMarcacion.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
   AsistenciaLugar.hasMany(AsistenciaMarcacion, { foreignKey: 'lugarId', as: 'marcaciones' });
   AsistenciaMarcacion.belongsTo(AsistenciaLugar, { foreignKey: 'lugarId', as: 'lugar' });
+  Colaborador.belongsTo(AsistenciaLugar, { foreignKey: 'lugarId', as: 'lugar' });
   Colaborador.hasMany(ColaboradorRostroSolicitud, { foreignKey: 'colaboradorId', as: 'solicitudesRostro' });
   ColaboradorRostroSolicitud.belongsTo(Colaborador, { foreignKey: 'colaboradorId', as: 'colaborador' });
   ColaboradorRostroSolicitud.belongsTo(User, { foreignKey: 'solicitadoPor', as: 'solicitante' });

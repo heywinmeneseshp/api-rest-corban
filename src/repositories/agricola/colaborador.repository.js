@@ -1,9 +1,10 @@
 import { Op } from 'sequelize';
-import { Colaborador, ColaboradorLabor, Finca, Labor, User } from '../../database/associations.js';
+import { AsistenciaLugar, Colaborador, ColaboradorLabor, Finca, Labor, User } from '../../database/associations.js';
 
 const includeLabores = [
   { model: ColaboradorLabor, as: 'labores', include: [{ model: Labor, as: 'labor', attributes: ['id', 'uuid', 'nombre', 'color'] }] },
   { model: Finca, as: 'finca', attributes: ['id', 'uuid', 'nombre'] },
+  { model: AsistenciaLugar, as: 'lugar', attributes: ['id', 'uuid', 'nombre', 'tipo'], paranoid: false },
   { model: User, as: 'usuario', attributes: ['uuid', 'usuario', 'email', 'estado'] },
 ];
 

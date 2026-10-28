@@ -52,6 +52,10 @@ export const colaboradorController = {
     ApiResponse.send(res, { statusCode: HTTP_STATUS.CREATED, message: 'Tu ficha de colaborador quedó creada', data });
   }),
 
+  actualizarMiFicha: asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { message: 'Tu ficha quedó actualizada', data: await colaboradorService.actualizarMiFicha(req.body, req.user) });
+  }),
+
   remove: asyncHandler(async (req, res) => {
     await colaboradorService.deleteColaborador(req.params.uuid, req.user?.id, req.user);
     ApiResponse.send(res, { message: 'Colaborador eliminado correctamente' });

@@ -37,6 +37,7 @@ export const createColaboradorSchema = Joi.object({
     email: Joi.string().email().allow('', null).max(150),
     cargo: Joi.string().allow('', null).max(100),
     fincaUuid: uuidRef.allow(null),
+    lugarUuid: uuidRef.allow(null),
     userUuid: uuidRef.allow(null),
     estado: Joi.boolean(),
     labores: laboresSchema,
@@ -54,7 +55,20 @@ export const crearMiFichaSchema = Joi.object({
     telefono: Joi.string().allow('', null).max(30),
     cargo: Joi.string().allow('', null).max(100),
     fincaUuid: uuidRef.allow(null),
+    lugarUuid: uuidRef.allow(null),
   }),
+  params: Joi.object({}),
+  query: Joi.object({}),
+});
+
+// Editar la ficha propia: solo datos de contacto y el lugar predeterminado (nombre, apellido e identificación quedan protegidos).
+export const actualizarMiFichaSchema = Joi.object({
+  body: Joi.object({
+    telefono: Joi.string().allow('', null).max(30),
+    cargo: Joi.string().allow('', null).max(100),
+    fincaUuid: uuidRef.allow(null),
+    lugarUuid: uuidRef.allow(null),
+  }).min(1),
   params: Joi.object({}),
   query: Joi.object({}),
 });
@@ -68,6 +82,7 @@ export const updateColaboradorSchema = Joi.object({
     email: Joi.string().email().allow('', null).max(150),
     cargo: Joi.string().allow('', null).max(100),
     fincaUuid: uuidRef.allow(null),
+    lugarUuid: uuidRef.allow(null),
     estado: Joi.boolean(),
     labores: laboresSchema,
   }).min(1),

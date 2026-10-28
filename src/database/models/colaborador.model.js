@@ -13,7 +13,9 @@ Colaborador.init(
     email: { type: DataTypes.STRING(150), allowNull: true },
     cargo: { type: DataTypes.STRING(100), allowNull: true },
     telefono: { type: DataTypes.STRING(30), allowNull: true },
+    // Lugar predeterminado: una finca o un lugar de asistencia (oficina...), nunca ambos. Solo es el habitual: puede marcar en otro.
     fincaId: { type: DataTypes.INTEGER, allowNull: true, field: 'finca_id' },
+    lugarId: { type: DataTypes.INTEGER, allowNull: true, field: 'lugar_id' },
     estado: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
     // Autorización del tratamiento del dato biométrico (huella facial) y usuario vinculado (marca en su propio celular).
     rostroConsentimientoAt: { type: DataTypes.DATE, allowNull: true, field: 'rostro_consentimiento_at' },

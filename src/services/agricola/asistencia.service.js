@@ -128,7 +128,8 @@ const MS_DIA = 86400000;
 const diaBogota = (ms) => new Date(ms - 5 * 3600 * 1000).toISOString().slice(0, 10);
 const minutosEntre = (a, b) => Math.round((b - a) / 60000);
 
-// `marcaciones`: [{ colaborador: { id, ... }, finca: { id, uuid, nombre }, tipo, ms }] (cualquier orden).
+// `marcaciones`: [{ colaborador: { id, ... }, finca: { id, uuid, nombre }, tipo, ms, gps: { lat, lng } | null }] (cualquier orden).
+// Cada estancia lleva el GPS de su entrada y de su salida (`entradaGps` / `salidaGps`) para verlos en el mapa.
 // Devuelve las jornadas sin filtrar, con tiempos en ms (los convierte a ISO quien responde).
 export function armarJornadas(marcaciones, hoy = diaBogota(Date.now())) {
   const porColaborador = new Map();
@@ -148,7 +149,7 @@ export function armarJornadas(marcaciones, hoy = diaBogota(Date.now())) {
     };
     let abierta = null;
     const cerrarSinSalida = () => {
-      if (abierta) agregar({ finca: abierta.finca, entrada: abierta.ms, salida: null, estado: 'SIN_SALIDA' });
+      if (abierta) agregar({ finca: abierta.finca, entrada: abierta.ms, salida: null, entradaGps: abierta.gps, salidaGps: null, estado: 'SIN_SALIDA' });
       abierta = null;
     };
 
@@ -157,13 +158,13 @@ export function armarJornadas(marcaciones, hoy = diaBogota(Date.now())) {
       if (m.tipo === 'ENTRADA') {
         if (mismaAbierta) continue; // entrada repetida: cuenta la primera
         cerrarSinSalida();
-        abierta = { finca: m.finca, ms: m.ms };
+        abierta = { finca: m.finca, ms: m.ms, gps: m.gps ?? null };
       } else if (mismaAbierta) {
-        agregar({ finca: m.finca, entrada: abierta.ms, salida: m.ms, estado: 'COMPLETA' });
+        agregar({ finca: m.finca, entrada: abierta.ms, salida: m.ms, entradaGps: abierta.gps, salidaGps: m.gps ?? null, estado: 'COMPLETA' });
         abierta = null;
       } else {
         cerrarSinSalida();
-        agregar({ finca: m.finca, entrada: null, salida: m.ms, estado: 'SIN_ENTRADA' });
+        agregar({ finca: m.finca, entrada: null, salida: m.ms, entradaGps: null, salidaGps: m.gps ?? null, estado: 'SIN_ENTRADA' });
       }
     }
     cerrarSinSalida();
@@ -194,13 +195,20 @@ export function armarJornadas(marcaciones, hoy = diaBogota(Date.now())) {
       });
       const est = tramos.filter((t) => t.tipo === 'ESTANCIA');
       const tra = tramos.filter((t) => t.tipo === 'TRANSITO');
-      const entradas = est.map((t) => t.entrada).filter((x) => x !== null);
-      const salidas = est.map((t) => t.salida).filter((x) => x !== null);
+      const conEntrada = est.filter((t) => t.entrada !== null);
+      const conSalida = est.filter((t) => t.salida !== null);
+      const primera = conEntrada.reduce((a, t) => (!a || t.entrada < a.entrada ? t : a), null);
+      const ultima = conSalida.reduce((a, t) => (!a || t.salida > a.salida ? t : a), null);
       jornadas.push({
         fecha,
         colaborador,
-        primeraEntrada: entradas.length ? Math.min(...entradas) : null,
-        ultimaSalida: salidas.length ? Math.max(...salidas) : null,
+        primeraEntrada: primera ? primera.entrada : null,
+        ultimaSalida: ultima ? ultima.salida : null,
+        primeraEntradaGps: primera ? primera.entradaGps : null,
+        ultimaSalidaGps: ultima ? ultima.salidaGps : null,
+        // Lugar (finca u oficina) de la primera entrada y de la última salida, para el mapa (perímetro de la finca).
+        primeraEntradaLugar: primera ? { uuid: primera.finca.uuid, nombre: primera.finca.nombre, tipo: primera.finca.tipo } : null,
+        ultimaSalidaLugar: ultima ? { uuid: ultima.finca.uuid, nombre: ultima.finca.nombre, tipo: ultima.finca.tipo } : null,
         minutosEnFincas: est.reduce((s, t) => s + (t.minutos || 0), 0),
         minutosTransito: tra.filter((t) => !t.mismaFinca).reduce((s, t) => s + t.minutos, 0),
         minutosFuera: tra.filter((t) => t.mismaFinca).reduce((s, t) => s + t.minutos, 0),
@@ -437,6 +445,23 @@ export const asistenciaService = {
         continue;
       }
 
+      // Una SALIDA necesita una ENTRADA abierta (su última marcación en las 16 h anteriores es una entrada). Si no la hay, no se
+      // registra: se pide confirmar y solo con `confirmarSinEntrada` se guarda igual.
+      if (item.tipo === 'SALIDA' && !item.confirmarSinEntrada) {
+        const ultima = await AsistenciaMarcacion.findOne({
+          where: { colaboradorId: colaborador.id, fechaHora: { [Op.between]: [new Date(fechaHora.getTime() - MAX_TURNO_MS), fechaHora] } },
+          attributes: ['tipo'],
+          order: [['fechaHora', 'DESC']],
+        });
+        if (!ultima || ultima.tipo !== 'ENTRADA') {
+          res('SIN_ENTRADA_PREVIA', {
+            colaborador: { uuid: colaborador.uuid, nombre: nombreCompleto(colaborador) },
+            mensaje: `${nombreCompleto(colaborador)} no tiene una entrada registrada antes de esta salida`,
+          });
+          continue;
+        }
+      }
+
       await AsistenciaMarcacion.create({
         uuid: item.uuid,
         colaboradorId: colaborador.id,
@@ -460,6 +485,7 @@ export const asistenciaService = {
       duplicadas: cuenta('DUPLICADA'),
       noReconocidas: cuenta('NO_RECONOCIDA'),
       ambiguas: cuenta('AMBIGUA'),
+      sinEntradaPrevia: cuenta('SIN_ENTRADA_PREVIA'),
       errores: cuenta('ERROR'),
       resultados,
     };
@@ -556,7 +582,7 @@ export const asistenciaService = {
 
     const rows = await AsistenciaMarcacion.findAll({
       where,
-      attributes: ['tipo', 'fechaHora'],
+      attributes: ['tipo', 'fechaHora', 'lat', 'lng'],
       include: [
         { model: Colaborador, as: 'colaborador', attributes: ['id', 'uuid', 'nombre', 'apellido', 'documento', 'cargo'] },
         { model: Finca, as: 'finca', attributes: ['id', 'uuid', 'nombre'] },
@@ -569,6 +595,7 @@ export const asistenciaService = {
         tipo: r.tipo,
         ms: new Date(isoUtc(r.fechaHora)).getTime(),
         finca: ubicacionDe(r), // la «finca» de la jornada es la ubicación: finca o lugar
+        gps: r.lat === null || r.lng === null ? null : { lat: Number(r.lat), lng: Number(r.lng) },
         colaborador: {
           id: r.colaborador.id,
           uuid: r.colaborador.uuid,

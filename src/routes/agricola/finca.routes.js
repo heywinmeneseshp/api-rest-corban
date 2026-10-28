@@ -86,10 +86,11 @@ router.get(
  *     responses:
  *       200: { description: OK }
  */
+// Detalle de una finca (incluye su perímetro KML para los mapas): basta con tener sesión, como la lista; el servicio solo deja ver
+// las fincas asignadas del usuario.
 router.get(
   '/:uuid',
   auth,
-  permission(PERMISSIONS.FINCA_VER),
   validate(getFincaSchema),
   fincaController.getByUuid,
 );

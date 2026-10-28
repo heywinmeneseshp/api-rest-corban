@@ -9,6 +9,7 @@ import {
   getColaboradorSchema,
   createColaboradorSchema,
   crearMiFichaSchema,
+  actualizarMiFichaSchema,
   updateColaboradorSchema,
   vincularUsuarioSchema,
   crearUsuarioDeColaboradorSchema,
@@ -39,6 +40,7 @@ router.post('/', auth, permission(PERMISSIONS.COLABORADOR_CREAR), validate(creat
 const PUEDE_MI_FICHA = [PERMISSIONS.ASISTENCIA_MARCAR, PERMISSIONS.ASISTENCIA_MARCAR_CUADRILLA, PERMISSIONS.COLABORADOR_CREAR];
 router.get('/mio', auth, permission(...PUEDE_MI_FICHA, PERMISSIONS.COLABORADOR_VER, PERMISSIONS.ASISTENCIA_VER), colaboradorController.miFicha);
 router.post('/mio', auth, permission(...PUEDE_MI_FICHA), validate(crearMiFichaSchema), colaboradorController.crearMiFicha);
+router.put('/mio', auth, permission(...PUEDE_MI_FICHA), validate(actualizarMiFichaSchema), colaboradorController.actualizarMiFicha);
 
 /**
  * @openapi
