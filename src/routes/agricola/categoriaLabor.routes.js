@@ -29,10 +29,11 @@ const router = Router();
  *     responses:
  *       201: { description: Creado }
  */
+// Lectura de catálogo de referencia (lista y detalle): basta con tener sesión, como fincas y semanas. Otras pantallas (Registrar
+// corte/repique, labores, estimaciones...) lo usan en sus desplegables. Crear, editar y eliminar sí exigen permiso.
 router.get(
   '/',
   auth,
-  permission(PERMISSIONS.CATEGORIA_LABOR_VER),
   validate(listCategoriasLaborSchema),
   categoriaLaborController.list,
 );
@@ -69,7 +70,6 @@ router.post(
 router.get(
   '/:uuid',
   auth,
-  permission(PERMISSIONS.CATEGORIA_LABOR_VER),
   validate(getCategoriaLaborSchema),
   categoriaLaborController.getByUuid,
 );

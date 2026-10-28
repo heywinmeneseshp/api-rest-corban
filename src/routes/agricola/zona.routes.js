@@ -31,7 +31,9 @@ const router = Router();
  *     responses:
  *       201: { description: Creado }
  */
-router.get('/', auth, permission(PERMISSIONS.ZONA_VER), validate(listZonasSchema), zonaController.list);
+// Lectura de catálogo de referencia (lista y detalle): basta con tener sesión, como fincas y semanas. Otras pantallas (Registrar
+// corte/repique, labores, estimaciones...) lo usan en sus desplegables. Crear, editar y eliminar sí exigen permiso.
+router.get('/', auth, validate(listZonasSchema), zonaController.list);
 router.post('/', auth, permission(PERMISSIONS.ZONA_CREAR), validate(createZonaSchema), zonaController.create);
 
 /**
@@ -56,7 +58,7 @@ router.post('/', auth, permission(PERMISSIONS.ZONA_CREAR), validate(createZonaSc
  *     responses:
  *       200: { description: OK }
  */
-router.get('/:uuid', auth, permission(PERMISSIONS.ZONA_VER), validate(getZonaSchema), zonaController.getByUuid);
+router.get('/:uuid', auth, validate(getZonaSchema), zonaController.getByUuid);
 router.put('/:uuid', auth, permission(PERMISSIONS.ZONA_EDITAR), validate(updateZonaSchema), zonaController.update);
 router.delete('/:uuid', auth, permission(PERMISSIONS.ZONA_ELIMINAR), validate(getZonaSchema), zonaController.remove);
 

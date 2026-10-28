@@ -30,7 +30,9 @@ const router = Router();
  *     responses:
  *       201: { description: Creado }
  */
-router.get('/', auth, permission(PERMISSIONS.PRODUCTO_VER), validate(listProductosSchema), productoController.list);
+// Lectura de catálogo de referencia (lista y detalle): basta con tener sesión, como fincas y semanas. Otras pantallas (Registrar
+// corte/repique, labores, estimaciones...) lo usan en sus desplegables. Crear, editar y eliminar sí exigen permiso.
+router.get('/', auth, validate(listProductosSchema), productoController.list);
 router.post(
   '/',
   auth,
@@ -96,7 +98,7 @@ router.post(
  *     responses:
  *       200: { description: OK }
  */
-router.get('/:uuid', auth, permission(PERMISSIONS.PRODUCTO_VER), validate(getProductoSchema), productoController.getByUuid);
+router.get('/:uuid', auth, validate(getProductoSchema), productoController.getByUuid);
 router.put(
   '/:uuid',
   auth,

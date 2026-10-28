@@ -30,10 +30,11 @@ const router = Router();
  *     responses:
  *       201: { description: Creado }
  */
+// Lectura de catálogo de referencia (lista y detalle): basta con tener sesión, como fincas y semanas. Otras pantallas (Registrar
+// corte/repique, labores, estimaciones...) lo usan en sus desplegables. Crear, editar y eliminar sí exigen permiso.
 router.get(
   '/',
   auth,
-  permission(PERMISSIONS.MOTIVO_REPIQUE_VER),
   validate(listMotivosRepiqueSchema),
   motivoRepiqueController.list,
 );
@@ -105,7 +106,6 @@ router.get(
 router.get(
   '/:uuid',
   auth,
-  permission(PERMISSIONS.MOTIVO_REPIQUE_VER),
   validate(getMotivoRepiqueSchema),
   motivoRepiqueController.getByUuid,
 );
