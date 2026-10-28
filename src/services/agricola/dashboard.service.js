@@ -505,6 +505,15 @@ export const dashboardService = {
     });
     const fincaProcesadosMap = new Map(fincasProcesados.map((r) => [r.fincaId, Number(r.total)]));
 
+    // Repicados de la misma semana de registro (mismo criterio que recusados y procesados).
+    const fincasRepicados = await RacimoMovimiento.findAll({
+      where: { tipo: 'REPIQUE', semanaRegistroId: ultimaSemana.id, ...fwScope },
+      attributes: ['fincaId', [fn('SUM', col('cantidad')), 'total']],
+      group: ['fincaId'],
+      raw: true,
+    });
+    const fincaRepicadosMap = new Map(fincasRepicados.map((r) => [r.fincaId, Number(r.total)]));
+
     // Solo para el `ratio` de fincasActivas de abajo (8-12 semanas) — NO se
     // usa para `recusados`/`procesados`/`aprovechamientoPct`, que siguen
     // usando los mapas de arriba sin filtrar por edad.
@@ -628,6 +637,7 @@ export const dashboardService = {
         esExterna: !!f.esExterna,
         seleccionada: fincaIds.length === 0 || fincaIds.includes(f.id),
         cajas: cajasFinca,
+        repicados: fincaRepicadosMap.get(f.id) || 0,
         recusados,
         procesados,
         ratio: cortesParaRatio > 0 ? Math.round((cajasFinca / cortesParaRatio) * 100) / 100 : 0,
