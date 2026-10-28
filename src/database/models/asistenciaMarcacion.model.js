@@ -12,7 +12,9 @@ AsistenciaMarcacion.init(
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     uuid: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, allowNull: false, unique: true },
     colaboradorId: { type: DataTypes.INTEGER, allowNull: false, field: 'colaborador_id' },
-    fincaId: { type: DataTypes.INTEGER, allowNull: false, field: 'finca_id' },
+    // Dónde marcó: una finca o un lugar de asistencia (oficina, planta...). Siempre uno de los dos.
+    fincaId: { type: DataTypes.INTEGER, allowNull: true, field: 'finca_id' },
+    lugarId: { type: DataTypes.INTEGER, allowNull: true, field: 'lugar_id' },
     tipo: { type: DataTypes.ENUM(...TIPOS_MARCACION), allowNull: false },
     fechaHora: { type: DataTypes.DATE, allowNull: false, field: 'fecha_hora' },
     lat: { type: DataTypes.DECIMAL(10, 7), allowNull: true },

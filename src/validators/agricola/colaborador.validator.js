@@ -45,6 +45,20 @@ export const createColaboradorSchema = Joi.object({
   query: Joi.object({}),
 });
 
+// Ficha propia (autoservicio): queda vinculada al usuario de la sesión; nombre y apellido por defecto los del usuario.
+export const crearMiFichaSchema = Joi.object({
+  body: Joi.object({
+    nombre: Joi.string().min(2).max(150).allow('', null),
+    apellido: Joi.string().allow('', null).max(150),
+    documento: Joi.string().min(3).max(30).required(),
+    telefono: Joi.string().allow('', null).max(30),
+    cargo: Joi.string().allow('', null).max(100),
+    fincaUuid: uuidRef.allow(null),
+  }),
+  params: Joi.object({}),
+  query: Joi.object({}),
+});
+
 export const updateColaboradorSchema = Joi.object({
   body: Joi.object({
     nombre: Joi.string().min(2).max(150),

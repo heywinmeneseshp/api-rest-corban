@@ -299,6 +299,8 @@ export const PERMISSIONS = {
   ASISTENCIA_MARCAR: 'asistencia.marcar',
   ASISTENCIA_MARCAR_CUADRILLA: 'asistencia.marcar_cuadrilla',
   ASISTENCIA_ELIMINAR: 'asistencia.eliminar',
+  ASISTENCIA_LUGARES: 'asistencia.lugares',
+  ASISTENCIA_APROBAR_ROSTRO: 'asistencia.aprobar_rostro',
   MENU_ASISTENCIA: 'menu.asistencia',
   MENU_REPORTES: 'menu.reportes',
 
@@ -599,9 +601,11 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.PRECALIBRACION_CREAR, nombre: 'Registrar precalibración (racimos aptos)' },
   { codigo: PERMISSIONS.PRECALIBRACION_CONFIGURAR, nombre: 'Configurar precalibración (edades y calibres)' },
   { codigo: PERMISSIONS.ASISTENCIA_VER, nombre: 'Ver asistencia' },
-  { codigo: PERMISSIONS.ASISTENCIA_MARCAR, nombre: 'Marcar mi propia asistencia' },
+  { codigo: PERMISSIONS.ASISTENCIA_MARCAR, nombre: 'Marcar asistencia con rostro (ve solo lo propio)' },
   { codigo: PERMISSIONS.ASISTENCIA_MARCAR_CUADRILLA, nombre: 'Marcar asistencia de la cuadrilla' },
   { codigo: PERMISSIONS.ASISTENCIA_ELIMINAR, nombre: 'Eliminar marcaciones de asistencia' },
+  { codigo: PERMISSIONS.ASISTENCIA_LUGARES, nombre: 'Gestionar lugares de asistencia (oficinas y otros)' },
+  { codigo: PERMISSIONS.ASISTENCIA_APROBAR_ROSTRO, nombre: 'Aprobar nuevos registros de rostro y quitar rostros' },
   { codigo: PERMISSIONS.MENU_ASISTENCIA, nombre: 'Ver ítem de menú Asistencia' },
   { codigo: PERMISSIONS.MENU_REPORTES, nombre: 'Ver ítem de menú Reportes' },
 

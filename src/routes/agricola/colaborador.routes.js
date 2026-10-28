@@ -8,6 +8,7 @@ import {
   listColaboradoresSchema,
   getColaboradorSchema,
   createColaboradorSchema,
+  crearMiFichaSchema,
   updateColaboradorSchema,
   vincularUsuarioSchema,
   crearUsuarioDeColaboradorSchema,
@@ -33,6 +34,11 @@ const router = Router();
  */
 router.get('/', auth, permission(PERMISSIONS.COLABORADOR_VER), validate(listColaboradoresSchema), colaboradorController.list);
 router.post('/', auth, permission(PERMISSIONS.COLABORADOR_CREAR), validate(createColaboradorSchema), colaboradorController.create);
+
+// Autoservicio: la ficha propia (colaborador vinculado al usuario de la sesión). Antes de /:uuid.
+const PUEDE_MI_FICHA = [PERMISSIONS.ASISTENCIA_MARCAR, PERMISSIONS.ASISTENCIA_MARCAR_CUADRILLA, PERMISSIONS.COLABORADOR_CREAR];
+router.get('/mio', auth, permission(...PUEDE_MI_FICHA, PERMISSIONS.COLABORADOR_VER, PERMISSIONS.ASISTENCIA_VER), colaboradorController.miFicha);
+router.post('/mio', auth, permission(...PUEDE_MI_FICHA), validate(crearMiFichaSchema), colaboradorController.crearMiFicha);
 
 /**
  * @openapi

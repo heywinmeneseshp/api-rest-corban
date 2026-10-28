@@ -50,6 +50,8 @@ import { Colaborador } from './models/colaborador.model.js';
 import { ColaboradorLabor } from './models/colaboradorLabor.model.js';
 import { ColaboradorRostro } from './models/colaboradorRostro.model.js';
 import { AsistenciaMarcacion } from './models/asistenciaMarcacion.model.js';
+import { AsistenciaLugar } from './models/asistenciaLugar.model.js';
+import { ColaboradorRostroSolicitud } from './models/colaboradorRostroSolicitud.model.js';
 import { ProgramacionCorte } from './models/programacionCorte.model.js';
 import { Producto } from './models/producto.model.js';
 import { RechazoCorte } from './models/rechazoCorte.model.js';
@@ -447,9 +449,16 @@ export const setupAssociations = () => {
   AsistenciaMarcacion.belongsTo(Colaborador, { foreignKey: 'colaboradorId', as: 'colaborador' });
   Finca.hasMany(AsistenciaMarcacion, { foreignKey: 'fincaId', as: 'marcacionesAsistencia' });
   AsistenciaMarcacion.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+  AsistenciaLugar.hasMany(AsistenciaMarcacion, { foreignKey: 'lugarId', as: 'marcaciones' });
+  AsistenciaMarcacion.belongsTo(AsistenciaLugar, { foreignKey: 'lugarId', as: 'lugar' });
+  Colaborador.hasMany(ColaboradorRostroSolicitud, { foreignKey: 'colaboradorId', as: 'solicitudesRostro' });
+  ColaboradorRostroSolicitud.belongsTo(Colaborador, { foreignKey: 'colaboradorId', as: 'colaborador' });
+  ColaboradorRostroSolicitud.belongsTo(User, { foreignKey: 'solicitadoPor', as: 'solicitante' });
+  ColaboradorRostroSolicitud.belongsTo(User, { foreignKey: 'resueltoPor', as: 'resolutor' });
 
   withAuditAssociations(Colaborador);
   withAuditAssociations(AsistenciaMarcacion);
+  withAuditAssociations(AsistenciaLugar);
 
   // Programación de Corte (cargue masivo de cuándo se espera cortar cada
   // finca y cuántas cajas se programan) — mismo patrón que ProduccionSemanal.
@@ -840,6 +849,8 @@ export {
   ColaboradorLabor,
   ColaboradorRostro,
   AsistenciaMarcacion,
+  AsistenciaLugar,
+  ColaboradorRostroSolicitud,
   ProgramacionCorte,
   Producto,
   RechazoCorte,

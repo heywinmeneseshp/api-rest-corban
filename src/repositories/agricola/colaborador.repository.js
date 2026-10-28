@@ -8,8 +8,9 @@ const includeLabores = [
 ];
 
 export const colaboradorRepository = {
-  async findAndCountAll({ limit, offset, search, fincaId, estado }) {
-    const where = {};
+  async findAndCountAll({ limit, offset, search, fincaId, estado, alcance }) {
+    // `alcance`: condición extra por fincas asignadas del usuario (ver colaborador.service.js#alcanceColaboradores).
+    const where = alcance ? { [Op.and]: [alcance] } : {};
     if (search) where[Op.or] = [{ nombre: { [Op.like]: `%${search}%` } }, { apellido: { [Op.like]: `%${search}%` } }, { documento: { [Op.like]: `%${search}%` } }];
     if (fincaId) where.fincaId = fincaId;
     if (estado !== undefined) where.estado = estado;

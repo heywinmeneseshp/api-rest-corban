@@ -204,8 +204,10 @@ export const PERMISOS_CATALOGO = [
         app: 'campo',
         filas: [crud('asistencia', ['ver', 'eliminar'])],
         especiales: [
-          especial('asistencia.marcar', 'Marcar su propia asistencia'),
+          especial('asistencia.marcar', 'Marcar con rostro en este equipo (cualquier persona) y ver solo lo propio'),
           especial('asistencia.marcar_cuadrilla', 'Marcar la asistencia de otros y probar rostros'),
+          especial('asistencia.lugares', 'Crear y editar lugares de asistencia (oficinas, plantas...)'),
+          especial('asistencia.aprobar_rostro', 'Aprobar nuevos registros de rostro y quitar rostros', { sensible: true }),
         ],
       },
     ],

@@ -68,12 +68,13 @@ export const guardarProductosSchema = Joi.object({
       .items(
         Joi.object({
           productoUuid: uuidParam,
-          modo: Joi.string().valid('PORCENTAJE', 'CONTENEDORES', 'RESTO').default('PORCENTAJE'),
+          modo: Joi.string().valid('PORCENTAJE', 'CONTENEDORES', 'RESTO', 'FINCA').default('PORCENTAJE'),
           porcentaje: Joi.number().greater(0).max(100).allow(null),
           contenedores: Joi.number().greater(0).max(1000).allow(null),
           cajasContenedor: Joi.number().greater(0).max(100000).allow(null),
           cadaSemanas: Joi.number().integer().min(1).max(52).default(1),
           desdeSemana: Joi.number().integer().min(1).max(53).default(1),
+          fincaUuids: Joi.when('modo', { is: 'FINCA', then: Joi.array().items(uuidParam).min(1).unique().required(), otherwise: Joi.any().strip() }),
         }),
       )
       .max(50)
