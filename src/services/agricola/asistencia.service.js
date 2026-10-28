@@ -237,13 +237,15 @@ export const asistenciaService = {
   // ─── Enrolamiento ───
   // `muestras`: [{ pose, descriptor }] — una por ángulo. Con `reforzar` se agregan a las existentes (tope MAX_MUESTRAS);
   // si no, reemplazan todo. Los vectores anteriores se borran de verdad (no soft delete): es un dato biométrico.
-  // Reglas: primer registro directo (su propia ficha, o quien edita colaboradores dentro de sus fincas); reforzar (agregar capturas)
+  // Reglas: primer registro directo (su propia ficha, o quien crea/edita colaboradores dentro de sus fincas); reforzar (agregar capturas)
   // sin aprobación; reemplazar un rostro ya registrado → queda como solicitud que aprueba OTRO usuario con permiso.
   async enrolarRostro(colaboradorUuid, { muestras, consentimiento, reforzar = false }, actorId, user) {
     const colaborador = await findColaboradorOrFail(colaboradorUuid);
     const esPropio = Boolean(user?.id) && colaborador.userId === user.id;
     if (!esPropio) {
-      if (!tienePermiso(user, PERMISSIONS.COLABORADOR_EDITAR)) throw ApiError.forbidden('Solo puedes registrar tu propio rostro');
+      if (!tienePermiso(user, PERMISSIONS.COLABORADOR_EDITAR) && !tienePermiso(user, PERMISSIONS.COLABORADOR_CREAR)) {
+        throw ApiError.forbidden('Solo puedes registrar tu propio rostro');
+      }
       if (!enAlcance(colaborador, user)) throw ApiError.forbidden('No tienes acceso a este colaborador');
     }
     if (!consentimiento && !colaborador.rostroConsentimientoAt) {
@@ -301,7 +303,7 @@ export const asistenciaService = {
   async rostrosEstado(query, user) {
     const fincaIds = getFincaIdsPermitidas(user);
     // Quien no administra colaboradores (solo marca) ve únicamente su propia ficha; los demás, los de su alcance.
-    const veOtros = [PERMISSIONS.COLABORADOR_VER, PERMISSIONS.COLABORADOR_EDITAR, PERMISSIONS.ASISTENCIA_MARCAR_CUADRILLA].some((c) => tienePermiso(user, c));
+    const veOtros = [PERMISSIONS.COLABORADOR_VER, PERMISSIONS.COLABORADOR_CREAR, PERMISSIONS.COLABORADOR_EDITAR, PERMISSIONS.ASISTENCIA_MARCAR_CUADRILLA].some((c) => tienePermiso(user, c));
     const alcance = alcanceColaboradores(user);
     const where = { estado: true, ...(veOtros ? (alcance ? { [Op.and]: [alcance] } : {}) : { userId: user?.id ?? -1 }) };
     if (query.fincaUuid) assertFincaPermitida(user, (await findFincaOrFail(query.fincaUuid)).id);

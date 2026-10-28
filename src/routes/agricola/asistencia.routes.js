@@ -41,7 +41,7 @@ const PUEDE_MARCAR = [PERMISSIONS.ASISTENCIA_MARCAR, PERMISSIONS.ASISTENCIA_MARC
 router.get(
   '/rostros-estado',
   auth,
-  permission(PERMISSIONS.ASISTENCIA_VER, PERMISSIONS.COLABORADOR_EDITAR, ...PUEDE_MARCAR),
+  permission(PERMISSIONS.ASISTENCIA_VER, PERMISSIONS.COLABORADOR_CREAR, PERMISSIONS.COLABORADOR_EDITAR, ...PUEDE_MARCAR),
   validate(rostrosEstadoSchema),
   asyncHandler(async (req, res) => {
     ApiResponse.send(res, { message: 'Estado de rostros obtenido correctamente', data: await asistenciaService.rostrosEstado(req.query, req.user) });
@@ -58,8 +58,8 @@ router.get(
  *     responses:
  *       200: { description: OK }
  */
-// Enrolar: el propio rostro (quien marca) o el de otros (quien edita colaboradores); la regla fina está en el servicio.
-const PUEDE_ENROLAR = [PERMISSIONS.COLABORADOR_EDITAR, PERMISSIONS.ASISTENCIA_APROBAR_ROSTRO, ...PUEDE_MARCAR];
+// Enrolar: el propio rostro (quien marca) o el de otros (quien crea o edita colaboradores); la regla fina está en el servicio.
+const PUEDE_ENROLAR = [PERMISSIONS.COLABORADOR_CREAR, PERMISSIONS.COLABORADOR_EDITAR, PERMISSIONS.ASISTENCIA_APROBAR_ROSTRO, ...PUEDE_MARCAR];
 
 /**
  * @openapi
