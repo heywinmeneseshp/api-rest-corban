@@ -84,7 +84,7 @@ async function calcularCantidad(mezcla, hectareas) {
 // `cantidadCalculada` en cada fila de AspersionProgramacionComponente, y lo
 // que la pantalla debe poder mostrar siempre como referencia "de fábrica",
 // sin importar qué se haya ajustado después (pedido explícito).
-async function calcularComponentesReceta(mezcla, hectareas, { transaction } = {}) {
+export async function calcularComponentesReceta(mezcla, hectareas, { transaction } = {}) {
   const version = await MezclaVersion.findOne({
     where: { mezclaId: mezcla.id, activa: true },
     include: [
@@ -158,6 +158,7 @@ async function calcularComponentesReceta(mezcla, hectareas, { transaction } = {}
 
   const litro = await UnidadMedida.findOne({ where: { nombre: 'Litro' }, transaction });
   const kilogramo = await UnidadMedida.findOne({ where: { nombre: 'Kilogramo' }, transaction });
+  const gramo = await UnidadMedida.findOne({ where: { nombre: 'Gramo' }, transaction });
   const filas = [];
   for (const { comp, base } of bases) {
     let cantidadCalculada = base;
@@ -167,7 +168,14 @@ async function calcularComponentesReceta(mezcla, hectareas, { transaction } = {}
       } else if (comp.tipoDosis === 'POR_LITRO_AGUA' && comp.tasa !== null && comp.tasa !== undefined && litro) {
         const tasa = Number(comp.tasa);
         const fRendALitro = await resolverFactorConversion(unidadRend, litro.id, { transaction });
-        if (tasa > 0 && fRendALitro !== null) cantidadCalculada = tasa * aguaEnRend * fRendALitro;
+        if (tasa > 0 && fRendALitro !== null) {
+          cantidadCalculada = tasa * aguaEnRend * fRendALitro;
+          // El ACONDICIONADOR va SIEMPRE en gramos por litro de agua, aunque la fila esté en Kg: se lleva de g a la unidad de la fila.
+          if (comp.articulo?.nombre === 'ACONDICIONADOR' && gramo && comp.unidadId && comp.unidadId !== gramo.id) {
+            const fGARow = await resolverFactorConversion(gramo.id, comp.unidadId, { transaction });
+            if (fGARow !== null) cantidadCalculada *= fGARow;
+          }
+        }
       } else if (comp.articulo?.nombre === 'ACONDICIONADOR' && comp.tipoDosis !== 'POR_LITRO_AGUA' && litro && kilogramo) {
         // Legacy: 0.8 g/L como en el programador (solo si no trae regla propia).
         const fRendALitro2 = await resolverFactorConversion(unidadRend, litro.id, { transaction });
