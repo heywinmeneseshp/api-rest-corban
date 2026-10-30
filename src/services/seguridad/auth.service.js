@@ -7,6 +7,7 @@ import { roleRepository } from '../../repositories/seguridad/role.repository.js'
 import { authRepository } from '../../repositories/seguridad/auth.repository.js';
 import { expandirFincaIds } from '../../utils/fincaScope.js';
 import { mailService } from '../sistema/mail.service.js';
+import { cargarFirmaUsuario, eliminarFotoDeDrive, descargarArchivoDeDrive } from '../googleDrive/cargueFotosLabor.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { logger } from '../../utils/logger.js';
 import { ROLES } from '../../constants/roles.constants.js';
@@ -200,6 +201,35 @@ export const authService = {
 
     const updated = await userRepository.update(user, payload);
     return updated.toSafeJSON();
+  },
+
+  // Firma del usuario (PNG) para los documentos. Se guarda en Google Drive (Firmas_Usuarios); al reemplazarla se borra
+  // la anterior de Drive (si no se puede borrar, solo queda huérfana: no impide guardar la nueva).
+  async subirFirma(userId, archivo) {
+    if (!archivo) throw ApiError.badRequest('Adjunta la imagen PNG de tu firma');
+    const user = await userRepository.findById(userId);
+    if (!user) throw ApiError.notFound('Usuario no encontrado');
+    const anterior = user.firmaDriveId;
+    const { idDrive } = await cargarFirmaUsuario({ usuario: user.usuario }, archivo);
+    const updated = await userRepository.update(user, { firmaDriveId: idDrive, firmaActualizadaEn: new Date() });
+    if (anterior) await eliminarFotoDeDrive(anterior);
+    return updated.toSafeJSON();
+  },
+
+  async quitarFirma(userId) {
+    const user = await userRepository.findById(userId);
+    if (!user) throw ApiError.notFound('Usuario no encontrado');
+    const anterior = user.firmaDriveId;
+    const updated = await userRepository.update(user, { firmaDriveId: null, firmaActualizadaEn: null });
+    if (anterior) await eliminarFotoDeDrive(anterior);
+    return updated.toSafeJSON();
+  },
+
+  // Imagen de la firma de un usuario (por id o uuid) para mostrarla o ponerla en un documento.
+  async obtenerFirma({ userId, userUuid }) {
+    const user = userId ? await userRepository.findById(userId) : await User.findOne({ where: { uuid: userUuid } });
+    if (!user || !user.firmaDriveId) throw ApiError.notFound('Este usuario no tiene firma registrada');
+    return descargarArchivoDeDrive(user.firmaDriveId);
   },
 
   async changePassword(userId, currentPassword, newPassword) {

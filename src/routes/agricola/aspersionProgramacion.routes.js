@@ -4,7 +4,7 @@ import { auth } from '../../middlewares/auth.middleware.js';
 import { requireAdmin } from '../../middlewares/requireAdmin.middleware.js';
 import { permission } from '../../middlewares/permission.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
-import { uploadPdfAspersion, uploadExcelAspersion, uploadBulkFile } from '../../middlewares/upload.middleware.js';
+import { uploadPdfsAvisoAspersion, uploadExcelAspersion, uploadBulkFile } from '../../middlewares/upload.middleware.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import {
   createAspersionSchema,
@@ -67,6 +67,9 @@ router.patch(
 );
 router.delete('/:uuid', auth, permission(PERMISSIONS.SANIDAD_ASPERSIONES_ELIMINAR), validate(getAspersionSchema), aspersionProgramacionController.remove);
 router.post('/:uuid/cancelar', auth, permission(PERMISSIONS.SANIDAD_ASPERSIONES_ELIMINAR), validate(getAspersionSchema), aspersionProgramacionController.cancelar);
+// Revisión de la programación (su firma va en el aviso de aspersión).
+router.post('/:uuid/revisar', auth, permission(PERMISSIONS.SANIDAD_ASPERSIONES_REVISAR), validate(getAspersionSchema), aspersionProgramacionController.revisar);
+router.delete('/:uuid/revisar', auth, permission(PERMISSIONS.SANIDAD_ASPERSIONES_REVISAR), validate(getAspersionSchema), aspersionProgramacionController.quitarRevision);
 router.get('/:uuid/ciclo', auth, permission(PERMISSIONS.SANIDAD_ASPERSIONES_VER), validate(getAspersionSchema), aspersionProgramacionController.getCiclo);
 router.get('/:uuid/candidatas-ciclo', auth, permission(PERMISSIONS.SANIDAD_ASPERSIONES_VER), validate(getAspersionSchema), aspersionProgramacionController.candidatasCiclo);
 router.post('/:uuid/unir-ciclo', auth, permission(PERMISSIONS.SANIDAD_ASPERSIONES_EDITAR), validate(unirCicloSchema), aspersionProgramacionController.unirCiclo);
@@ -87,7 +90,7 @@ router.post(
   '/:uuid/correo',
   auth,
   permission(PERMISSIONS.SANIDAD_ASPERSIONES_ENVIAR_CORREO),
-  uploadPdfAspersion,
+  uploadPdfsAvisoAspersion,
   validate(enviarCorreoAspersionSchema),
   aspersionProgramacionController.enviarCorreo,
 );

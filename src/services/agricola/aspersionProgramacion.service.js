@@ -13,12 +13,14 @@ import {
   AspersionProgramacion,
   User,
   Role,
+  Pista,
 } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { generarCorrelativo } from '../../utils/correlativo.js';
 import { convertirACantidadBase, resolverFactorConversion } from '../../utils/unidadConversion.js';
 import { consumirStockConReceta, RequiereConfirmacionStockError } from '../inventario/stock.helper.js';
+import { correosDePista } from './pista.service.js';
 import { mailService } from '../sistema/mail.service.js';
 import { configuracionService } from '../sistema/configuracion.service.js';
 import { ROLES } from '../../constants/roles.constants.js';
@@ -31,6 +33,14 @@ import { Op } from 'sequelize';
 
 const MOTIVO_PREFIJO = 'ASP';
 const TIPOS_VALIDOS = ['SIGATOKA_NEGRA', 'DEFOLIADOR', 'FERTILIZACION'];
+
+// Pista de la que sale la aspersión (opcional): '' o null la quita.
+async function resolvePistaId(uuid) {
+  if (!uuid) return null;
+  const pista = await Pista.findOne({ where: { uuid }, attributes: ['id'] });
+  if (!pista) throw ApiError.badRequest('Pista no encontrada');
+  return pista.id;
+}
 
 async function resolveFinca(uuid) {
   const finca = await Finca.findOne({ where: { uuid } });
@@ -373,6 +383,7 @@ async function dividirParteParcial(fresh, aplicadas, fechaRestante, actorId, { t
       semanaId: semana?.id || null,
       tipo: fresh.tipo,
       medio: fresh.medio,
+      pistaId: fresh.pistaId ?? null,
       mezclaId: fresh.mezclaId,
       almacenId: fresh.almacenId,
       hectareas: restantes,
@@ -585,6 +596,8 @@ export const aspersionProgramacionService = {
           cicloParte: 1,
           tipo: payload.tipo,
           medio: payload.medio,
+          // Con dron no hay pista (solo el avión sale de una pista).
+          pistaId: payload.medio === 'DRON' ? null : await resolvePistaId(payload.pistaUuid),
           mezclaId: mezcla.id,
           almacenId: almacen.id,
           hectareas,
@@ -762,7 +775,8 @@ export const aspersionProgramacionService = {
     const aspersion = await this.getByUuid(uuid, user);
     assertProgramada(aspersion);
 
-    const data = { updatedBy: actorId };
+    // Al editar la programación se borra la revisión: ya no es lo que se revisó.
+    const data = { updatedBy: actorId, revisadoPorId: null, revisadoEn: null };
 
     if (payload.fincaUuid) data.fincaId = (await resolveFinca(payload.fincaUuid)).id;
     if (payload.almacenUuid) {
@@ -785,6 +799,9 @@ export const aspersionProgramacionService = {
 
     if (payload.tipo) data.tipo = payload.tipo;
     if (payload.medio) data.medio = payload.medio;
+    if (payload.pistaUuid !== undefined) data.pistaId = await resolvePistaId(payload.pistaUuid);
+    // Con dron no hay pista (solo el avión sale de una pista).
+    if ((payload.medio || aspersion.medio) === 'DRON') data.pistaId = null;
     if (payload.observaciones !== undefined) data.observaciones = payload.observaciones || null;
     if (payload.representanteCorbanaNombre !== undefined) data.representanteCorbanaNombre = payload.representanteCorbanaNombre || null;
     if (payload.administradorFincaNombre !== undefined) data.administradorFincaNombre = payload.administradorFincaNombre || null;
@@ -840,7 +857,20 @@ export const aspersionProgramacionService = {
     }
 
     await aspersionProgramacionRepository.updateComponente(componente, { cantidad: Number(cantidad), updatedBy: actorId });
+    // Cambió una cantidad: la revisión anterior ya no aplica.
+    await aspersionProgramacionRepository.update(aspersion, { revisadoPorId: null, revisadoEn: null });
     return aspersionProgramacionRepository.findByUuid(aspersionUuid);
+  },
+
+  // Marca la programación como revisada por el usuario (su firma sale en el aviso), o quita la revisión.
+  async revisar(uuid, actorId, user, { quitar = false } = {}) {
+    const aspersion = await this.getByUuid(uuid, user);
+    if (aspersion.estado === 'CANCELADA') throw ApiError.badRequest('Esta aspersión está cancelada');
+    await aspersionProgramacionRepository.update(
+      aspersion,
+      quitar ? { revisadoPorId: null, revisadoEn: null } : { revisadoPorId: actorId, revisadoEn: new Date() },
+    );
+    return aspersionProgramacionRepository.findByUuid(uuid);
   },
 
   async delete(uuid, actorId, user) {
@@ -867,7 +897,10 @@ export const aspersionProgramacionService = {
     const actualizada = await aspersionProgramacionRepository.findByUuid(uuid);
 
     try {
-      const destinatarios = await this.resolverDestinatariosConfigurados(actualizada.fincaId);
+      // También los correos de la pista de la que salía.
+      const destinatarios = [
+        ...new Set([...(await this.resolverDestinatariosConfigurados(actualizada.fincaId)), ...correosDePista(actualizada.pista)]),
+      ];
       if (destinatarios.length) {
         await mailService.sendCancelacionAspersion({
           destinatarios,
@@ -1120,7 +1153,8 @@ export const aspersionProgramacionService = {
   // app-corbana/lib/aspersionExport.js) por correo al/los destinatario(s)
   // indicados — el backend nunca genera el PDF, solo lo adjunta y despacha
   // (mismo patrón que laborCultural.service.js#enviarCorreoRevision).
-  async enviarCorreo(uuid, { destinatarios, pdfBuffer, pdfNombre }) {
+  // `pdfPista`: aviso de la pista (mismo aviso con la pista y las hectáreas) para los correos de la pista de la aspersión.
+  async enviarCorreo(uuid, { destinatarios, pdfBuffer, pdfNombre, pdfPistaBuffer = null, pdfPistaNombre = null }) {
     const aspersion = await this.getByUuid(uuid);
     if (!destinatarios?.length) throw ApiError.badRequest('Indica al menos un destinatario');
 
@@ -1142,10 +1176,25 @@ export const aspersionProgramacionService = {
     // con la marca de agua "CANCELADO"), el correo también debe avisar la
     // cancelación en vez del texto de "se realizará el aviso" — no tendría
     // sentido invitar a una aspersión que ya no va a pasar.
+    // Correos de la pista (sin repetir a nadie que ya recibe el aviso de la finca).
+    const yaReciben = new Set([...destinatarios, ...cc].map((c) => c.toLowerCase()));
+    const correosPista = correosDePista(aspersion.pista).filter((c) => !yaReciben.has(c.toLowerCase()));
+
     if (aspersion.estado === 'CANCELADA') {
-      await mailService.sendCancelacionAspersion({ destinatarios: [...destinatarios, ...cc], ...datosCorreo });
+      await mailService.sendCancelacionAspersion({ destinatarios: [...destinatarios, ...cc, ...correosPista], ...datosCorreo });
     } else {
       await mailService.sendAvisoAspersion({ destinatarios, cc, ...datosCorreo, pdfBuffer, pdfNombre });
+      if (correosPista.length) {
+        await mailService.sendAvisoAspersion({
+          destinatarios: correosPista,
+          cc: [],
+          ...datosCorreo,
+          pistaNombre: aspersion.pista.nombre,
+          hectareas: aspersion.hectareas,
+          pdfBuffer: pdfPistaBuffer || pdfBuffer,
+          pdfNombre: pdfPistaNombre || pdfNombre,
+        });
+      }
     }
 
     await aspersionProgramacionRepository.update(aspersion, { correoEnviadoEn: new Date() });

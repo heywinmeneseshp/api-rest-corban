@@ -265,6 +265,30 @@ export async function cargarFotosMezclaPrueba({ documento, mezclaNombre }, archi
   }
 }
 
+const MODULO_FIRMAS = 'Firmas_Usuarios';
+
+// Sube la firma (PNG) de un usuario. Jerarquía en Drive: GOOGLE_DRIVE_FOLDER / Firmas_Usuarios / firma_{usuario}_{fecha}.png
+// (un archivo por versión; quien llama borra la anterior al reemplazarla).
+export async function cargarFirmaUsuario({ usuario }, archivo) {
+  if (!archivo?.buffer?.length) throw new Error('La imagen de la firma está vacía');
+  const drive = getDrive();
+  const marca = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
+  const nombreArchivo = `firma_${normalizarTexto(usuario) || 'usuario'}_${marca}.png`;
+  try {
+    const carpetaId = await obtenerCarpetaModulo(MODULO_FIRMAS);
+    const subido = await drive.files.create({
+      resource: { name: nombreArchivo, parents: [carpetaId] },
+      media: { mimeType: 'image/png', body: Readable.from(archivo.buffer) },
+      fields: 'id',
+      supportsAllDrives: true,
+    });
+    return { idDrive: subido.data.id, nombreDrive: nombreArchivo };
+  } catch (error) {
+    logger.error('Error al subir la firma de usuario a Google Drive', { message: error.message });
+    throw normalizarErrorGoogleDrive(error);
+  }
+}
+
 export async function eliminarFotoDeDrive(fileId) {
   try {
     await getDrive().files.delete({ fileId, supportsAllDrives: true });
@@ -294,4 +318,4 @@ export async function descargarArchivoDeDrive(fileId) {
   return { stream: contenido.data, mimeType: metadata.data.mimeType, nombre: metadata.data.name };
 }
 
-export default { cargarFotosLaborCultural, cargarFotosMezclaPrueba, eliminarFotoDeDrive, descargarArchivoDeDrive };
+export default { cargarFotosLaborCultural, cargarFotosMezclaPrueba, cargarFirmaUsuario, eliminarFotoDeDrive, descargarArchivoDeDrive };

@@ -10,6 +10,7 @@ import {
   UnidadMedida,
   Almacen,
   User,
+  Pista,
 } from '../../database/associations.js';
 
 const USUARIO_ATTRS = ['uuid', 'usuario', 'nombre', 'apellido', 'cargo'];
@@ -35,16 +36,19 @@ const aspersionInclude = (aspersionWhere, { conInsumos = false } = {}) => ({
       ],
     },
     { model: User, as: 'usuario', attributes: USUARIO_ATTRS },
-    // Solo en el detalle: los insumos (NOMBRES — el comprobante no muestra
-    // cantidades). En el listado se omiten para evitar el subquery de un
-    // hasMany con limit.
+    // Solo en el detalle: los insumos con sus cantidades definitivas (`cantidad` = lo que se descontó al ejecutar;
+    // `cantidadCalculada` = lo de la receta) y la pista. En el listado se omiten para evitar el subquery de un hasMany con limit.
     ...(conInsumos
       ? [
           {
             model: AspersionProgramacionComponente,
             as: 'componentes',
-            include: [{ model: Articulo, as: 'articulo', attributes: ['id', 'uuid', 'nombre'] }],
+            include: [
+              { model: Articulo, as: 'articulo', attributes: ['id', 'uuid', 'nombre', 'codigo'] },
+              { model: UnidadMedida, as: 'unidad', attributes: ['uuid', 'nombre', 'simbolo'] },
+            ],
           },
+          { model: Pista, as: 'pista', attributes: ['uuid', 'nombre'], paranoid: false },
         ]
       : []),
   ],

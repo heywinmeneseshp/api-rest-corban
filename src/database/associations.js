@@ -52,6 +52,7 @@ import { ColaboradorRostro } from './models/colaboradorRostro.model.js';
 import { AsistenciaMarcacion } from './models/asistenciaMarcacion.model.js';
 import { AsistenciaLugar } from './models/asistenciaLugar.model.js';
 import { ColaboradorRostroSolicitud } from './models/colaboradorRostroSolicitud.model.js';
+import { Pista } from './models/pista.model.js';
 import { ProgramacionCorte } from './models/programacionCorte.model.js';
 import { Producto } from './models/producto.model.js';
 import { RechazoCorte } from './models/rechazoCorte.model.js';
@@ -762,12 +763,15 @@ export const setupAssociations = () => {
   // fecha (resuelve semana), mezcla usada (con su receta/dosis) y almacén de
   // donde se descuentan los insumos al ejecutarse.
   AspersionProgramacion.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+  AspersionProgramacion.belongsTo(Pista, { foreignKey: 'pistaId', as: 'pista' });
+  withAuditAssociations(Pista);
   Finca.hasMany(AspersionProgramacion, { foreignKey: 'fincaId', as: 'aspersiones' });
   AspersionProgramacion.belongsTo(Semana, { foreignKey: 'semanaId', as: 'semana' });
   AspersionProgramacion.belongsTo(Mezcla, { foreignKey: 'mezclaId', as: 'mezcla' });
   Mezcla.hasMany(AspersionProgramacion, { foreignKey: 'mezclaId', as: 'aspersiones' });
   AspersionProgramacion.belongsTo(Almacen, { foreignKey: 'almacenId', as: 'almacen' });
   AspersionProgramacion.belongsTo(User, { foreignKey: 'usuarioId', as: 'usuario' });
+  AspersionProgramacion.belongsTo(User, { foreignKey: 'revisadoPorId', as: 'revisadoPor' });
   withAuditAssociations(AspersionProgramacion);
 
   // Snapshot editable por línea de "cuánto insumo se va a consumir" (ver
@@ -852,6 +856,7 @@ export {
   AsistenciaMarcacion,
   AsistenciaLugar,
   ColaboradorRostroSolicitud,
+  Pista,
   ProgramacionCorte,
   Producto,
   RechazoCorte,

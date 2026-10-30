@@ -170,6 +170,7 @@ export const PERMISOS_CATALOGO = [
         especiales: [
           especial('sanidad_vegetal.aspersiones.ejecutar', 'Ejecutar aspersión (descuenta del inventario)', { sensible: true }),
           especial('sanidad_vegetal.aspersiones.enviar_correo', 'Enviar el aviso de aspersión por correo'),
+          especial('sanidad_vegetal.aspersiones.revisar', 'Marcar aspersiones como revisadas (su firma va en el aviso)'),
         ],
       },
       {
@@ -188,6 +189,12 @@ export const PERMISOS_CATALOGO = [
         ],
       },
       { nombre: 'Pruebas de laboratorio', acceso: 'menu.inventarios.mezclas', filas: [] },
+      {
+        nombre: 'Pistas',
+        acceso: 'menu.sanidad_vegetal.pistas',
+        ayuda: 'Pistas de aviación y los correos que reciben el aviso de aspersión de la pista.',
+        filas: [crud('pista')],
+      },
       { nombre: 'Ingredientes activos', acceso: 'menu.sanidad_vegetal.ingredientes_activos', filas: [crud('ingrediente_activo')] },
       { nombre: 'Insumos', acceso: 'menu.sanidad_vegetal.insumos', filas: [] },
     ],

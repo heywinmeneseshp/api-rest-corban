@@ -441,7 +441,8 @@ export const mailService = {
   // CONTROL..." que se le entrega a la finca) — el PDF se arma en el
   // navegador (jsPDF, ver app-corbana/lib/aspersionExport.js), acá solo se
   // adjunta y despacha, mismo patrón que sendAvisoRevisionLabor.
-  async sendAvisoAspersion({ destinatarios, cc, fincaNombre, fecha, semanaCodigo, tipo, mezclaNombre, pdfBuffer, pdfNombre }) {
+  // Con `pistaNombre` es el aviso para la pista (sus correos): el texto menciona la pista y las hectáreas a asperjar.
+  async sendAvisoAspersion({ destinatarios, cc, fincaNombre, fecha, semanaCodigo, tipo, mezclaNombre, pdfBuffer, pdfNombre, pistaNombre = null, hectareas = null }) {
     if (!destinatarios?.length) return;
 
     const TIPO_LABEL = { SIGATOKA_NEGRA: 'Sigatoka Negra', DEFOLIADOR: 'Defoliador', FERTILIZACION: 'Fertilización' };
@@ -464,6 +465,13 @@ export const mailService = {
             <strong>${fechaLegible}</strong>, el ciclo de aspersión para el control de
             <strong>${tipoLabel}</strong> mediante la mezcla <strong>${escaparHtml(mezclaNombre)}</strong>.
           </p>
+          ${
+            pistaNombre
+              ? `<p style="margin: 0 0 20px; color: #374151; font-size: 14px; line-height: 1.5;">Sale de la pista <strong style="color: #166534;">${escaparHtml(pistaNombre)}</strong>${
+                  hectareas ? `, con <strong>${escaparHtml(String(Number(hectareas)))} hectáreas</strong> a asperjar` : ''
+                }.</p>`
+              : ''
+          }
           <p style="margin: 0; color: #374151; font-size: 14px; line-height: 1.5;">
             Adjunto encontrará el aviso completo en formato PDF, con las instrucciones y las condiciones
             climáticas requeridas para la aspersión.
@@ -490,7 +498,7 @@ export const mailService = {
       from,
       to: destinatarios,
       cc: cc?.length ? cc : undefined,
-      subject: `${marca} — Aviso de aspersión: ${fincaNombre} (${fecha})`,
+      subject: `${marca} — Aviso de aspersión${pistaNombre ? ` · Pista ${pistaNombre}` : ''}: ${fincaNombre} (${fecha})`,
       html,
       attachments: pdfBuffer ? [{ filename: pdfNombre || 'aviso-aspersion.pdf', content: pdfBuffer, contentType: 'application/pdf' }] : [],
     });

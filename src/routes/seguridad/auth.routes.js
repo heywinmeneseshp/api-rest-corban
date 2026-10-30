@@ -3,6 +3,7 @@ import { authController } from '../../controllers/seguridad/auth.controller.js';
 import { auth } from '../../middlewares/auth.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
 import { authRateLimiter } from '../../middlewares/rateLimiter.middleware.js';
+import { uploadFirmaUsuario } from '../../middlewares/upload.middleware.js';
 import {
   loginSchema,
   refreshSchema,
@@ -97,5 +98,10 @@ router.post('/logout', validate(logoutSchema), authController.logout);
 router.get('/me', auth, authController.me);
 router.put('/me', auth, validate(updateProfileSchema), authController.updateProfile);
 router.put('/me/password', auth, validate(changePasswordSchema), authController.changePassword);
+// Firma del usuario (PNG, guardada en Google Drive) para los documentos.
+router.get('/me/firma', auth, authController.obtenerFirma);
+router.put('/me/firma', auth, uploadFirmaUsuario, authController.subirFirma);
+router.delete('/me/firma', auth, authController.quitarFirma);
+router.get('/firmas/:uuid', auth, authController.obtenerFirma);
 
 export default router;

@@ -27,13 +27,13 @@ const parseEstado = (value) => {
 };
 
 // Suma por finca de las áreas de sus lotes ACTIVOS (los ocultos/inactivos o
-// eliminados no cuentan): areaTotal = área total de cada lote; areaProduccion =
-// la última área en producción registrada de cada lote.
+// eliminados no cuentan): areaTotal = área bruta de cada lote; areaProduccion =
+// la última área en producción registrada de cada lote; areaFumigacion = área de fumigación de cada lote.
 async function agregarAreas(fincas) {
   if (fincas.length === 0) return fincas;
   const ids = fincas.map((f) => f.id);
   const totales = await sequelize.query(
-    `SELECT finca_id AS fincaId, SUM(area) AS total, COUNT(*) AS lotes
+    `SELECT finca_id AS fincaId, SUM(area) AS total, SUM(area_fumigacion) AS fumigacion, COUNT(*) AS lotes
        FROM lotes
       WHERE deleted_at IS NULL AND estado = 1 AND finca_id IN (:ids)
       GROUP BY finca_id`,
@@ -59,6 +59,7 @@ async function agregarAreas(fincas) {
       ...json,
       areaTotal: t && t.total !== null ? redondear(t.total) : 0,
       areaProduccion: redondear(prodPorFinca.get(f.id) || 0),
+      areaFumigacion: t && t.fumigacion !== null ? redondear(t.fumigacion) : 0,
       totalLotes: t ? Number(t.lotes) : 0,
     };
   });

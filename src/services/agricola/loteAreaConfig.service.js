@@ -6,6 +6,7 @@ import { loteAreaConfigRepository } from '../../repositories/agricola/loteAreaCo
 import { loteRepository } from '../../repositories/agricola/lote.repository.js';
 import { semanaRepository } from '../../repositories/agricola/semana.repository.js';
 import { loteService } from './lote.service.js';
+import { ajusteFumigacion, brutaNoSuperaProduccion, mensajeBrutaProduccion } from '../../utils/areaLote.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { getFincaIdsPermitidas } from '../../utils/fincaScope.js';
@@ -265,6 +266,9 @@ export const loteAreaConfigService = {
         if (!r.loteUuid || r.areaTotal === undefined || r.areaProduccion === undefined) {
           throw ApiError.badRequest('Cada registro requiere loteUuid, areaTotal y areaProduccion');
         }
+        if (brutaNoSuperaProduccion(r.areaTotal, r.areaProduccion)) {
+          throw ApiError.badRequest(mensajeBrutaProduccion(r.areaTotal, r.areaProduccion));
+        }
         const lote = await Lote.findOne({ where: { uuid: r.loteUuid }, transaction });
         if (!lote) throw ApiError.notFound(`Lote no encontrado: ${r.loteUuid}`);
 
@@ -294,7 +298,7 @@ export const loteAreaConfigService = {
           },
           { transaction },
         );
-        await lote.update({ area: r.areaTotal, updatedBy: actorId }, { transaction });
+        await lote.update({ area: r.areaTotal, ...ajusteFumigacion(lote, r.areaTotal), updatedBy: actorId }, { transaction });
         resultados.push({ loteUuid: lote.uuid, areaTotal: r.areaTotal, areaProduccion: r.areaProduccion, pendienteAprobacion: false });
       }
       return resultados;
@@ -353,7 +357,7 @@ export const loteAreaConfigService = {
         },
         { transaction },
       );
-      await lote.update({ area: sol.areaTotal, updatedBy: actorId }, { transaction });
+      await lote.update({ area: sol.areaTotal, ...ajusteFumigacion(lote, sol.areaTotal), updatedBy: actorId }, { transaction });
       await sol.update({ estado: 'APROBADA', resueltoPor: actorId, resueltoAt: new Date() }, { transaction });
       return { uuid: sol.uuid, estado: sol.estado };
     });

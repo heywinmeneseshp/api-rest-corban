@@ -59,6 +59,16 @@ export const aspersionProgramacionController = {
     ApiResponse.send(res, { message: 'Programación de aspersión eliminada correctamente' });
   }),
 
+  revisar: asyncHandler(async (req, res) => {
+    const aspersion = await aspersionProgramacionService.revisar(req.params.uuid, req.user?.id, req.user);
+    ApiResponse.send(res, { message: 'Aspersión marcada como revisada', data: aspersion });
+  }),
+
+  quitarRevision: asyncHandler(async (req, res) => {
+    const aspersion = await aspersionProgramacionService.revisar(req.params.uuid, req.user?.id, req.user, { quitar: true });
+    ApiResponse.send(res, { message: 'Revisión quitada', data: aspersion });
+  }),
+
   cancelar: asyncHandler(async (req, res) => {
     const aspersion = await aspersionProgramacionService.cancelar(req.params.uuid, req.user?.id, req.user);
     ApiResponse.send(res, { message: 'Aspersión cancelada correctamente', data: aspersion });
@@ -101,15 +111,19 @@ export const aspersionProgramacionController = {
   }),
 
   enviarCorreo: asyncHandler(async (req, res) => {
-    if (!req.file) throw ApiError.badRequest('Falta el archivo PDF del aviso');
+    const pdf = req.files?.pdf?.[0];
+    const pdfPista = req.files?.pdfPista?.[0];
+    if (!pdf) throw ApiError.badRequest('Falta el archivo PDF del aviso');
     const destinatarios = String(req.body.destinatarios || '')
       .split(',')
       .map((e) => e.trim())
       .filter(Boolean);
     const aspersion = await aspersionProgramacionService.enviarCorreo(req.params.uuid, {
       destinatarios,
-      pdfBuffer: req.file.buffer,
-      pdfNombre: req.file.originalname,
+      pdfBuffer: pdf.buffer,
+      pdfNombre: pdf.originalname,
+      pdfPistaBuffer: pdfPista?.buffer ?? null,
+      pdfPistaNombre: pdfPista?.originalname ?? null,
     });
     ApiResponse.send(res, { message: 'Aviso enviado por correo correctamente', data: aspersion });
   }),

@@ -6,6 +6,7 @@ import { loteAreaProduccionRepository } from '../../repositories/agricola/loteAr
 import { semanaRepository } from '../../repositories/agricola/semana.repository.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import { ROLES } from '../../constants/roles.constants.js';
+import { ajusteFumigacion, brutaNoSuperaProduccion, mensajeBrutaProduccion } from '../../utils/areaLote.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { parseBulkFile } from '../../utils/bulkFileParser.js';
@@ -95,6 +96,7 @@ export const loteService = {
       codigo,
       nombre: payload.nombre,
       area: payload.area,
+      areaFumigacion: payload.areaFumigacion ?? null,
       estado: payload.estado ?? true,
       createdBy: actorId,
     });
@@ -117,6 +119,21 @@ export const loteService = {
       if (existing && existing.id !== lote.id) {
         throw ApiError.conflict('Ya existe un lote con ese código en esta finca');
       }
+    }
+
+    // El área bruta nunca puede quedar por debajo del área en producción vigente del lote.
+    if (payload.area !== undefined && payload.area !== null) {
+      const ultimo = await loteAreaProduccionRepository.findLatestByLoteId(lote.id);
+      if (ultimo && brutaNoSuperaProduccion(payload.area, ultimo.area)) {
+        throw ApiError.badRequest(mensajeBrutaProduccion(payload.area, ultimo.area));
+      }
+    }
+
+    // El área de fumigación no puede pasar del área bruta (la nueva si viene, si no la actual).
+    const bruta = payload.area !== undefined ? payload.area : lote.area;
+    const fumigacion = payload.areaFumigacion !== undefined ? payload.areaFumigacion : lote.areaFumigacion;
+    if (fumigacion !== null && fumigacion !== undefined && bruta !== null && bruta !== undefined && Number(fumigacion) > Number(bruta) + 0.005) {
+      throw ApiError.badRequest(`El área de fumigación (${Number(fumigacion)} ha) no puede ser mayor que el área bruta (${Number(bruta)} ha)`);
     }
 
     if (payload.nombre) {
@@ -467,7 +484,7 @@ export const loteService = {
       }
       vistos.add(clave);
 
-      const total = numero(dato(row, 'areatotal', 'total'));
+      const total = numero(dato(row, 'areabruta', 'bruta', 'areatotal', 'total'));
       const prod = numero(dato(row, 'areaenproduccion', 'areaproduccion', 'enproduccion', 'produccion'));
       if (Number.isNaN(total) || Number.isNaN(prod) || (total !== undefined && total < 0) || (prod !== undefined && prod < 0)) {
         errores.push({ fila, error: 'Las áreas deben ser números mayores o iguales a 0' });
@@ -484,8 +501,8 @@ export const loteService = {
       }
       const totalFinal = total !== undefined ? total : esActual ? (hay(lote.area) ? Number(lote.area) : null) : hay(vig?.areaTotal) ? Number(vig.areaTotal) : null;
 
-      if (totalFinal !== null && prodFinal > totalFinal + 0.005) {
-        errores.push({ fila, error: `El área en producción (${prodFinal}) no puede ser mayor que el área total (${totalFinal})` });
+      if (totalFinal !== null && brutaNoSuperaProduccion(totalFinal, prodFinal)) {
+        errores.push({ fila, error: mensajeBrutaProduccion(totalFinal, prodFinal) });
         continue;
       }
 
@@ -527,7 +544,7 @@ export const loteService = {
           );
           // El total del lote solo se actualiza al editar la semana actual.
           if (a.esActual && a.totalCambia && a.total !== null) {
-            await a.lote.update({ area: a.total, updatedBy: actorId }, { transaction });
+            await a.lote.update({ area: a.total, ...ajusteFumigacion(a.lote, a.total), updatedBy: actorId }, { transaction });
           }
         }
       });
@@ -567,11 +584,11 @@ export const loteService = {
       throw ApiError.forbidden('No tienes permiso para editar el área de semanas anteriores');
     }
 
-    // Regla: el área total siempre es mayor o igual que el área en producción. Se compara con el total que viene en la
+    // Regla: el área bruta siempre es mayor que el área en producción (ni igual). Se compara con el total que viene en la
     // misma operación o, al editar la semana actual, con el total vigente del lote.
     const totalReferencia = payload.areaTotal ?? (!esAnterior && lote.area !== null && lote.area !== undefined ? Number(lote.area) : null);
-    if (totalReferencia !== null && Number(payload.area) > Number(totalReferencia) + 0.005) {
-      throw ApiError.badRequest(`El área en producción (${Number(payload.area)} ha) no puede ser mayor que el área total (${Number(totalReferencia)} ha)`);
+    if (totalReferencia !== null && brutaNoSuperaProduccion(totalReferencia, payload.area)) {
+      throw ApiError.badRequest(mensajeBrutaProduccion(totalReferencia, payload.area));
     }
 
     return loteAreaProduccionRepository.create({

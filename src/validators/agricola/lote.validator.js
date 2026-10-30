@@ -43,8 +43,10 @@ export const createLoteSchema = Joi.object({
     // se acepta opcionalmente por si se quiere forzar uno específico.
     codigo: Joi.string().min(1).max(20),
     nombre: nombreLote.required(),
-    // El área total puede ser 0.
+    // El área bruta puede ser 0.
     area: Joi.number().min(0).precision(2),
+    // Área de fumigación (≤ área bruta); null la quita.
+    areaFumigacion: Joi.number().min(0).precision(2).allow(null),
     estado: Joi.boolean(),
   }),
   params: Joi.object({}),
@@ -56,8 +58,10 @@ export const updateLoteSchema = Joi.object({
     fincaUuid: uuidRef,
     codigo: Joi.string().min(1).max(20),
     nombre: nombreLote,
-    // El área total puede ser 0.
+    // El área bruta puede ser 0.
     area: Joi.number().min(0).precision(2),
+    // Área de fumigación (≤ área bruta); null la quita.
+    areaFumigacion: Joi.number().min(0).precision(2).allow(null),
     estado: Joi.boolean(),
     // Perímetro para el mapa — pares [lat, lng] (mín. 3 puntos); null lo limpia.
     perimetro: Joi.array().items(Joi.array().length(2).items(Joi.number())).min(3).allow(null),

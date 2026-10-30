@@ -36,6 +36,16 @@ export const uploadFotosLabor = multer({
   },
 }).array('fotos', 10);
 
+// Firma del usuario para los documentos: solo PNG (fondo transparente), hasta 1 MB.
+export const uploadFirmaUsuario = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype === 'image/png') cb(null, true);
+    else cb(Object.assign(new Error('La firma debe ser una imagen PNG'), { statusCode: 400 }));
+  },
+}).single('firma');
+
 // PDF de una visita de Sanidad Vegetal, generado en el navegador (jsPDF) y
 // mandado al backend solo para adjuntarlo al aviso de revisión aprobada —
 // nunca se guarda, se usa en memoria y se descarta tras enviar el correo.
@@ -59,6 +69,19 @@ export const uploadPdfAspersion = multer({
     else cb(Object.assign(new Error('El archivo debe ser un PDF'), { statusCode: 400 }));
   },
 }).single('pdf');
+
+// Aviso de aspersión: PDF de la finca («pdf») y, si la aspersión tiene pista, el de la pista («pdfPista»).
+export const uploadPdfsAvisoAspersion = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype === 'application/pdf') cb(null, true);
+    else cb(Object.assign(new Error('El archivo debe ser un PDF'), { statusCode: 400 }));
+  },
+}).fields([
+  { name: 'pdf', maxCount: 1 },
+  { name: 'pdfPista', maxCount: 1 },
+]);
 
 // Excel del resumen semanal de Programación de Aspersiones, armado en el
 // navegador (exceljs) — igual criterio que uploadPdfAspersion: nunca se

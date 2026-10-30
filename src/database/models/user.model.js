@@ -7,10 +7,11 @@ export class User extends Model {
     return bcrypt.compare(plainPassword, this.password);
   }
 
+  // Sin la contraseña ni el id interno de la firma en Drive (solo si tiene firma y desde cuándo).
   toSafeJSON() {
-    const { password, ...safe } = this.toJSON();
+    const { password, firmaDriveId, ...safe } = this.toJSON();
     void password;
-    return safe;
+    return { ...safe, tieneFirma: Boolean(firmaDriveId) };
   }
 }
 
@@ -63,6 +64,17 @@ User.init(
     cargo: {
       type: DataTypes.STRING(150),
       allowNull: true,
+    },
+    // Firma (PNG) para los documentos: id del archivo en Google Drive (Firmas_Usuarios) y cuándo se subió.
+    firmaDriveId: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      field: 'firma_drive_id',
+    },
+    firmaActualizadaEn: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: 'firma_actualizada_en',
     },
     createdBy: {
       type: DataTypes.INTEGER,

@@ -48,6 +48,29 @@ export const authController = {
     ApiResponse.send(res, { message: 'Perfil actualizado correctamente', data: user });
   }),
 
+  subirFirma: asyncHandler(async (req, res) => {
+    const user = await authService.subirFirma(req.user.id, req.file);
+    ApiResponse.send(res, { message: 'Firma guardada correctamente', data: user });
+  }),
+
+  quitarFirma: asyncHandler(async (req, res) => {
+    const user = await authService.quitarFirma(req.user.id);
+    ApiResponse.send(res, { message: 'Firma eliminada', data: user });
+  }),
+
+  // Devuelve la imagen PNG (la propia con /me/firma, o la de otro usuario con /firmas/:uuid para los documentos).
+  obtenerFirma: asyncHandler(async (req, res, next) => {
+    try {
+      const { stream } = await authService.obtenerFirma(req.params.uuid ? { userUuid: req.params.uuid } : { userId: req.user.id });
+      res.setHeader('Content-Type', 'image/png');
+      res.setHeader('Cache-Control', 'private, no-store');
+      stream.on('error', (error) => next(error));
+      stream.pipe(res);
+    } catch (error) {
+      next(error);
+    }
+  }),
+
   changePassword: asyncHandler(async (req, res) => {
     const { currentPassword, newPassword } = req.body;
     const result = await authService.changePassword(req.user.id, currentPassword, newPassword);

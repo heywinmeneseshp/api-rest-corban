@@ -23,15 +23,18 @@ async function mapaPrincipales(mezclaIds) {
   return new Map(versiones.map((v) => [v.mezclaId, v.componentes?.[0]?.articuloId ?? null]));
 }
 
-// El comprobante muestra NOMBRES de insumos, nunca cantidades (pedido
-// explícito) — `aspersion.componentes` (con sus cantidades) no sale en la
-// respuesta; solo `insumos`.
+// El PDF del comprobante muestra solo los NOMBRES de los insumos (pedido explícito); el detalle en pantalla también muestra
+// las cantidades definitivas: `cantidad` (lo que se descontó del inventario al ejecutar).
+// `aspersion.componentes` no sale en la respuesta; solo `insumos`.
 function aDto(comprobante, principalArticuloId) {
   const json = comprobante.toJSON();
   const componentes = json.aspersion?.componentes || [];
   json.insumos = ordenarComponentesReceta(componentes, principalArticuloId).map((c) => ({
     nombre: c.articulo?.nombre || '—',
+    codigo: c.articulo?.codigo || null,
     esPrincipal: principalArticuloId !== null && principalArticuloId !== undefined && c.articuloId === principalArticuloId,
+    cantidad: c.cantidad !== null && c.cantidad !== undefined ? Number(c.cantidad) : null,
+    unidad: c.unidad ? { nombre: c.unidad.nombre, simbolo: c.unidad.simbolo } : null,
   }));
   if (json.aspersion) delete json.aspersion.componentes;
   return json;

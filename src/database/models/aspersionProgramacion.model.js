@@ -18,6 +18,11 @@ AspersionProgramacion.init(
     // Con qué se hace la aspersión — selección única (Avión o Dron), nunca
     // las dos a la vez.
     medio: { type: DataTypes.ENUM('AVION', 'DRON'), allowNull: true },
+    // Pista de aviación de la que sale (sus correos reciben el aviso de la pista). Opcional.
+    pistaId: { type: DataTypes.INTEGER, allowNull: true, field: 'pista_id' },
+    // Revisión: quién la marcó como revisada y cuándo (su firma va en el aviso). Se borra al editar la programación.
+    revisadoPorId: { type: DataTypes.INTEGER, allowNull: true, field: 'revisado_por_id' },
+    revisadoEn: { type: DataTypes.DATE, allowNull: true, field: 'revisado_en' },
     mezclaId: { type: DataTypes.INTEGER, allowNull: false, field: 'mezcla_id' },
     almacenId: { type: DataTypes.INTEGER, allowNull: false, field: 'almacen_id' },
     hectareas: { type: DataTypes.DECIMAL(10, 2), allowNull: false },

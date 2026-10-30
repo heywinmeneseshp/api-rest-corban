@@ -14,6 +14,8 @@ export const createAspersionSchema = Joi.object({
     almacenUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
     // Con qué se hace la aspersión — selección única (Avión o Dron).
     medio: Joi.string().valid('AVION', 'DRON').required(),
+    // Pista de la que sale (opcional): sus correos reciben el aviso de la pista.
+    pistaUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
     hectareas: Joi.number().positive().required(),
     // Se sugiere sola (dosis × hectáreas) pero el operador la puede
     // corregir a mano antes de guardar — ver aspersionProgramacion.service.js.
@@ -45,6 +47,7 @@ export const updateAspersionSchema = Joi.object({
     mezclaUuid: Joi.string().guid({ version: 'uuidv4' }),
     almacenUuid: Joi.string().guid({ version: 'uuidv4' }),
     medio: Joi.string().valid('AVION', 'DRON'),
+    pistaUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
     hectareas: Joi.number().positive(),
     cantidad: Joi.number().positive(),
     componentes: Joi.array().items(

@@ -11,10 +11,12 @@ import {
   UnidadMedida,
   Almacen,
   User,
+  Pista,
 } from '../../database/associations.js';
 
 const LIST_INCLUDE = [
   { model: Finca, as: 'finca', attributes: ['uuid', 'nombre', 'codigo'] },
+  { model: Pista, as: 'pista', attributes: ['uuid', 'nombre', 'correos'], paranoid: false },
   { model: Semana, as: 'semana', attributes: ['uuid', 'codigo', 'numeroSemana', 'anio'] },
   {
     model: Mezcla,
@@ -29,10 +31,12 @@ const LIST_INCLUDE = [
   },
   { model: Almacen, as: 'almacen', attributes: ['uuid', 'nombre', 'codigo'] },
   { model: User, as: 'usuario', attributes: ['uuid', 'usuario', 'nombre', 'apellido', 'cargo'] },
+  { model: User, as: 'revisadoPor', attributes: ['uuid', 'usuario', 'nombre', 'apellido', 'cargo'] },
 ];
 
 const DETAIL_INCLUDE = [
   { model: Finca, as: 'finca', attributes: ['uuid', 'nombre', 'codigo'] },
+  { model: Pista, as: 'pista', attributes: ['uuid', 'nombre', 'correos'], paranoid: false },
   { model: Semana, as: 'semana', attributes: ['uuid', 'codigo', 'numeroSemana', 'anio'] },
   {
     // Componentes de la receta vigente de la mezcla usada — necesarios para
@@ -79,6 +83,7 @@ const DETAIL_INCLUDE = [
   },
   { model: Almacen, as: 'almacen', attributes: ['uuid', 'nombre', 'codigo'] },
   { model: User, as: 'usuario', attributes: ['uuid', 'usuario', 'nombre', 'apellido', 'cargo'] },
+  { model: User, as: 'revisadoPor', attributes: ['uuid', 'usuario', 'nombre', 'apellido', 'cargo'] },
   {
     // Snapshot editable por línea de esta aspersión puntual (ver
     // aspersionProgramacionComponente.model.js) — lo que ejecutar()
