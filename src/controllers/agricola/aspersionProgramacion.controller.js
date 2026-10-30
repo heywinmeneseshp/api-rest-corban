@@ -78,6 +78,7 @@ export const aspersionProgramacionController = {
     const resultado = await aspersionProgramacionService.ejecutar(req.params.uuid, req.user?.id, {
       forzarSaldoNegativo: req.body?.forzarSaldoNegativo === true,
       comprobante: req.body?.comprobante,
+      insumosAdicionales: req.body?.insumosAdicionales,
     }, req.user);
     if (resultado.requiereConfirmacion) {
       return ApiResponse.send(res, {
@@ -118,13 +119,17 @@ export const aspersionProgramacionController = {
       .split(',')
       .map((e) => e.trim())
       .filter(Boolean);
-    const aspersion = await aspersionProgramacionService.enviarCorreo(req.params.uuid, {
-      destinatarios,
-      pdfBuffer: pdf.buffer,
-      pdfNombre: pdf.originalname,
-      pdfPistaBuffer: pdfPista?.buffer ?? null,
-      pdfPistaNombre: pdfPista?.originalname ?? null,
-    });
+    const aspersion = await aspersionProgramacionService.enviarCorreo(
+      req.params.uuid,
+      {
+        destinatarios,
+        pdfBuffer: pdf.buffer,
+        pdfNombre: pdf.originalname,
+        pdfPistaBuffer: pdfPista?.buffer ?? null,
+        pdfPistaNombre: pdfPista?.originalname ?? null,
+      },
+      req.user,
+    );
     ApiResponse.send(res, { message: 'Aviso enviado por correo correctamente', data: aspersion });
   }),
 
@@ -136,7 +141,9 @@ export const aspersionProgramacionController = {
   // de enviar). No requiere ser Administrador — cualquiera con permiso para
   // enviar el correo puede ver a quién le llegaría.
   getDestinatariosSugeridos: asyncHandler(async (req, res) => {
-    const aspersion = await aspersionProgramacionService.getByUuid(req.params.uuid);
+    // Con `user`: mismo alcance por almacén que el resto del módulo (no
+    // exponer los destinatarios de una finca de otro almacén).
+    const aspersion = await aspersionProgramacionService.getByUuid(req.params.uuid, req.user);
     const destinatarios = await aspersionProgramacionService.resolverDestinatariosConfigurados(aspersion.fincaId);
     ApiResponse.send(res, { message: 'Destinatarios sugeridos obtenidos correctamente', data: { destinatarios } });
   }),

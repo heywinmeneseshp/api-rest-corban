@@ -430,7 +430,7 @@ export const fracLimiteService = {
               a.medio AS medio, a.estado AS estado, a.ciclo_uuid AS cicloUuid, a.ciclo_parte AS cicloParte, ca.aeronave AS aeronave, m.nombre AS mezcla, m.codigo AS mezclaCodigo,
               fc.codigo AS fracCodigo, ia.nombre AS ingrediente, art.nombre AS insumo
          FROM aspersion_programaciones a
-         LEFT JOIN comprobantes_aspersion ca ON ca.aspersion_programacion_id = a.id AND ca.deleted_at IS NULL
+         LEFT JOIN comprobantes_aspersion ca ON ca.aspersion_programacion_id = a.id AND ca.deleted_at IS NULL AND ca.estado <> 'ANULADO'
          LEFT JOIN mezclas m ON m.id = a.mezcla_id
          LEFT JOIN mezcla_versiones v ON v.mezcla_id = a.mezcla_id AND v.activa = 1
          LEFT JOIN mezcla_componentes c ON c.mezcla_version_id = v.id

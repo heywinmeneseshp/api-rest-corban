@@ -11,6 +11,8 @@ import {
   Almacen,
   User,
   Pista,
+  Colaborador,
+  ComprobanteAspersionParticipante,
 } from '../../database/associations.js';
 
 const USUARIO_ATTRS = ['uuid', 'usuario', 'nombre', 'apellido', 'cargo'];
@@ -21,7 +23,7 @@ const aspersionInclude = (aspersionWhere, { conInsumos = false } = {}) => ({
   required: true,
   where: aspersionWhere,
   include: [
-    { model: Finca, as: 'finca', attributes: ['uuid', 'nombre', 'codigo'] },
+    { model: Finca, as: 'finca', attributes: ['uuid', 'nombre', 'codigo', ...(conInsumos ? ['perimetro'] : [])] },
     { model: Semana, as: 'semana', attributes: ['uuid', 'codigo', 'numeroSemana', 'anio'] },
     { model: Almacen, as: 'almacen', attributes: ['uuid', 'nombre', 'codigo'] },
     {
@@ -54,10 +56,19 @@ const aspersionInclude = (aspersionWhere, { conInsumos = false } = {}) => ({
   ],
 });
 
+const COLABORADOR_ATTRS = ['id', 'uuid', 'nombre', 'apellido', 'cargo', 'documento'];
 const USUARIOS_INCLUDE = [
   { model: User, as: 'ejecutadoPor', attributes: USUARIO_ATTRS },
   { model: User, as: 'emitidoPor', attributes: USUARIO_ATTRS },
+  { model: User, as: 'anuladoPor', attributes: USUARIO_ATTRS },
+  { model: Colaborador, as: 'pilotoColaborador', attributes: COLABORADOR_ATTRS, paranoid: false },
 ];
+// Solo en el detalle (un hasMany con limit en el listado obligaría a un subquery).
+const PARTICIPANTES_INCLUDE = {
+  model: ComprobanteAspersionParticipante,
+  as: 'participantes',
+  include: [{ model: Colaborador, as: 'colaborador', attributes: COLABORADOR_ATTRS, paranoid: false }],
+};
 
 export const comprobanteAspersionRepository = {
   async findAndCountAll({ limit, offset, estado, fincaUuid, semanaUuid, search, fechaDesde, fechaHasta, almacenIdsPermitidos }) {
@@ -97,6 +108,7 @@ export const comprobanteAspersionRepository = {
       limit,
       offset,
       order: [['ejecutadoEn', 'DESC'], ['id', 'DESC']],
+      attributes: { exclude: ['kml', 'kmlGeometria'] },
       include: [aspersionInclude(aspersionWhere), ...USUARIOS_INCLUDE],
       distinct: true,
     });
@@ -105,7 +117,8 @@ export const comprobanteAspersionRepository = {
   findByUuid(uuid, { transaction } = {}) {
     return ComprobanteAspersion.findOne({
       where: { uuid },
-      include: [aspersionInclude(undefined, { conInsumos: true }), ...USUARIOS_INCLUDE],
+      attributes: { exclude: ['kml'] },
+      include: [aspersionInclude(undefined, { conInsumos: true }), ...USUARIOS_INCLUDE, PARTICIPANTES_INCLUDE],
       transaction,
     });
   },
@@ -119,9 +132,28 @@ export const comprobanteAspersionRepository = {
     return comprobante;
   },
 
-  async softDelete(comprobante, deletedBy, { transaction } = {}) {
-    await comprobante.update({ deletedBy }, { transaction });
-    await comprobante.destroy({ transaction });
+  // Comprobante vigente de una aspersión (BORRADOR o EMITIDO). Los anulados no
+  // cuentan: desde uno anulado se puede regenerar un borrador nuevo.
+  activeForAspersion(aspersionProgramacionId, { transaction } = {}) {
+    return ComprobanteAspersion.findOne({
+      where: { aspersionProgramacionId, estado: { [Op.ne]: 'ANULADO' } },
+      transaction,
+    });
+  },
+
+  // Ids de aspersión (de una página del listado) que ya tienen comprobante
+  // vigente. Permite calcular `puedeRegenerar` de todos los anulados de la
+  // página con una sola consulta.
+  async findActiveAspersionIds(aspersionProgramacionIds, { transaction } = {}) {
+    const ids = [...new Set(aspersionProgramacionIds.filter(Boolean))];
+    if (!ids.length) return new Set();
+    const filas = await ComprobanteAspersion.findAll({
+      where: { aspersionProgramacionId: { [Op.in]: ids }, estado: { [Op.ne]: 'ANULADO' } },
+      attributes: ['aspersionProgramacionId'],
+      raw: true,
+      transaction,
+    });
+    return new Set(filas.map((f) => f.aspersionProgramacionId));
   },
 };
 

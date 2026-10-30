@@ -33,8 +33,8 @@ const router = Router();
  *     responses:
  *       201: { description: Creado }
  */
-router.get('/', auth, permission(PERMISSIONS.COLABORADOR_VER), validate(listColaboradoresSchema), colaboradorController.list);
-router.post('/', auth, permission(PERMISSIONS.COLABORADOR_CREAR), validate(createColaboradorSchema), colaboradorController.create);
+router.get('/', auth, permission(PERMISSIONS.COLABORADOR_VER, PERMISSIONS.SV_COLABORADOR_VER), validate(listColaboradoresSchema), colaboradorController.list);
+router.post('/', auth, permission(PERMISSIONS.COLABORADOR_CREAR, PERMISSIONS.SV_COLABORADOR_CREAR), validate(createColaboradorSchema), colaboradorController.create);
 
 // Autoservicio: la ficha propia (colaborador vinculado al usuario de la sesión). Antes de /:uuid.
 const PUEDE_MI_FICHA = [PERMISSIONS.ASISTENCIA_MARCAR, PERMISSIONS.ASISTENCIA_MARCAR_CUADRILLA, PERMISSIONS.COLABORADOR_CREAR];
@@ -64,11 +64,11 @@ router.put('/mio', auth, permission(...PUEDE_MI_FICHA), validate(actualizarMiFic
  *     responses:
  *       200: { description: OK }
  */
-router.get('/:uuid', auth, permission(PERMISSIONS.COLABORADOR_VER), validate(getColaboradorSchema), colaboradorController.getByUuid);
-router.put('/:uuid', auth, permission(PERMISSIONS.COLABORADOR_EDITAR), validate(updateColaboradorSchema), colaboradorController.update);
-router.put('/:uuid/usuario', auth, permission(PERMISSIONS.COLABORADOR_EDITAR), permission(PERMISSIONS.MENU_MAESTROS_USUARIOS), validate(vincularUsuarioSchema), colaboradorController.vincularUsuario);
-router.delete('/:uuid/usuario', auth, permission(PERMISSIONS.COLABORADOR_EDITAR), validate(getColaboradorSchema), colaboradorController.desvincularUsuario);
-router.post('/:uuid/usuario', auth, permission(PERMISSIONS.COLABORADOR_EDITAR), permission(PERMISSIONS.MENU_MAESTROS_USUARIOS), validate(crearUsuarioDeColaboradorSchema), colaboradorController.crearUsuario);
-router.delete('/:uuid', auth, permission(PERMISSIONS.COLABORADOR_ELIMINAR), validate(getColaboradorSchema), colaboradorController.remove);
+router.get('/:uuid', auth, permission(PERMISSIONS.COLABORADOR_VER, PERMISSIONS.SV_COLABORADOR_VER), validate(getColaboradorSchema), colaboradorController.getByUuid);
+router.put('/:uuid', auth, permission(PERMISSIONS.COLABORADOR_EDITAR, PERMISSIONS.SV_COLABORADOR_EDITAR), validate(updateColaboradorSchema), colaboradorController.update);
+router.put('/:uuid/usuario', auth, permission(PERMISSIONS.COLABORADOR_EDITAR, PERMISSIONS.SV_COLABORADOR_EDITAR), permission(PERMISSIONS.MENU_MAESTROS_USUARIOS), validate(vincularUsuarioSchema), colaboradorController.vincularUsuario);
+router.delete('/:uuid/usuario', auth, permission(PERMISSIONS.COLABORADOR_EDITAR, PERMISSIONS.SV_COLABORADOR_EDITAR), validate(getColaboradorSchema), colaboradorController.desvincularUsuario);
+router.post('/:uuid/usuario', auth, permission(PERMISSIONS.COLABORADOR_EDITAR, PERMISSIONS.SV_COLABORADOR_EDITAR), permission(PERMISSIONS.MENU_MAESTROS_USUARIOS), validate(crearUsuarioDeColaboradorSchema), colaboradorController.crearUsuario);
+router.delete('/:uuid', auth, permission(PERMISSIONS.COLABORADOR_ELIMINAR, PERMISSIONS.SV_COLABORADOR_ELIMINAR), validate(getColaboradorSchema), colaboradorController.remove);
 
 export default router;

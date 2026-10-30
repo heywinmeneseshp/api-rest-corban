@@ -16,7 +16,7 @@ import {
 
 const LIST_INCLUDE = [
   { model: Finca, as: 'finca', attributes: ['uuid', 'nombre', 'codigo'] },
-  { model: Pista, as: 'pista', attributes: ['uuid', 'nombre', 'correos'], paranoid: false },
+  { model: Pista, as: 'pista', attributes: ['uuid', 'nombre', 'responsable', 'telefono', 'correos'], paranoid: false },
   { model: Semana, as: 'semana', attributes: ['uuid', 'codigo', 'numeroSemana', 'anio'] },
   {
     model: Mezcla,
@@ -36,7 +36,7 @@ const LIST_INCLUDE = [
 
 const DETAIL_INCLUDE = [
   { model: Finca, as: 'finca', attributes: ['uuid', 'nombre', 'codigo'] },
-  { model: Pista, as: 'pista', attributes: ['uuid', 'nombre', 'correos'], paranoid: false },
+  { model: Pista, as: 'pista', attributes: ['uuid', 'nombre', 'responsable', 'telefono', 'correos'], paranoid: false },
   { model: Semana, as: 'semana', attributes: ['uuid', 'codigo', 'numeroSemana', 'anio'] },
   {
     // Componentes de la receta vigente de la mezcla usada — necesarios para
@@ -102,7 +102,10 @@ const DETAIL_INCLUDE = [
 export const aspersionProgramacionRepository = {
   async findAndCountAll({ limit, offset, fincaUuid, semanaUuid, mezclaUuid, estado, tipo, fechaDesde, fechaHasta, search, almacenIdsPermitidos, orden }) {
     const where = {};
-    if (estado) where.estado = estado;
+    // REVISADA y ENVIADA son pasos de una PROGRAMADA (revisada sin enviar / con el aviso enviado); PROGRAMADA trae todas las pendientes.
+    if (estado === 'REVISADA') Object.assign(where, { estado: 'PROGRAMADA', revisadoPorId: { [Op.ne]: null }, correoEnviadoEn: null });
+    else if (estado === 'ENVIADA') Object.assign(where, { estado: 'PROGRAMADA', correoEnviadoEn: { [Op.ne]: null } });
+    else if (estado) where.estado = estado;
     if (almacenIdsPermitidos !== null && almacenIdsPermitidos !== undefined) {
       where.almacenId = { [Op.in]: almacenIdsPermitidos };
     }

@@ -27,6 +27,8 @@ const router = Router();
 
 // Quien marca (propio o cuadrilla) también necesita ver los colaboradores enrolados de su finca.
 const PUEDE_MARCAR = [PERMISSIONS.ASISTENCIA_MARCAR, PERMISSIONS.ASISTENCIA_MARCAR_CUADRILLA];
+// Sanidad Vegetal → Colaboradores: ven, enrolan y ven la asistencia de los colaboradores de su módulo (el servicio los limita).
+const PUEDE_SANIDAD = [PERMISSIONS.SV_COLABORADOR_VER, PERMISSIONS.SV_COLABORADOR_CREAR, PERMISSIONS.SV_COLABORADOR_EDITAR];
 
 /**
  * @openapi
@@ -41,7 +43,7 @@ const PUEDE_MARCAR = [PERMISSIONS.ASISTENCIA_MARCAR, PERMISSIONS.ASISTENCIA_MARC
 router.get(
   '/rostros-estado',
   auth,
-  permission(PERMISSIONS.ASISTENCIA_VER, PERMISSIONS.COLABORADOR_CREAR, PERMISSIONS.COLABORADOR_EDITAR, ...PUEDE_MARCAR),
+  permission(PERMISSIONS.ASISTENCIA_VER, PERMISSIONS.COLABORADOR_CREAR, PERMISSIONS.COLABORADOR_EDITAR, ...PUEDE_SANIDAD, ...PUEDE_MARCAR),
   validate(rostrosEstadoSchema),
   asyncHandler(async (req, res) => {
     ApiResponse.send(res, { message: 'Estado de rostros obtenido correctamente', data: await asistenciaService.rostrosEstado(req.query, req.user) });
@@ -59,7 +61,7 @@ router.get(
  *       200: { description: OK }
  */
 // Enrolar: el propio rostro (quien marca) o el de otros (quien crea o edita colaboradores); la regla fina está en el servicio.
-const PUEDE_ENROLAR = [PERMISSIONS.COLABORADOR_CREAR, PERMISSIONS.COLABORADOR_EDITAR, PERMISSIONS.ASISTENCIA_APROBAR_ROSTRO, ...PUEDE_MARCAR];
+const PUEDE_ENROLAR = [PERMISSIONS.COLABORADOR_CREAR, PERMISSIONS.COLABORADOR_EDITAR, PERMISSIONS.SV_COLABORADOR_CREAR, PERMISSIONS.SV_COLABORADOR_EDITAR, PERMISSIONS.ASISTENCIA_APROBAR_ROSTRO, ...PUEDE_MARCAR];
 
 /**
  * @openapi
@@ -168,7 +170,7 @@ router.post(
 router.get(
   '/',
   auth,
-  permission(PERMISSIONS.ASISTENCIA_VER, ...PUEDE_MARCAR), // quien solo marca ve únicamente lo suyo
+  permission(PERMISSIONS.ASISTENCIA_VER, PERMISSIONS.SV_COLABORADOR_VER, ...PUEDE_MARCAR), // quien solo marca ve únicamente lo suyo
   validate(listarAsistenciaSchema),
   asyncHandler(async (req, res) => {
     ApiResponse.send(res, { message: 'Asistencia obtenida correctamente', data: await asistenciaService.listar(req.query, req.user) });
@@ -188,7 +190,7 @@ router.get(
 router.get(
   '/jornadas',
   auth,
-  permission(PERMISSIONS.ASISTENCIA_VER, ...PUEDE_MARCAR), // quien solo marca ve únicamente lo suyo
+  permission(PERMISSIONS.ASISTENCIA_VER, PERMISSIONS.SV_COLABORADOR_VER, ...PUEDE_MARCAR), // quien solo marca ve únicamente lo suyo
   validate(jornadasAsistenciaSchema),
   asyncHandler(async (req, res) => {
     ApiResponse.send(res, { message: 'Jornadas obtenidas correctamente', data: await asistenciaService.jornadas(req.query, req.user) });

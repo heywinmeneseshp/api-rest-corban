@@ -1,7 +1,7 @@
 import { Op } from 'sequelize';
 import { sequelize } from '../../database/connection.js';
 import { Colaborador, ColaboradorRostro, ColaboradorRostroSolicitud, AsistenciaMarcacion, AsistenciaLugar, Finca, User } from '../../database/associations.js';
-import { alcanceColaboradores, enAlcance } from './colaborador.service.js';
+import { alcanceColaboradores, enAlcance, MODULO_SANIDAD, MODULOS_COLABORADOR, puedeColaboradoresSanidad } from './colaborador.service.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { assertFincaPermitida, getFincaIdsPermitidas } from '../../utils/fincaScope.js';
@@ -222,10 +222,23 @@ export function armarJornadas(marcaciones, hoy = diaBogota(Date.now())) {
   return jornadas;
 }
 
+// Módulo de colaboradores pedido en la asistencia: Sanidad Vegetal → Colaboradores pide `modulo=SANIDAD_VEGETAL`. Quien solo tiene
+// los permisos de Sanidad Vegetal (sin «Ver asistencia») siempre ve únicamente la de ese módulo.
+function moduloAsistencia(query, user) {
+  if (!tienePermiso(user, PERMISSIONS.ASISTENCIA_VER) && puedeColaboradoresSanidad(user, 'ver')) return MODULO_SANIDAD;
+  return MODULOS_COLABORADOR.includes(query.modulo) ? query.modulo : null;
+}
+
+// Condición sobre las marcaciones para quedarse con las de los colaboradores de un módulo.
+const whereModulo = (modulo) => ({
+  colaboradorId: { [Op.in]: sequelize.literal(`(SELECT id FROM colaboradores WHERE modulo = ${sequelize.escape(modulo)})`) },
+});
+
 // Quien solo marca (sin «Ver asistencia») ve únicamente lo suyo: devuelve su ficha (o un id imposible si no tiene), o null si ve
-// todo lo de su alcance.
-async function soloPropio(user) {
+// todo lo de su alcance. Con los permisos de Sanidad Vegetal ve la de los colaboradores de ese módulo.
+async function soloPropio(user, modulo = null) {
   if (tienePermiso(user, PERMISSIONS.ASISTENCIA_VER)) return null;
+  if (modulo === MODULO_SANIDAD && puedeColaboradoresSanidad(user, 'ver')) return null;
   const c = await Colaborador.findOne({ where: { userId: user?.id ?? -1 }, attributes: ['id'] });
   return c || { id: -1 };
 }
@@ -251,10 +264,13 @@ export const asistenciaService = {
     const colaborador = await findColaboradorOrFail(colaboradorUuid);
     const esPropio = Boolean(user?.id) && colaborador.userId === user.id;
     if (!esPropio) {
-      if (!tienePermiso(user, PERMISSIONS.COLABORADOR_EDITAR) && !tienePermiso(user, PERMISSIONS.COLABORADOR_CREAR)) {
-        throw ApiError.forbidden('Solo puedes registrar tu propio rostro');
+      const general = tienePermiso(user, PERMISSIONS.COLABORADOR_EDITAR) || tienePermiso(user, PERMISSIONS.COLABORADOR_CREAR);
+      // Con los permisos de Sanidad Vegetal, solo los colaboradores de ese módulo.
+      const sanidad = (puedeColaboradoresSanidad(user, 'editar') || puedeColaboradoresSanidad(user, 'crear')) && colaborador.modulo === MODULO_SANIDAD;
+      if (!general && !sanidad) throw ApiError.forbidden('Solo puedes registrar tu propio rostro');
+      if (!enAlcance(colaborador, user, general ? 'ver' : 'editar') && !(sanidad && enAlcance(colaborador, user, 'crear'))) {
+        throw ApiError.forbidden('No tienes acceso a este colaborador');
       }
-      if (!enAlcance(colaborador, user)) throw ApiError.forbidden('No tienes acceso a este colaborador');
     }
     if (!consentimiento && !colaborador.rostroConsentimientoAt) {
       throw ApiError.badRequest('Se requiere la autorización del colaborador para registrar su rostro');
@@ -311,8 +327,18 @@ export const asistenciaService = {
   async rostrosEstado(query, user) {
     const fincaIds = getFincaIdsPermitidas(user);
     // Quien no administra colaboradores (solo marca) ve únicamente su propia ficha; los demás, los de su alcance.
-    const veOtros = [PERMISSIONS.COLABORADOR_VER, PERMISSIONS.COLABORADOR_CREAR, PERMISSIONS.COLABORADOR_EDITAR, PERMISSIONS.ASISTENCIA_MARCAR_CUADRILLA].some((c) => tienePermiso(user, c));
-    const alcance = alcanceColaboradores(user);
+    const veOtros = [
+      PERMISSIONS.COLABORADOR_VER,
+      PERMISSIONS.COLABORADOR_CREAR,
+      PERMISSIONS.COLABORADOR_EDITAR,
+      PERMISSIONS.ASISTENCIA_MARCAR_CUADRILLA,
+      PERMISSIONS.SV_COLABORADOR_VER,
+      PERMISSIONS.SV_COLABORADOR_CREAR,
+      PERMISSIONS.SV_COLABORADOR_EDITAR,
+    ].some((c) => tienePermiso(user, c));
+    // Quien marca la cuadrilla ve a todos los de su alcance (de cualquier módulo); los demás según sus permisos de colaboradores.
+    const moduloPedido = MODULOS_COLABORADOR.includes(query.modulo) ? query.modulo : null;
+    const alcance = alcanceColaboradores(user, 'ver', moduloPedido, { porPermisos: !tienePermiso(user, PERMISSIONS.ASISTENCIA_MARCAR_CUADRILLA) });
     const where = { estado: true, ...(veOtros ? (alcance ? { [Op.and]: [alcance] } : {}) : { userId: user?.id ?? -1 }) };
     if (query.fincaUuid) assertFincaPermitida(user, (await findFincaOrFail(query.fincaUuid)).id);
     const colaboradores = await Colaborador.findAll({
@@ -508,7 +534,9 @@ export const asistenciaService = {
       const c = await findColaboradorOrFail(query.colaboradorUuid);
       where.colaboradorId = c.id;
     }
-    const propio = await soloPropio(user);
+    const modulo = moduloAsistencia(query, user);
+    if (modulo) Object.assign(where, { [Op.and]: [...(where[Op.and] || []), whereModulo(modulo)] });
+    const propio = await soloPropio(user, modulo);
     if (propio) where.colaboradorId = propio.id;
     if (query.desde || query.hasta) {
       where.fechaHora = {
@@ -577,7 +605,9 @@ export const asistenciaService = {
     };
     Object.assign(where, whereAlcance(getFincaIdsPermitidas(user)));
     if (query.colaboradorUuid) where.colaboradorId = (await findColaboradorOrFail(query.colaboradorUuid)).id;
-    const propio = await soloPropio(user);
+    const modulo = moduloAsistencia(query, user);
+    if (modulo) Object.assign(where, { [Op.and]: [...(where[Op.and] || []), whereModulo(modulo)] });
+    const propio = await soloPropio(user, modulo);
     if (propio) where.colaboradorId = propio.id;
 
     const rows = await AsistenciaMarcacion.findAll({

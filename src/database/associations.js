@@ -53,6 +53,7 @@ import { AsistenciaMarcacion } from './models/asistenciaMarcacion.model.js';
 import { AsistenciaLugar } from './models/asistenciaLugar.model.js';
 import { ColaboradorRostroSolicitud } from './models/colaboradorRostroSolicitud.model.js';
 import { Pista } from './models/pista.model.js';
+import { Cargo } from './models/cargo.model.js';
 import { ProgramacionCorte } from './models/programacionCorte.model.js';
 import { Producto } from './models/producto.model.js';
 import { RechazoCorte } from './models/rechazoCorte.model.js';
@@ -96,6 +97,7 @@ import { FacturaDetalle } from './models/facturaDetalle.model.js';
 import { AspersionProgramacion } from './models/aspersionProgramacion.model.js';
 import { AspersionProgramacionComponente } from './models/aspersionProgramacionComponente.model.js';
 import { ComprobanteAspersion } from './models/comprobanteAspersion.model.js';
+import { ComprobanteAspersionParticipante } from './models/comprobanteAspersionParticipante.model.js';
 import { IngredienteActivo } from './models/ingredienteActivo.model.js';
 import { FracCodigo } from './models/fracCodigo.model.js';
 import { GrupoQuimico } from './models/grupoQuimico.model.js';
@@ -764,6 +766,10 @@ export const setupAssociations = () => {
   // donde se descuentan los insumos al ejecutarse.
   AspersionProgramacion.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
   AspersionProgramacion.belongsTo(Pista, { foreignKey: 'pistaId', as: 'pista' });
+
+  // Cargo (maestro): uno por usuario y por colaborador; su nombre también se copia en la columna `cargo`.
+  User.belongsTo(Cargo, { foreignKey: 'cargoId', as: 'cargoEtiqueta' });
+  Colaborador.belongsTo(Cargo, { foreignKey: 'cargoId', as: 'cargoEtiqueta' });
   withAuditAssociations(Pista);
   Finca.hasMany(AspersionProgramacion, { foreignKey: 'fincaId', as: 'aspersiones' });
   AspersionProgramacion.belongsTo(Semana, { foreignKey: 'semanaId', as: 'semana' });
@@ -783,11 +789,19 @@ export const setupAssociations = () => {
   AspersionProgramacionComponente.belongsTo(Articulo, { foreignKey: 'articuloId', as: 'articulo' });
   AspersionProgramacionComponente.belongsTo(UnidadMedida, { foreignKey: 'unidadId', as: 'unidad' });
 
-  // Comprobante de aplicación (uno por aspersión ejecutada).
+  // Comprobante de aplicación. Una aspersión ejecutada puede tener varios:
+  // uno vigente (BORRADOR o EMITIDO) y los que se anularon (ver
+  // comprobanteAspersion.service.js#anular/regenerar).
   ComprobanteAspersion.belongsTo(AspersionProgramacion, { foreignKey: 'aspersionProgramacionId', as: 'aspersion' });
-  AspersionProgramacion.hasOne(ComprobanteAspersion, { foreignKey: 'aspersionProgramacionId', as: 'comprobante' });
+  AspersionProgramacion.hasMany(ComprobanteAspersion, { foreignKey: 'aspersionProgramacionId', as: 'comprobantes' });
   ComprobanteAspersion.belongsTo(User, { foreignKey: 'ejecutadoPorId', as: 'ejecutadoPor' });
   ComprobanteAspersion.belongsTo(User, { foreignKey: 'emitidoPorId', as: 'emitidoPor' });
+  ComprobanteAspersion.belongsTo(User, { foreignKey: 'anuladoPorId', as: 'anuladoPor' });
+  // Piloto de dron y asistentes (colaboradores): cada uno suma las hectáreas aplicadas del comprobante.
+  ComprobanteAspersion.belongsTo(Colaborador, { foreignKey: 'pilotoColaboradorId', as: 'pilotoColaborador' });
+  ComprobanteAspersion.hasMany(ComprobanteAspersionParticipante, { foreignKey: 'comprobanteId', as: 'participantes' });
+  ComprobanteAspersionParticipante.belongsTo(ComprobanteAspersion, { foreignKey: 'comprobanteId', as: 'comprobante' });
+  ComprobanteAspersionParticipante.belongsTo(Colaborador, { foreignKey: 'colaboradorId', as: 'colaborador' });
   withAuditAssociations(ComprobanteAspersion);
 
   withAuditAssociations(IngredienteActivo);
@@ -857,6 +871,7 @@ export {
   AsistenciaLugar,
   ColaboradorRostroSolicitud,
   Pista,
+  Cargo,
   ProgramacionCorte,
   Producto,
   RechazoCorte,
@@ -899,6 +914,7 @@ export {
   AspersionProgramacion,
   AspersionProgramacionComponente,
   ComprobanteAspersion,
+  ComprobanteAspersionParticipante,
   IngredienteActivo,
   FracCodigo,
   GrupoQuimico,

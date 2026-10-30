@@ -14,7 +14,7 @@ export const listComprobanteAspersionSchema = Joi.object({
   query: Joi.object({
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(50),
-    estado: Joi.string().valid('BORRADOR', 'EMITIDO'),
+    estado: Joi.string().valid('BORRADOR', 'EMITIDO', 'ANULADO'),
     fincaUuid: Joi.string().guid({ version: 'uuidv4' }),
     semanaUuid: Joi.string().guid({ version: 'uuidv4' }),
     search: Joi.string().allow('', null),
@@ -26,6 +26,9 @@ export const listComprobanteAspersionSchema = Joi.object({
 export const updateComprobanteAspersionSchema = Joi.object({
   body: Joi.object({
     piloto: Joi.string().trim().max(150).allow(null, ''),
+    // Con dron: piloto y asistentes del listado de colaboradores.
+    pilotoColaboradorUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null),
+    asistentesUuids: Joi.array().items(Joi.string().guid({ version: 'uuidv4' })).max(30),
     medio: Joi.string().valid('AVION', 'DRON').allow(null),
     hectareasAplicadas: Joi.number().positive(),
     galonesTotales: Joi.number().min(0),
@@ -41,4 +44,25 @@ export const updateComprobanteAspersionSchema = Joi.object({
   }).min(1),
   params: Joi.object({ uuid: uuidParam }),
   query: Joi.object({}),
+});
+
+export const anularComprobanteAspersionSchema = Joi.object({
+  body: Joi.object({
+    motivo: Joi.string().trim().min(5).max(500).required(),
+  }),
+  params: Joi.object({ uuid: uuidParam }),
+  query: Joi.object({}),
+});
+
+// Hectáreas asperjadas por colaborador (pilotos de dron y asistentes).
+export const reporteHectareasSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({}),
+  query: Joi.object({
+    desde: Joi.date().iso(),
+    hasta: Joi.date().iso(),
+    colaboradorUuid: Joi.string().guid({ version: 'uuidv4' }),
+    cargoUuid: Joi.string().guid({ version: 'uuidv4' }),
+    soloEmitidos: Joi.boolean(),
+  }),
 });

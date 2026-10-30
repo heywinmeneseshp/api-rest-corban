@@ -9,6 +9,9 @@ Pista.init(
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     uuid: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, allowNull: false, unique: true },
     nombre: { type: DataTypes.STRING(120), allowNull: false },
+    // Responsable / representante de la pista (firma el aviso de la pista) y su teléfono.
+    responsable: { type: DataTypes.STRING(150), allowNull: true },
+    telefono: { type: DataTypes.STRING(40), allowNull: true },
     correos: { type: DataTypes.JSON, allowNull: true },
     observaciones: { type: DataTypes.STRING(300), allowNull: true },
     estado: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },

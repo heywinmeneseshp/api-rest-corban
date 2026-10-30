@@ -16,6 +16,8 @@ const campos = {
   nombre: Joi.string().trim().min(2).max(120),
   correos: Joi.array().items(Joi.string().trim().email()).max(50),
   observaciones: Joi.string().trim().max(300).allow('', null),
+  responsable: Joi.string().trim().max(150).allow('', null),
+  telefono: Joi.string().trim().max(40).allow('', null),
   estado: Joi.boolean(),
 };
 

@@ -11,6 +11,7 @@ import {
   Almacen,
   MovimientoInventario,
   AspersionProgramacion,
+  AspersionProgramacionComponente,
   User,
   Role,
   Pista,
@@ -406,6 +407,7 @@ async function dividirParteParcial(fresh, aplicadas, fechaRestante, actorId, { t
       unidadId: c.unidadId,
       cantidadCalculada: Number(c.cantidadCalculada) * (1 - ratio),
       cantidad: Number(c.cantidad) * (1 - ratio),
+      esAdicional: Boolean(c.esAdicional),
       createdBy: actorId,
     })),
     { transaction },
@@ -423,7 +425,19 @@ async function dividirParteParcial(fresh, aplicadas, fechaRestante, actorId, { t
       { transaction },
     );
   }
+  // La parte nueva puede quedar con una fecha anterior a otras partes del
+  // ciclo (fechaParteRestante elegida a mano): se renumera por fecha para
+  // que "Parte n/m" siga el orden cronológico real.
+  await renumerarCiclo(fresh.cicloUuid || fresh.uuid, { transaction });
   return parte;
+}
+
+// Flujo de la programación: Programada → Revisada → Enviada → Ejecutada (o Cancelada). Ya revisada no se edita ni se elimina:
+// hay que quitar la revisión primero (o cancelarla, que avisa por correo).
+function assertNoRevisada(aspersion, accion = 'editarla') {
+  if (aspersion.revisadoPorId) {
+    throw ApiError.badRequest(`Esta aspersión ya está revisada: quita la revisión para ${accion}`);
+  }
 }
 
 function assertProgramada(aspersion) {
@@ -443,6 +457,7 @@ async function construirFilasComponentes({ componentesReceta, payloadComponentes
     unidadId: c.unidadId,
     cantidadCalculada: c.cantidadCalculada,
     cantidad: overridesPorArticulo.has(c.articuloUuid) ? overridesPorArticulo.get(c.articuloUuid) : c.cantidadCalculada,
+    esAdicional: false,
     createdBy: actorId,
   }));
   const uuidsReceta = new Set(componentesReceta.map((c) => c.articuloUuid));
@@ -450,20 +465,27 @@ async function construirFilasComponentes({ componentesReceta, payloadComponentes
   for (const extra of lista.filter((c) => !uuidsReceta.has(c.articuloUuid))) {
     if (vistos.has(extra.articuloUuid)) throw ApiError.badRequest('Un insumo adicional está repetido');
     vistos.add(extra.articuloUuid);
-    const articulo = await Articulo.findOne({ where: { uuid: extra.articuloUuid }, transaction });
-    if (!articulo) throw ApiError.notFound('Insumo adicional no encontrado');
-    if (!articulo.estado) throw ApiError.badRequest(`El insumo "${articulo.nombre}" está inactivo`);
-    let unidadId = articulo.unidadMedidaId || null;
-    if (extra.unidadUuid) {
-      const unidad = await UnidadMedida.findOne({ where: { uuid: extra.unidadUuid }, transaction });
-      if (!unidad) throw ApiError.notFound('Unidad del insumo adicional no encontrada');
-      unidadId = unidad.id;
-    }
-    // Falla ya (y no al ejecutar) si no hay conversión entre la unidad elegida y la del artículo.
-    await convertirACantidadBase(articulo, unidadId, Number(extra.cantidad), { transaction });
-    filas.push({ articuloId: articulo.id, unidadId, cantidadCalculada: Number(extra.cantidad), cantidad: Number(extra.cantidad), createdBy: actorId });
+    filas.push(await filaInsumoAdicional(extra, actorId, { transaction }));
   }
   return filas;
+}
+
+// Fila de un insumo ADICIONAL ({ articuloUuid, cantidad, unidadUuid? }): guarda su cantidad tal cual (sin teórica de receta), en la
+// unidad indicada o, por defecto, la del artículo.
+async function filaInsumoAdicional(extra, actorId, { transaction } = {}) {
+  const articulo = await Articulo.findOne({ where: { uuid: extra.articuloUuid }, transaction });
+  if (!articulo) throw ApiError.notFound('Insumo adicional no encontrado');
+  if (!articulo.estado) throw ApiError.badRequest(`El insumo "${articulo.nombre}" está inactivo`);
+  if (!(Number(extra.cantidad) > 0)) throw ApiError.badRequest(`La cantidad de "${articulo.nombre}" debe ser mayor que 0`);
+  let unidadId = articulo.unidadMedidaId || null;
+  if (extra.unidadUuid) {
+    const unidad = await UnidadMedida.findOne({ where: { uuid: extra.unidadUuid }, transaction });
+    if (!unidad) throw ApiError.notFound('Unidad del insumo adicional no encontrada');
+    unidadId = unidad.id;
+  }
+  // Falla ya (y no al ejecutar) si no hay conversión entre la unidad elegida y la del artículo.
+  await convertirACantidadBase(articulo, unidadId, Number(extra.cantidad), { transaction });
+  return { articuloId: articulo.id, unidadId, cantidadCalculada: Number(extra.cantidad), cantidad: Number(extra.cantidad), esAdicional: true, createdBy: actorId };
 }
 
 export const aspersionProgramacionService = {
@@ -774,9 +796,9 @@ export const aspersionProgramacionService = {
   async update(uuid, payload, actorId, user) {
     const aspersion = await this.getByUuid(uuid, user);
     assertProgramada(aspersion);
+    assertNoRevisada(aspersion);
 
-    // Al editar la programación se borra la revisión: ya no es lo que se revisó.
-    const data = { updatedBy: actorId, revisadoPorId: null, revisadoEn: null };
+    const data = { updatedBy: actorId };
 
     if (payload.fincaUuid) data.fincaId = (await resolveFinca(payload.fincaUuid)).id;
     if (payload.almacenUuid) {
@@ -850,6 +872,7 @@ export const aspersionProgramacionService = {
   async actualizarComponente(aspersionUuid, componenteUuid, cantidad, actorId, user) {
     const aspersion = await this.getByUuid(aspersionUuid, user);
     assertProgramada(aspersion);
+    assertNoRevisada(aspersion);
 
     const componente = await aspersionProgramacionRepository.findComponenteByUuid(componenteUuid);
     if (!componente || componente.aspersionProgramacionId !== aspersion.id) {
@@ -857,18 +880,18 @@ export const aspersionProgramacionService = {
     }
 
     await aspersionProgramacionRepository.updateComponente(componente, { cantidad: Number(cantidad), updatedBy: actorId });
-    // Cambió una cantidad: la revisión anterior ya no aplica.
-    await aspersionProgramacionRepository.update(aspersion, { revisadoPorId: null, revisadoEn: null });
     return aspersionProgramacionRepository.findByUuid(aspersionUuid);
   },
 
   // Marca la programación como revisada por el usuario (su firma sale en el aviso), o quita la revisión.
+  // Quitar la revisión la devuelve a Programada (editable) y deja el aviso como no enviado: si se cambia, hay que revisarla y
+  // enviarla de nuevo.
   async revisar(uuid, actorId, user, { quitar = false } = {}) {
     const aspersion = await this.getByUuid(uuid, user);
-    if (aspersion.estado === 'CANCELADA') throw ApiError.badRequest('Esta aspersión está cancelada');
+    assertProgramada(aspersion);
     await aspersionProgramacionRepository.update(
       aspersion,
-      quitar ? { revisadoPorId: null, revisadoEn: null } : { revisadoPorId: actorId, revisadoEn: new Date() },
+      quitar ? { revisadoPorId: null, revisadoEn: null, correoEnviadoEn: null } : { revisadoPorId: actorId, revisadoEn: new Date() },
     );
     return aspersionProgramacionRepository.findByUuid(uuid);
   },
@@ -876,6 +899,7 @@ export const aspersionProgramacionService = {
   async delete(uuid, actorId, user) {
     const aspersion = await this.getByUuid(uuid, user);
     assertProgramada(aspersion);
+    assertNoRevisada(aspersion, 'eliminarla');
     await aspersionProgramacionRepository.softDelete(aspersion, actorId);
   },
 
@@ -893,14 +917,12 @@ export const aspersionProgramacionService = {
     // sí sale, pero el ícono de correo en la fila debe reflejar que este
     // aviso concreto (el nuevo, de cancelación) todavía no se reenvía a
     // mano si hiciera falta.
-    await aspersionProgramacionRepository.update(aspersion, { estado: 'CANCELADA', correoEnviadoEn: null, updatedBy: actorId });
+    // `correoEnviadoEn` se conserva: indica si el aviso llegó a enviarse, y de eso depende a quién se le avisa la cancelación.
+    await aspersionProgramacionRepository.update(aspersion, { estado: 'CANCELADA', updatedBy: actorId });
     const actualizada = await aspersionProgramacionRepository.findByUuid(uuid);
 
     try {
-      // También los correos de la pista de la que salía.
-      const destinatarios = [
-        ...new Set([...(await this.resolverDestinatariosConfigurados(actualizada.fincaId)), ...correosDePista(actualizada.pista)]),
-      ];
+      const destinatarios = await this.destinatariosCancelacion(actualizada);
       if (destinatarios.length) {
         await mailService.sendCancelacionAspersion({
           destinatarios,
@@ -1003,12 +1025,22 @@ export const aspersionProgramacionService = {
   // módulo de inventario — si algún insumo no alcanza, no bloquea de una,
   // junta la advertencia y devuelve `{ requiereConfirmacion: true }` sin
   // escribir nada hasta que se confirme.
-  async ejecutar(uuid, actorId, { forzarSaldoNegativo = false, comprobante: datosComprobante } = {}, user) {
+  // `insumosAdicionales`: insumos que se agregaron en campo al ejecutar ([{ articuloUuid, cantidad, unidadUuid? }]); se suman a la
+  // aspersión como adicionales (solo a lo ejecutado, no a la parte restante) y se descuentan con los demás.
+  async ejecutar(uuid, actorId, { forzarSaldoNegativo = false, comprobante: datosComprobante, insumosAdicionales = [] } = {}, user) {
     const aspersion = await this.getByUuid(uuid, user);
     assertProgramada(aspersion);
 
     if (!aspersion.componentes?.length) {
       throw ApiError.badRequest('Esta aspersión no tiene insumos guardados — vuelve a programarla');
+    }
+    // Flujo: Programada → Revisada → Enviada → Ejecutada. Solo se ejecuta con el aviso ya enviado.
+    if (!aspersion.correoEnviadoEn) {
+      throw ApiError.badRequest(
+        aspersion.revisadoPorId
+          ? 'Primero envía el aviso de esta aspersión; después se puede ejecutar'
+          : 'Primero revisa la aspersión y envía el aviso; después se puede ejecutar',
+      );
     }
 
     try {
@@ -1021,6 +1053,20 @@ export const aspersionProgramacionService = {
         let parteRestante = null;
         if (Number.isFinite(aplicadas) && aplicadas > 0 && aplicadas < Number(fresh.hectareas)) {
           parteRestante = await dividirParteParcial(fresh, aplicadas, datosComprobante?.fechaParteRestante, actorId, { transaction: t });
+          fresh = await aspersionProgramacionRepository.findByUuid(uuid, { transaction: t });
+        }
+
+        if (insumosAdicionales?.length) {
+          const yaEstan = new Set(fresh.componentes.map((c) => c.articulo?.uuid));
+          const vistos = new Set();
+          for (const extra of insumosAdicionales) {
+            if (yaEstan.has(extra.articuloUuid) || vistos.has(extra.articuloUuid)) {
+              throw ApiError.badRequest('Un insumo adicional ya está en la aspersión o está repetido');
+            }
+            vistos.add(extra.articuloUuid);
+            const fila = await filaInsumoAdicional(extra, actorId, { transaction: t });
+            await AspersionProgramacionComponente.create({ ...fila, aspersionProgramacionId: fresh.id }, { transaction: t });
+          }
           fresh = await aspersionProgramacionRepository.findByUuid(uuid, { transaction: t });
         }
 
@@ -1111,7 +1157,9 @@ export const aspersionProgramacionService = {
   // filtran: solo entran los usuarios de ese rol que tengan esta finca
   // habilitada (Configuración → Usuarios → Fincas) o que no tengan ninguna
   // finca asignada (ven todas, mismo criterio que fincaScope.js).
-  async resolverDestinatariosConfigurados(fincaId) {
+  // Los de la FINCA son los usuarios de los «Roles (filtrados por finca)»; «Usuarios en copia» y «Correos sueltos» van en copia
+  // (son los mismos para todas las fincas). `sinFinca`: solo los de copia, sin los roles de la finca.
+  async resolverDestinatariosConfigurados(fincaId, { sinFinca = false } = {}) {
     const config = await configuracionService.getAspersionDestinatarios();
     const porEmail = new Map();
 
@@ -1127,7 +1175,7 @@ export const aspersionProgramacionService = {
       }
     }
 
-    if (config.rolesUuids.length) {
+    if (config.rolesUuids.length && !sinFinca) {
       const usuariosPorRol = await User.findAll({
         where: { estado: true },
         include: [
@@ -1149,20 +1197,41 @@ export const aspersionProgramacionService = {
     return [...porEmail.values()];
   },
 
+  // A quién se le avisa la cancelación: si el aviso ya se había enviado (`correoEnviadoEn`), a todos los que lo recibieron
+  // (los roles de la finca, los de copia —usuarios en copia y correos sueltos— y los correos de la pista); si no, solo a los de
+  // copia: ni la finca ni la pista se enteraron de la programación. En ambos casos también a quien la programó y a quien la
+  // revisó. Sin repetir direcciones.
+  async destinatariosCancelacion(aspersion) {
+    const fueEnviada = Boolean(aspersion.correoEnviadoEn);
+    const configurados = await this.resolverDestinatariosConfigurados(aspersion.fincaId, { sinFinca: !fueEnviada });
+    const ids = [aspersion.usuarioId, aspersion.revisadoPorId].filter(Boolean);
+    const participantes = ids.length ? await User.findAll({ where: { id: ids, estado: true }, attributes: ['email'] }) : [];
+    return [
+      ...new Set(
+        [...configurados, ...(fueEnviada ? correosDePista(aspersion.pista) : []), ...participantes.map((u) => u.email)]
+          .map((c) => String(c || '').trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    ];
+  },
+
   // Envía el aviso (PDF armado en el navegador, ver
   // app-corbana/lib/aspersionExport.js) por correo al/los destinatario(s)
   // indicados — el backend nunca genera el PDF, solo lo adjunta y despacha
   // (mismo patrón que laborCultural.service.js#enviarCorreoRevision).
   // `pdfPista`: aviso de la pista (mismo aviso con la pista y las hectáreas) para los correos de la pista de la aspersión.
-  async enviarCorreo(uuid, { destinatarios, pdfBuffer, pdfNombre, pdfPistaBuffer = null, pdfPistaNombre = null }) {
-    const aspersion = await this.getByUuid(uuid);
-    if (!destinatarios?.length) throw ApiError.badRequest('Indica al menos un destinatario');
+  async enviarCorreo(uuid, { destinatarios, pdfBuffer, pdfNombre, pdfPistaBuffer = null, pdfPistaNombre = null }, user) {
+    // Con `user` se respeta el alcance por almacén: un usuario que solo ve
+    // ciertos almacenes no puede enviar (ni ver los datos del) aviso de una
+    // aspersión de otro almacén. Mismo criterio que el resto del servicio.
+    const aspersion = await this.getByUuid(uuid, user);
+    const destinatariosAviso = destinatarios || [];
 
     // En copia van, además, los destinatarios configurados para esta finca
     // (Configuración → Programación de Aspersiones → Destinatarios) — sin
     // duplicar a nadie que ya esté como destinatario principal.
     const configurados = await this.resolverDestinatariosConfigurados(aspersion.fincaId);
-    const cc = configurados.filter((c) => !destinatarios.some((d) => d.toLowerCase() === c.toLowerCase()));
+    const cc = configurados.filter((c) => !destinatariosAviso.some((d) => d.toLowerCase() === c.toLowerCase()));
 
     const datosCorreo = {
       fincaNombre: aspersion.finca?.nombre || '',
@@ -1172,18 +1241,35 @@ export const aspersionProgramacionService = {
       mezclaNombre: aspersion.mezcla?.nombre || aspersion.mezcla?.codigo || '',
     };
 
-    // Si la aspersión ya está cancelada (ej. se reenvía el PDF, que ya sale
-    // con la marca de agua "CANCELADO"), el correo también debe avisar la
-    // cancelación en vez del texto de "se realizará el aviso" — no tendría
-    // sentido invitar a una aspersión que ya no va a pasar.
-    // Correos de la pista (sin repetir a nadie que ya recibe el aviso de la finca).
-    const yaReciben = new Set([...destinatarios, ...cc].map((c) => c.toLowerCase()));
-    const correosPista = correosDePista(aspersion.pista).filter((c) => !yaReciben.has(c.toLowerCase()));
+    // Correos de la pista: reciben su PROPIO aviso (el PDF con la pista, las
+    // hectáreas a asperjar y la firma "Representante de pista"), que es un
+    // documento distinto del de la finca — no un duplicado. Por eso se les
+    // envía aunque el mismo correo esté también en la lista de la finca: antes
+    // se descartaban y, si alguien se configuraba a sí mismo en la pista (y
+    // también recibía el aviso de la finca), el aviso de la pista nunca le
+    // llegaba.
+    const correosPista = correosDePista(aspersion.pista);
+
+    // Se exige al menos un destinatario de la finca o de la pista: la pista
+    // puede ser la única que reciba el aviso (finca sin destinatarios
+    // configurados).
+    if (!destinatariosAviso.length && !correosPista.length) throw ApiError.badRequest('Indica al menos un destinatario');
+    // Solo se envía el aviso de una programación revisada (Programada → Revisada → Enviada).
+    if (aspersion.estado === 'PROGRAMADA' && !aspersion.revisadoPorId) {
+      throw ApiError.badRequest(`La aspersión ${aspersion.numero} todavía no está revisada: márcala como revisada antes de enviar el aviso`);
+    }
 
     if (aspersion.estado === 'CANCELADA') {
-      await mailService.sendCancelacionAspersion({ destinatarios: [...destinatarios, ...cc, ...correosPista], ...datosCorreo });
+      // Si la aspersión ya está cancelada (ej. se reenvía el PDF, que ya sale
+      // con la marca de agua "CANCELADO"), el correo también debe avisar la
+      // cancelación en vez del texto de "se realizará el aviso" — no tendría
+      // sentido invitar a una aspersión que ya no va a pasar. Un solo envío,
+      // sin repetir direcciones (la pista puede compartir correos con la finca).
+      // Mismo criterio que al cancelar: la finca y la pista solo si el aviso había llegado a enviarse.
+      const todos = await this.destinatariosCancelacion(aspersion);
+      await mailService.sendCancelacionAspersion({ destinatarios: todos, ...datosCorreo });
     } else {
-      await mailService.sendAvisoAspersion({ destinatarios, cc, ...datosCorreo, pdfBuffer, pdfNombre });
+      await mailService.sendAvisoAspersion({ destinatarios: destinatariosAviso, cc, ...datosCorreo, pdfBuffer, pdfNombre });
       if (correosPista.length) {
         await mailService.sendAvisoAspersion({
           destinatarios: correosPista,
@@ -1197,7 +1283,8 @@ export const aspersionProgramacionService = {
       }
     }
 
-    await aspersionProgramacionRepository.update(aspersion, { correoEnviadoEn: new Date() });
+    // En una cancelada se conserva la fecha del aviso original (de ella depende a quién se le avisa la cancelación).
+    if (aspersion.estado !== 'CANCELADA') await aspersionProgramacionRepository.update(aspersion, { correoEnviadoEn: new Date() });
     return aspersionProgramacionRepository.findByUuid(uuid);
   },
 

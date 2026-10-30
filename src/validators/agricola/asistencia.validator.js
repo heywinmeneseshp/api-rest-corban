@@ -27,7 +27,7 @@ export const borrarRostroSchema = Joi.object({
 export const rostrosEstadoSchema = Joi.object({
   body: Joi.object({}),
   params: Joi.object({}),
-  query: Joi.object({ fincaUuid: uuidRef }),
+  query: Joi.object({ fincaUuid: uuidRef, modulo: Joi.string().valid('GENERAL', 'SANIDAD_VEGETAL') }),
 });
 
 export const probarRostroSchema = Joi.object({
@@ -70,6 +70,7 @@ export const listarAsistenciaSchema = Joi.object({
     page: Joi.number().integer().min(1),
     limit: Joi.number().integer().min(1).max(200),
     fincaUuid: uuidRef,
+    modulo: Joi.string().valid('GENERAL', 'SANIDAD_VEGETAL'),
     lugarUuid: uuidRef,
     colaboradorUuid: uuidRef,
     tipo: Joi.string().valid('ENTRADA', 'SALIDA'),
@@ -85,6 +86,7 @@ export const jornadasAsistenciaSchema = Joi.object({
     page: Joi.number().integer().min(1),
     limit: Joi.number().integer().min(1).max(200),
     fincaUuid: uuidRef,
+    modulo: Joi.string().valid('GENERAL', 'SANIDAD_VEGETAL'),
     lugarUuid: uuidRef,
     colaboradorUuid: uuidRef,
     desde: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/),

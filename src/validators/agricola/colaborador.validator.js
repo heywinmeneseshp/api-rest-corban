@@ -19,6 +19,7 @@ export const listColaboradoresSchema = Joi.object({
     search: Joi.string().allow('').max(150),
     fincaUuid: uuidRef,
     estado: Joi.boolean(),
+    modulo: Joi.string().valid('GENERAL', 'SANIDAD_VEGETAL'),
   }),
 });
 
@@ -40,6 +41,7 @@ export const createColaboradorSchema = Joi.object({
     lugarUuid: uuidRef.allow(null),
     userUuid: uuidRef.allow(null),
     estado: Joi.boolean(),
+    modulo: Joi.string().valid('GENERAL', 'SANIDAD_VEGETAL'),
     labores: laboresSchema,
   }),
   params: Joi.object({}),
@@ -84,6 +86,7 @@ export const updateColaboradorSchema = Joi.object({
     fincaUuid: uuidRef.allow(null),
     lugarUuid: uuidRef.allow(null),
     estado: Joi.boolean(),
+    modulo: Joi.string().valid('GENERAL', 'SANIDAD_VEGETAL'),
     labores: laboresSchema,
   }).min(1),
   params: Joi.object({ uuid: uuidParam }),

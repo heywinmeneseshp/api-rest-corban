@@ -8,8 +8,11 @@ ComprobanteAspersion.init(
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     uuid: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, allowNull: false, unique: true },
     numero: { type: DataTypes.STRING(50), allowNull: false, unique: true },
-    aspersionProgramacionId: { type: DataTypes.INTEGER, allowNull: false, unique: true, field: 'aspersion_programacion_id' },
-    estado: { type: DataTypes.ENUM('BORRADOR', 'EMITIDO'), allowNull: false, defaultValue: 'BORRADOR' },
+    // Una aspersión puede tener varios comprobantes: uno vigente (BORRADOR o
+    // EMITIDO) y los anulados. La regla de "un solo vigente" la valida el
+    // servicio (ver comprobanteAspersion.service.js#anular/regenerar).
+    aspersionProgramacionId: { type: DataTypes.INTEGER, allowNull: false, field: 'aspersion_programacion_id' },
+    estado: { type: DataTypes.ENUM('BORRADOR', 'EMITIDO', 'ANULADO'), allowNull: false, defaultValue: 'BORRADOR' },
     medio: { type: DataTypes.ENUM('AVION', 'DRON'), allowNull: true },
     piloto: { type: DataTypes.STRING(150), allowNull: true },
     hectareasProgramadas: { type: DataTypes.DECIMAL(10, 2), allowNull: false, field: 'hectareas_programadas' },
@@ -30,6 +33,18 @@ ComprobanteAspersion.init(
     ejecutadoEn: { type: DataTypes.DATE, allowNull: true, field: 'ejecutado_en' },
     emitidoPorId: { type: DataTypes.INTEGER, allowNull: true, field: 'emitido_por_id' },
     emitidoEn: { type: DataTypes.DATE, allowNull: true, field: 'emitido_en' },
+    // Con dron: el piloto es un colaborador (cargo «Piloto de Dron»); `piloto` guarda la copia de su nombre.
+    pilotoColaboradorId: { type: DataTypes.INTEGER, allowNull: true, field: 'piloto_colaborador_id' },
+    // Recorrido de la aplicación (KML): el archivo original y su geometría simplificada para el mapa del PDF.
+    kml: { type: DataTypes.TEXT('medium'), allowNull: true },
+    kmlNombre: { type: DataTypes.STRING(200), allowNull: true, field: 'kml_nombre' },
+    kmlGeometria: { type: DataTypes.JSON, allowNull: true, field: 'kml_geometria' },
+    kmlSubidoEn: { type: DataTypes.DATE, allowNull: true, field: 'kml_subido_en' },
+    // Anulación (reemplaza el borrado): el comprobante anulado queda como
+    // registro histórico y desde él se puede regenerar un borrador nuevo.
+    motivoAnulacion: { type: DataTypes.TEXT, allowNull: true, field: 'motivo_anulacion' },
+    anuladoPorId: { type: DataTypes.INTEGER, allowNull: true, field: 'anulado_por_id' },
+    anuladoEn: { type: DataTypes.DATE, allowNull: true, field: 'anulado_en' },
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
     updatedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'updated_by' },
     deletedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'deleted_by' },

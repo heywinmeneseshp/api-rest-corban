@@ -20,6 +20,8 @@ const limpiarCorreos = (lista = []) => [...new Set(lista.map((c) => String(c || 
 export const mapPista = (p) => ({
   uuid: p.uuid,
   nombre: p.nombre,
+  responsable: p.responsable ?? null,
+  telefono: p.telefono ?? null,
   correos: leerCorreos(p.correos),
   observaciones: p.observaciones ?? null,
   estado: p.estado,
@@ -55,6 +57,8 @@ export const pistaService = {
     await validarNombre(datos.nombre);
     const p = await Pista.create({
       nombre: String(datos.nombre).trim(),
+      responsable: datos.responsable ? String(datos.responsable).trim() : null,
+      telefono: datos.telefono ? String(datos.telefono).trim() : null,
       correos: limpiarCorreos(datos.correos),
       observaciones: datos.observaciones || null,
       estado: datos.estado ?? true,
@@ -73,6 +77,8 @@ export const pistaService = {
     }
     if (datos.correos !== undefined) data.correos = limpiarCorreos(datos.correos);
     if (datos.observaciones !== undefined) data.observaciones = datos.observaciones || null;
+    if (datos.responsable !== undefined) data.responsable = datos.responsable ? String(datos.responsable).trim() : null;
+    if (datos.telefono !== undefined) data.telefono = datos.telefono ? String(datos.telefono).trim() : null;
     if (datos.estado !== undefined) data.estado = datos.estado;
     await p.update(data);
     return mapPista(p);

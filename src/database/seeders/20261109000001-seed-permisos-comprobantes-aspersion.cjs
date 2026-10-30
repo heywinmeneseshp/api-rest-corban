@@ -13,7 +13,7 @@ module.exports = {
       PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_VER,
       PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_EDITAR,
       PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_EMITIR,
-      PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_ELIMINAR,
+      PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_ANULAR,
     ];
 
     await queryInterface.bulkInsert(
@@ -32,7 +32,7 @@ module.exports = {
         'sanidad_vegetal.comprobantes_aspersion.ver',
         'sanidad_vegetal.comprobantes_aspersion.editar',
         'sanidad_vegetal.comprobantes_aspersion.emitir',
-        'sanidad_vegetal.comprobantes_aspersion.eliminar',
+        'sanidad_vegetal.comprobantes_aspersion.anular',
       ],
     });
   },

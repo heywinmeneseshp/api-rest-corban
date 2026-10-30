@@ -50,6 +50,12 @@ export const PERMISOS_CATALOGO = [
         ],
       },
       {
+        nombre: 'Cargos',
+        acceso: 'menu.maestros.cargos',
+        ayuda: 'Etiquetas de cargo que se asignan a usuarios y colaboradores (salen en las firmas de los documentos).',
+        filas: [crud('cargo')],
+      },
+      {
         nombre: 'Usuarios',
         acceso: 'menu.maestros.usuarios',
         ayuda: 'Quien entra a Usuarios puede crearlos, editarlos y asignarles roles y fincas.',
@@ -176,8 +182,15 @@ export const PERMISOS_CATALOGO = [
       {
         nombre: 'Comprobantes de aspersión',
         acceso: 'menu.sanidad_vegetal.comprobantes_aspersion',
-        filas: [crud('sanidad_vegetal.comprobantes_aspersion', ['ver', 'editar', 'eliminar'])],
-        especiales: [especial('sanidad_vegetal.comprobantes_aspersion.emitir', 'Emitir comprobantes')],
+        filas: [crud('sanidad_vegetal.comprobantes_aspersion', ['ver', 'editar'])],
+        especiales: [
+          especial('sanidad_vegetal.comprobantes_aspersion.emitir', 'Emitir comprobantes'),
+          especial(
+            'sanidad_vegetal.comprobantes_aspersion.anular',
+            'Anular comprobantes (queda el registro con el motivo) y regenerar el borrador',
+            { sensible: true },
+          ),
+        ],
       },
       {
         nombre: 'Mezclas',
@@ -189,6 +202,12 @@ export const PERMISOS_CATALOGO = [
         ],
       },
       { nombre: 'Pruebas de laboratorio', acceso: 'menu.inventarios.mezclas', filas: [] },
+      {
+        nombre: 'Colaboradores',
+        acceso: 'menu.sanidad_vegetal.colaboradores',
+        ayuda: 'Colaboradores creados desde Sanidad Vegetal (misma base que Maestros → Colaboradores): rostro, asistencia y jornadas.',
+        filas: [crud('sanidad_vegetal.colaboradores')],
+      },
       {
         nombre: 'Pistas',
         acceso: 'menu.sanidad_vegetal.pistas',

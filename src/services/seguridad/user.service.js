@@ -4,6 +4,7 @@ import { sequelize } from '../../database/connection.js';
 import { User, Role, Finca, Almacen } from '../../database/associations.js';
 import { userRepository } from '../../repositories/seguridad/user.repository.js';
 import { mailService } from '../sistema/mail.service.js';
+import { resolverCargo } from './cargo.service.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { parseBulkFile } from '../../utils/bulkFileParser.js';
@@ -71,6 +72,7 @@ export const userService = {
     }
 
     const hashedPassword = await bcrypt.hash(payload.password, SALT_ROUNDS);
+    const { cargo, cargoId } = await resolverCargo(payload.cargo);
 
     const user = await sequelize.transaction((transaction) =>
       userRepository.create(
@@ -81,7 +83,8 @@ export const userService = {
           email: payload.email,
           password: hashedPassword,
           estado: payload.estado ?? true,
-          cargo: payload.cargo || null,
+          cargo,
+          cargoId,
           createdBy: actorId,
         },
         { transaction },
@@ -104,6 +107,7 @@ export const userService = {
     }
 
     const data = { ...payload, updatedBy: actorId };
+    if (payload.cargo !== undefined) Object.assign(data, await resolverCargo(payload.cargo));
     if (payload.password) {
       data.password = await bcrypt.hash(payload.password, SALT_ROUNDS);
     }
@@ -237,12 +241,22 @@ export const userService = {
         continue;
       }
 
-      const cargo = row.cargo ? String(row.cargo).trim() : undefined;
+      // El cargo debe existir en Maestros → Cargos (se guarda con su nombre oficial).
+      let cargo;
+      let cargoId;
+      if (row.cargo && String(row.cargo).trim()) {
+        try {
+          ({ cargo, cargoId } = await resolverCargo(row.cargo));
+        } catch (err) {
+          errores.push({ fila, mensaje: err.message });
+          continue;
+        }
+      }
       const estado = parseEstadoUsuario(row.estado);
       const rolesTexto = row.roles ? String(row.roles).split(',').map((r) => r.trim()).filter(Boolean) : [];
       const fincasTexto = row.fincas ? String(row.fincas).split(',').map((f) => f.trim()).filter(Boolean) : [];
 
-      filasValidas.push({ fila, usuario, nombre, apellido, email, cargo, estado, rolesTexto, fincasTexto });
+      filasValidas.push({ fila, usuario, nombre, apellido, email, cargo, cargoId, estado, rolesTexto, fincasTexto });
     }
 
     // Si el mismo usuario aparece varias veces en el archivo, se procesa
@@ -307,6 +321,7 @@ export const userService = {
               apellido: f.apellido,
               email: f.email,
               cargo: f.cargo ?? usuarioExistente.cargo,
+              cargoId: f.cargo ? f.cargoId : usuarioExistente.cargoId,
               updatedBy: actorId,
             };
             if (f.estado !== undefined) data.estado = f.estado;
@@ -324,6 +339,7 @@ export const userService = {
                 password: hashedPassword,
                 estado: f.estado ?? true,
                 cargo: f.cargo || null,
+                cargoId: f.cargoId || null,
                 createdBy: actorId,
               },
               { transaction },

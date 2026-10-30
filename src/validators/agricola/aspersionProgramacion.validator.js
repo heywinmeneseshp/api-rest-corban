@@ -81,7 +81,7 @@ export const listAspersionSchema = Joi.object({
     fincaUuid: Joi.string().guid({ version: 'uuidv4' }),
     semanaUuid: Joi.string().guid({ version: 'uuidv4' }),
     mezclaUuid: Joi.string().guid({ version: 'uuidv4' }),
-    estado: Joi.string().valid('PROGRAMADA', 'EJECUTADA', 'CANCELADA'),
+    estado: Joi.string().valid('PROGRAMADA', 'REVISADA', 'ENVIADA', 'EJECUTADA', 'CANCELADA'),
     tipo: Joi.string().valid(...TIPOS),
     fechaDesde: Joi.date().iso(),
     fechaHasta: Joi.date().iso(),
@@ -96,11 +96,25 @@ export const ejecutarAspersionSchema = Joi.object({
     // true solo en el reenvío tras confirmar la advertencia de stock
     // insuficiente (ver aspersionProgramacion.service.js#ejecutar).
     forzarSaldoNegativo: Joi.boolean().default(false),
+    // Insumos agregados en campo al ejecutar (no están en la receta): se suman como adicionales y se descuentan.
+    insumosAdicionales: Joi.array()
+      .items(
+        Joi.object({
+          articuloUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
+          cantidad: Joi.number().positive().required(),
+          unidadUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
+        }),
+      )
+      .max(20)
+      .default([]),
     // Datos del modal de ejecutar: con ellos se crea el comprobante de
     // aplicación en borrador (ver comprobanteAspersion.service.js). Todo
     // opcional — se pueden completar después en el comprobante.
     comprobante: Joi.object({
       piloto: Joi.string().trim().max(150).allow(null, ''),
+      // Con dron: piloto (cargo «Piloto de Dron») y asistentes del listado de colaboradores.
+      pilotoColaboradorUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null),
+      asistentesUuids: Joi.array().items(Joi.string().guid({ version: 'uuidv4' })).max(30),
       hectareasAplicadas: Joi.number().positive(),
       galonesTotales: Joi.number().min(0),
       observaciones: Joi.string().allow(null, '').max(1000),
@@ -147,7 +161,9 @@ export const listUsuariosFincaSchema = Joi.object({
 export const enviarCorreoAspersionSchema = Joi.object({
   body: Joi.object({
     // multipart/form-data: llega como string, separado por comas.
-    destinatarios: Joi.string().trim().required(),
+    // Puede venir vacío: una aspersión sin destinatarios de finca igual se
+    // envía a los correos de su pista (ver enviarCorreo en el servicio).
+    destinatarios: Joi.string().trim().allow('').default(''),
   }),
   params: Joi.object({ uuid: uuidParam }),
   query: Joi.object({}),

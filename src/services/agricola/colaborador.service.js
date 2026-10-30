@@ -7,15 +7,35 @@ import { Finca, ColaboradorRostro, User, Colaborador, AsistenciaLugar } from '..
 import { sequelize } from '../../database/connection.js';
 import { userService } from '../seguridad/user.service.js';
 import { assertFincaPermitida, getFincaIdsPermitidas } from '../../utils/fincaScope.js';
+import { PERMISSIONS } from '../../constants/permissions.constants.js';
+import { resolverCargo } from '../seguridad/cargo.service.js';
+import { ROLES } from '../../constants/roles.constants.js';
 
-// Alcance por fincas asignadas: el usuario restringido ve los colaboradores de sus fincas y su propia ficha; quien no tiene
-// restricción (Administrador o sin fincas asignadas) ve todos. Devuelve null si no hay restricción.
-export const alcanceColaboradores = (user) => {
+// Módulos de colaboradores: los de Sanidad Vegetal se crean desde su propio módulo, con permisos propios.
+export const MODULO_SANIDAD = 'SANIDAD_VEGETAL';
+export const MODULOS_COLABORADOR = ['GENERAL', MODULO_SANIDAD];
+const PERMISOS_GENERAL = { ver: PERMISSIONS.COLABORADOR_VER, crear: PERMISSIONS.COLABORADOR_CREAR, editar: PERMISSIONS.COLABORADOR_EDITAR, eliminar: PERMISSIONS.COLABORADOR_ELIMINAR };
+const PERMISOS_SANIDAD = { ver: PERMISSIONS.SV_COLABORADOR_VER, crear: PERMISSIONS.SV_COLABORADOR_CREAR, editar: PERMISSIONS.SV_COLABORADOR_EDITAR, eliminar: PERMISSIONS.SV_COLABORADOR_ELIMINAR };
+const tienePermiso = (user, codigo) => (user?.roles || []).includes(ROLES.ADMINISTRADOR) || (user?.permissions || []).includes(codigo);
+export const puedeColaboradoresSanidad = (user, accion = 'ver') => tienePermiso(user, PERMISOS_SANIDAD[accion]);
+// Quien tiene el permiso de Sanidad Vegetal para la acción pero no el general solo opera sobre los colaboradores de Sanidad Vegetal.
+export const soloModuloSanidad = (user, accion = 'ver') =>
+  Boolean(user) && !tienePermiso(user, PERMISOS_GENERAL[accion]) && tienePermiso(user, PERMISOS_SANIDAD[accion]);
+
+// Alcance: por fincas asignadas (el usuario restringido ve los de sus fincas y su propia ficha; sin restricción, todos) y por
+// módulo (`modulo` pedido, o Sanidad Vegetal si solo tiene esos permisos). Devuelve null si no hay restricción.
+// `porPermisos: false`: sin la restricción de módulo por permisos (quien marca la cuadrilla ve a todos los de sus fincas).
+export const alcanceColaboradores = (user, accion = 'ver', modulo = null, { porPermisos = true } = {}) => {
+  const partes = [];
   const fincaIds = getFincaIdsPermitidas(user);
-  if (!fincaIds) return null;
-  return { [Op.or]: [{ fincaId: { [Op.in]: fincaIds } }, ...(user?.id ? [{ userId: user.id }] : [])] };
+  if (fincaIds) partes.push({ [Op.or]: [{ fincaId: { [Op.in]: fincaIds } }, ...(user?.id ? [{ userId: user.id }] : [])] });
+  const moduloEfectivo = porPermisos && soloModuloSanidad(user, accion) ? MODULO_SANIDAD : modulo;
+  if (moduloEfectivo) partes.push({ modulo: moduloEfectivo });
+  if (!partes.length) return null;
+  return partes.length === 1 ? partes[0] : { [Op.and]: partes };
 };
-export const enAlcance = (colaborador, user) => {
+export const enAlcance = (colaborador, user, accion = 'ver') => {
+  if (soloModuloSanidad(user, accion) && colaborador.modulo !== MODULO_SANIDAD) return false;
   const fincaIds = getFincaIdsPermitidas(user);
   return !fincaIds || (colaborador.fincaId && fincaIds.includes(colaborador.fincaId)) || (user?.id && colaborador.userId === user.id);
 };
@@ -113,7 +133,7 @@ export const colaboradorService = {
       search: query.search,
       fincaId,
       estado,
-      alcance: alcanceColaboradores(user),
+      alcance: alcanceColaboradores(user, 'ver', MODULOS_COLABORADOR.includes(query.modulo) ? query.modulo : null),
     });
     // Cuántas muestras faciales tiene cada uno (la pantalla muestra "Rostro: enrolado / sin enrolar").
     const conteos = rows.length
@@ -129,10 +149,10 @@ export const colaboradorService = {
     return { items, meta: buildPaginationMeta({ page, limit, total: count }) };
   },
 
-  // `user`: si se pasa, el colaborador debe estar en su alcance (si no, 404 como si no existiera).
-  async getColaboradorByUuid(uuid, user = null) {
+  // `user`: si se pasa, el colaborador debe estar en su alcance para la `accion` (si no, 404 como si no existiera).
+  async getColaboradorByUuid(uuid, user = null, accion = 'ver') {
     const colaborador = await colaboradorRepository.findByUuid(uuid);
-    if (!colaborador || (user && !enAlcance(colaborador, user))) throw ApiError.notFound('Colaborador no encontrado');
+    if (!colaborador || (user && !enAlcance(colaborador, user, accion))) throw ApiError.notFound('Colaborador no encontrado');
     return colaborador;
   },
 
@@ -140,6 +160,8 @@ export const colaboradorService = {
     // Con fincas asignadas solo se crean colaboradores en esas fincas (la finca es obligatoria); sin restricción, finca u oficina.
     const { fincaId, lugarId } = await resolverLugarPredeterminado(payload, actor, { soloFincasPropias: true });
     await validarDocumentoUnico(payload.documento);
+    // Primer registro del colaborador: si el cargo escrito no existe, se crea en el maestro.
+    const cargoResuelto = await resolverCargo(payload.cargo, { crearSiNoExiste: true, actorId });
     const labores = await resolverLabores(payload.labores);
     // Colaborador creado desde un usuario existente: queda vinculado a él.
     const user = payload.userUuid ? await userLibreOrFail(payload.userUuid) : null;
@@ -152,10 +174,12 @@ export const colaboradorService = {
           documento: payload.documento || null,
           telefono: payload.telefono || null,
           email: payload.email || null,
-          cargo: payload.cargo || null,
+          ...cargoResuelto,
           fincaId,
           lugarId,
           estado: payload.estado ?? true,
+          // Quien solo tiene los permisos de Sanidad Vegetal crea siempre en ese módulo.
+          modulo: soloModuloSanidad(actor, 'crear') ? MODULO_SANIDAD : MODULOS_COLABORADOR.includes(payload.modulo) ? payload.modulo : 'GENERAL',
           userId: user?.id ?? null,
           createdBy: actorId,
         },
@@ -171,7 +195,7 @@ export const colaboradorService = {
   },
 
   async updateColaborador(uuid, payload, actorId, user = null) {
-    const colaborador = await this.getColaboradorByUuid(uuid, user);
+    const colaborador = await this.getColaboradorByUuid(uuid, user, 'editar');
     if (payload.documento !== undefined) await validarDocumentoUnico(payload.documento, colaborador.id);
 
     const data = { updatedBy: actorId };
@@ -180,8 +204,10 @@ export const colaboradorService = {
     if (payload.documento !== undefined) data.documento = payload.documento || null;
     if (payload.telefono !== undefined) data.telefono = payload.telefono || null;
     if (payload.email !== undefined) data.email = payload.email || null;
-    if (payload.cargo !== undefined) data.cargo = payload.cargo || null;
+    if (payload.cargo !== undefined) Object.assign(data, await resolverCargo(payload.cargo));
     if (payload.estado !== undefined) data.estado = payload.estado;
+    // Cambiar de módulo solo con el permiso general de colaboradores.
+    if (payload.modulo !== undefined && MODULOS_COLABORADOR.includes(payload.modulo) && !soloModuloSanidad(user, 'editar')) data.modulo = payload.modulo;
     if (payload.fincaUuid !== undefined || payload.lugarUuid !== undefined) {
       // No se puede mover a una finca fuera de las asignadas (ni dejarlo sin finca si el usuario está restringido).
       Object.assign(data, await resolverLugarPredeterminado(payload, user, { soloFincasPropias: true }));
@@ -200,21 +226,21 @@ export const colaboradorService = {
 
   // Vincula un colaborador existente con un usuario existente.
   async vincularUsuario(uuid, userUuid, actorId, actor = null) {
-    const colaborador = await this.getColaboradorByUuid(uuid, actor);
+    const colaborador = await this.getColaboradorByUuid(uuid, actor, 'editar');
     const user = await userLibreOrFail(userUuid, colaborador.id);
     await colaboradorRepository.update(colaborador, { userId: user.id, updatedBy: actorId });
     return colaboradorRepository.findByUuid(uuid);
   },
 
   async desvincularUsuario(uuid, actorId, actor = null) {
-    const colaborador = await this.getColaboradorByUuid(uuid, actor);
+    const colaborador = await this.getColaboradorByUuid(uuid, actor, 'editar');
     await colaboradorRepository.update(colaborador, { userId: null, updatedBy: actorId });
     return colaboradorRepository.findByUuid(uuid);
   },
 
   // Crea un usuario del sistema a partir del colaborador y los deja vinculados.
   async crearUsuario(uuid, payload, actorId, actor = null) {
-    const colaborador = await this.getColaboradorByUuid(uuid, actor);
+    const colaborador = await this.getColaboradorByUuid(uuid, actor, 'editar');
     if (colaborador.userId) throw ApiError.conflict('El colaborador ya tiene un usuario');
     const email = payload.email || colaborador.email;
     if (!email) throw ApiError.badRequest('El colaborador no tiene correo: indica uno para crear el usuario');
@@ -237,7 +263,7 @@ export const colaboradorService = {
   },
 
   async deleteColaborador(uuid, actorId, user = null) {
-    const colaborador = await this.getColaboradorByUuid(uuid, user);
+    const colaborador = await this.getColaboradorByUuid(uuid, user, 'eliminar');
     await colaboradorRepository.softDelete(colaborador, actorId);
   },
 
@@ -274,13 +300,15 @@ export const colaboradorService = {
     const { fincaId, lugarId } = await resolverLugarPredeterminado(payload, user);
     await validarDocumentoUnico(payload.documento);
     const yo = await User.findByPk(user.id, { attributes: ['id', 'nombre', 'apellido', 'email', 'cargo'] });
+    // Sin cargo elegido, toma el del usuario (siempre del maestro de cargos).
+    const cargoResuelto = await resolverCargo(payload.cargo || yo.cargo, { crearSiNoExiste: true, actorId: user.id });
     await colaboradorRepository.create({
       nombre: capitalizarPalabras(payload.nombre || yo.nombre),
       apellido: capitalizarPalabras(payload.apellido || yo.apellido) || null,
       documento: payload.documento || null,
       telefono: payload.telefono || null,
       email: yo.email || null,
-      cargo: payload.cargo || yo.cargo || null,
+      ...cargoResuelto,
       fincaId,
       lugarId,
       estado: true,
@@ -297,7 +325,7 @@ export const colaboradorService = {
     if (!c) throw ApiError.notFound('Aún no tienes ficha de colaborador');
     const data = { updatedBy: user.id };
     if (payload.telefono !== undefined) data.telefono = payload.telefono || null;
-    if (payload.cargo !== undefined) data.cargo = payload.cargo || null;
+    if (payload.cargo !== undefined) Object.assign(data, await resolverCargo(payload.cargo));
     if (payload.fincaUuid !== undefined || payload.lugarUuid !== undefined) Object.assign(data, await resolverLugarPredeterminado(payload, user));
     await c.update(data);
     return this.miFicha(user);

@@ -17,6 +17,8 @@ AspersionProgramacionComponente.init(
     unidadId: { type: DataTypes.INTEGER, allowNull: true, field: 'unidad_id' },
     cantidadCalculada: { type: DataTypes.DECIMAL(12, 4), allowNull: false, field: 'cantidad_calculada' },
     cantidad: { type: DataTypes.DECIMAL(12, 4), allowNull: false },
+    // Insumo ADICIONAL: agregado a esta aspersión (al programar o al ejecutar), no está en la receta de la mezcla.
+    esAdicional: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: 'es_adicional' },
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
     updatedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'updated_by' },
   },

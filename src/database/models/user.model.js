@@ -65,6 +65,12 @@ User.init(
       type: DataTypes.STRING(150),
       allowNull: true,
     },
+    // Cargo del maestro (Maestros → Cargos); `cargo` guarda la copia de su nombre.
+    cargoId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: 'cargo_id',
+    },
     // Firma (PNG) para los documentos: id del archivo en Google Drive (Firmas_Usuarios) y cuándo se subió.
     firmaDriveId: {
       type: DataTypes.STRING(100),

@@ -36,6 +36,16 @@ export const uploadFotosLabor = multer({
   },
 }).array('fotos', 10);
 
+// Recorrido de la aplicación (KML) del comprobante de aspersión, hasta 15 MB (los registros de vuelo del dron pueden ser grandes).
+export const uploadKmlComprobante = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/\.kml$/i.test(file.originalname || '') || /kml/i.test(file.mimetype || '')) cb(null, true);
+    else cb(Object.assign(new Error('El recorrido debe ser un archivo .kml'), { statusCode: 400 }));
+  },
+}).single('kml');
+
 // Firma del usuario para los documentos: solo PNG (fondo transparente), hasta 1 MB.
 export const uploadFirmaUsuario = multer({
   storage: multer.memoryStorage(),
