@@ -1175,6 +1175,15 @@ export const aspersionProgramacionService = {
       }
     }
 
+    // Roles en copia: todos sus usuarios activos, sin filtrar por finca.
+    if ((config.rolesCopiaUuids || []).length) {
+      const enCopia = await User.findAll({
+        where: { estado: true },
+        include: [{ model: Role, as: 'roles', where: { uuid: config.rolesCopiaUuids }, through: { attributes: [] } }],
+      });
+      for (const u of enCopia) if (u.email) porEmail.set(u.email.trim().toLowerCase(), u.email);
+    }
+
     if (config.rolesUuids.length && !sinFinca) {
       const usuariosPorRol = await User.findAll({
         where: { estado: true },

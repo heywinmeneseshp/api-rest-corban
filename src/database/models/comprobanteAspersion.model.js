@@ -40,6 +40,9 @@ ComprobanteAspersion.init(
     kmlNombre: { type: DataTypes.STRING(200), allowNull: true, field: 'kml_nombre' },
     kmlGeometria: { type: DataTypes.JSON, allowNull: true, field: 'kml_geometria' },
     kmlSubidoEn: { type: DataTypes.DATE, allowNull: true, field: 'kml_subido_en' },
+    // Envío por correo (después de emitir): PDF con el mapa y el KMZ del recorrido.
+    correoEnviadoEn: { type: DataTypes.DATE, allowNull: true, field: 'correo_enviado_en' },
+    correoEnviadoPorId: { type: DataTypes.INTEGER, allowNull: true, field: 'correo_enviado_por_id' },
     // Anulación (reemplaza el borrado): el comprobante anulado queda como
     // registro histórico y desde él se puede regenerar un borrador nuevo.
     motivoAnulacion: { type: DataTypes.TEXT, allowNull: true, field: 'motivo_anulacion' },

@@ -67,7 +67,9 @@ const ALERTAS_SANIDAD_DESTINATARIOS_DEFAULT = { correos: [], rolesUuids: [], usu
 // Sin valor guardado todavía = nadie recibe el aviso/cancelación de
 // Programación de Aspersiones por correo (además del destinatario puntual
 // que se escoge al momento de enviar el aviso).
-const ASPERSION_DESTINATARIOS_DEFAULT = { correos: [], rolesUuids: [], usuariosUuids: [] };
+// `rolesUuids`: roles de la FINCA (filtrados por finca); `rolesCopiaUuids`: roles en copia (reciben de todas las fincas).
+const ASPERSION_DESTINATARIOS_DEFAULT = { correos: [], rolesUuids: [], usuariosUuids: [], rolesCopiaUuids: [] };
+const normalizarDestinatariosAspersion = (cfg) => ({ ...normalizarDestinatarios(cfg), rolesCopiaUuids: normalizarUuids(cfg?.rolesCopiaUuids) });
 // Sin valor guardado todavía = nadie recibe la alerta de "estación sin datos".
 const ESTACION_ALERTA_DESTINATARIOS_DEFAULT = { correos: [], rolesUuids: [], usuariosUuids: [] };
 // Bases (temperatura base) de las columnas de Unidades Calóricas del
@@ -332,14 +334,14 @@ export const configuracionService = {
     const config = await configuracionRepository.findByClave(CLAVE_ASPERSION_DESTINATARIOS);
     if (!config?.valor) return ASPERSION_DESTINATARIOS_DEFAULT;
     try {
-      return normalizarDestinatarios({ ...ASPERSION_DESTINATARIOS_DEFAULT, ...JSON.parse(config.valor) });
+      return normalizarDestinatariosAspersion({ ...ASPERSION_DESTINATARIOS_DEFAULT, ...JSON.parse(config.valor) });
     } catch {
       return ASPERSION_DESTINATARIOS_DEFAULT;
     }
   },
 
   async setAspersionDestinatarios(destinatarios, actorId) {
-    const valor = JSON.stringify(normalizarDestinatarios(destinatarios));
+    const valor = JSON.stringify(normalizarDestinatariosAspersion(destinatarios));
     const config = await configuracionRepository.upsert(CLAVE_ASPERSION_DESTINATARIOS, valor, actorId);
     return JSON.parse(config.valor);
   },

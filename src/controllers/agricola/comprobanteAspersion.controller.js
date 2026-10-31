@@ -23,6 +23,18 @@ export const comprobanteAspersionController = {
     ApiResponse.send(res, { message: 'Comprobante de aspersión emitido correctamente', data: comprobante });
   }),
 
+  enviarCorreo: asyncHandler(async (req, res) => {
+    const pdf = req.files?.pdf?.[0];
+    const kmz = req.files?.kmz?.[0];
+    const comprobante = await comprobanteAspersionService.enviarCorreo(
+      req.params.uuid,
+      { pdfBuffer: pdf?.buffer, pdfNombre: pdf?.originalname, kmzBuffer: kmz?.buffer ?? null, kmzNombre: kmz?.originalname ?? null },
+      req.user?.id,
+      req.user,
+    );
+    ApiResponse.send(res, { message: 'Comprobante enviado por correo', data: comprobante });
+  }),
+
   subirKml: asyncHandler(async (req, res) => {
     const comprobante = await comprobanteAspersionService.subirKml(req.params.uuid, req.file, req.body?.geometria, req.user?.id, req.user);
     ApiResponse.send(res, { message: 'Recorrido (KML) guardado', data: comprobante });

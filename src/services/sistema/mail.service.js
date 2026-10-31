@@ -504,6 +504,55 @@ export const mailService = {
     });
   },
 
+  // Comprobante de aplicación de aspersión (ya emitido): PDF (con el mapa del recorrido en la segunda hoja si hay KML) y, si hay,
+  // el KMZ del recorrido.
+  async sendComprobanteAspersion({ destinatarios, cc, numero, fincaNombre, fechaEjecucion, mezclaNombre, hectareas, pdfBuffer, pdfNombre, kmzBuffer = null, kmzNombre = null }) {
+    if (!destinatarios?.length) return;
+    const { nombre: marca, nombreHtml: marcaHtml, from } = await obtenerMarca();
+    const html = `
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.08);">
+        <div style="background: linear-gradient(135deg, #166534 0%, #22a35e 100%); padding: 28px 32px; text-align: center;">
+          <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">${marcaHtml}</h1>
+          <p style="color: rgba(255,255,255,.85); margin: 4px 0 0; font-size: 13px;">Sanidad Vegetal — Comprobante de aplicación</p>
+        </div>
+        <div style="padding: 32px;">
+          <p style="margin: 0 0 16px; color: #374151; font-size: 15px; line-height: 1.5;">Estimado(a),</p>
+          <p style="margin: 0 0 20px; color: #374151; font-size: 14px; line-height: 1.5;">
+            Le compartimos el comprobante <strong style="color: #166534;">${escaparHtml(numero)}</strong> de la aspersión realizada en la finca
+            <strong style="color: #166534;">${escaparHtml(fincaNombre)}</strong>${fechaEjecucion ? ` el <strong>${formatearFechaLarga(fechaEjecucion)}</strong>` : ''},
+            con la mezcla <strong>${escaparHtml(mezclaNombre)}</strong>${hectareas ? ` en <strong>${escaparHtml(String(Number(hectareas)))} hectáreas</strong>` : ''}.
+          </p>
+          <p style="margin: 0; color: #374151; font-size: 14px; line-height: 1.5;">
+            Adjunto encontrará el comprobante en PDF${kmzBuffer ? ' (con el mapa del recorrido en la segunda hoja) y el archivo KMZ del recorrido, que se abre en Google Earth' : ''}.
+          </p>
+        </div>
+        <div style="background: #f9fafb; padding: 16px 32px; text-align: center; border-top: 1px solid #e5e7eb;">
+          <p style="margin: 0; color: #9ca3af; font-size: 11px;">Este mensaje se generó automáticamente, por favor no respondas a este correo.</p>
+        </div>
+      </div>
+    `;
+    const attachments = [
+      { filename: pdfNombre || `${numero}.pdf`, content: pdfBuffer, contentType: 'application/pdf' },
+      ...(kmzBuffer ? [{ filename: kmzNombre || `${numero}.kmz`, content: kmzBuffer, contentType: 'application/vnd.google-earth.kmz' }] : []),
+    ];
+    if (!isConfigured || !transporter) {
+      console.log('═══════════════════════════════════════════════');
+      console.log('📧  MAIL SERVICE (no configurado) — comprobante de aspersión');
+      console.log(`To:  ${destinatarios.join(', ')}`);
+      console.log(`Adjuntos: ${attachments.map((a) => `${a.filename} (${a.content?.length ?? 0} bytes)`).join(', ')}`);
+      console.log('═══════════════════════════════════════════════');
+      return;
+    }
+    await transporter.sendMail({
+      from,
+      to: destinatarios,
+      cc: cc?.length ? cc : undefined,
+      subject: `${marca} — Comprobante de aspersión ${numero}: ${fincaNombre}`,
+      html,
+      attachments,
+    });
+  },
+
   // Notifica que una aspersión ya programada/avisada fue cancelada — sin
   // PDF adjunto (no hay un aviso nuevo que enviar, solo dar de baja el
   // anterior). Destinatarios: los mismos que Configuración → Programación

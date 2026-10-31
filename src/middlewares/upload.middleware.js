@@ -36,6 +36,15 @@ export const uploadFotosLabor = multer({
   },
 }).array('fotos', 10);
 
+// Correo del comprobante de aspersión: el PDF (armado en el navegador, con el mapa) y el KMZ del recorrido.
+export const uploadCorreoComprobante = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+}).fields([
+  { name: 'pdf', maxCount: 1 },
+  { name: 'kmz', maxCount: 1 },
+]);
+
 // Recorrido de la aplicación (KML) del comprobante de aspersión, hasta 15 MB (los registros de vuelo del dron pueden ser grandes).
 export const uploadKmlComprobante = multer({
   storage: multer.memoryStorage(),

@@ -13,6 +13,7 @@ import {
   UnidadMedida,
 } from '../../database/associations.js';
 import { claveCargo } from '../seguridad/cargo.service.js';
+import { mailService } from '../sistema/mail.service.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { generarCorrelativo } from '../../utils/correlativo.js';
@@ -147,6 +148,18 @@ async function galonesDeAspersion(aspersion, { transaction } = {}) {
   return Math.round(Number(aspersion.cantidadCalculada) * factor * 100) / 100;
 }
 
+// Volumen de aplicación por hectárea: la DOSIS CONFIGURADA de la mezcla llevada a galones por hectárea (sin el aumento de la
+// programación: si la mezcla es de 6 gal/ha y se programó con 8 % de aumento, queda 6 gal/ha). Null si no hay dosis o conversión.
+async function volumenConfiguradoGalHa(aspersion, { transaction } = {}) {
+  const dosis = Number(aspersion.mezcla?.dosisPorHectarea);
+  const unidadId = aspersion.mezcla?.dosisPorHectareaUnidadId || aspersion.mezcla?.unidadRendimientoId;
+  if (!(dosis > 0) || !unidadId) return null;
+  const galon = await UnidadMedida.findOne({ where: { nombre: 'Galón' }, transaction });
+  if (!galon) return null;
+  const factor = await resolverFactorConversion(unidadId, galon.id, { transaction });
+  return factor === null ? null : Math.round(dosis * factor * 100) / 100;
+}
+
 // Texto por defecto de las observaciones de un comprobante nuevo.
 export const OBSERVACION_COMPROBANTE_DEFECTO =
   'Cuatro horas después de finalizada la aspersión, una vez cumplido el periodo de reentrada, se recorrió el área de la finca y se observó un buen cubrimiento de la mezcla asperjada.';
@@ -201,7 +214,7 @@ export const comprobanteAspersionService = {
         humedadRelativaFinal: datos?.humedadRelativaFinal ?? null,
         horaInicio: datos?.horaInicio || null,
         horaFinal: datos?.horaFinal || null,
-        volumenAplicacionHa: datos?.volumenAplicacionHa ?? (galonesAuto && Number(aspersion.hectareas) > 0 ? Math.round((galonesAuto / Number(aspersion.hectareas)) * 100) / 100 : null),
+        volumenAplicacionHa: datos?.volumenAplicacionHa ?? (await volumenConfiguradoGalHa(aspersion, { transaction })),
         ejecutadoPorId: actorId,
         ejecutadoEn: new Date(),
         createdBy: actorId,
@@ -264,16 +277,8 @@ export const comprobanteAspersionService = {
     const data = { updatedBy: actorId };
     if (payload.piloto !== undefined) data.piloto = payload.piloto?.trim() || null;
     if (payload.medio !== undefined) data.medio = payload.medio || null;
-    if (payload.hectareasAplicadas !== undefined) data.hectareasAplicadas = payload.hectareasAplicadas;
-    if (payload.galonesTotales !== undefined) data.galonesTotales = payload.galonesTotales;
+    // Los datos de la ejecución (hectáreas, galones, aeronave, clima y horario) no se editan en el borrador.
     if (payload.observaciones !== undefined) data.observaciones = payload.observaciones?.trim() || null;
-    if (payload.aeronave !== undefined) data.aeronave = payload.aeronave?.trim() || null;
-    for (const campo of ['volumenAplicacionHa', 'temperaturaInicial', 'temperaturaFinal', 'velocidadViento', 'humedadRelativaFinal']) {
-      if (payload[campo] !== undefined) data[campo] = payload[campo];
-    }
-    for (const campo of ['horaInicio', 'horaFinal']) {
-      if (payload[campo] !== undefined) data[campo] = payload[campo] || null;
-    }
 
     await sequelize.transaction(async (transaction) => {
       const medio = data.medio !== undefined ? data.medio : comprobante.medio;
@@ -294,6 +299,10 @@ export const comprobanteAspersionService = {
     assertBorrador(comprobante);
     if (!comprobante.piloto?.trim() || !(Number(comprobante.hectareasAplicadas) > 0)) {
       throw ApiError.badRequest('Completa el piloto y las hectáreas aplicadas antes de emitir el comprobante');
+    }
+    // El recorrido (KML/KMZ) es obligatorio para aprobar: su mapa va en el PDF y el KMZ en el correo.
+    if (!comprobante.kmlNombre) {
+      throw ApiError.badRequest('Sube el recorrido (KML o KMZ) antes de aprobar el comprobante');
     }
     if (comprobante.medio === 'DRON' && !comprobante.pilotoColaboradorId) {
       throw ApiError.badRequest('Con dron, elige el piloto del listado de colaboradores antes de emitir el comprobante');
@@ -344,6 +353,31 @@ export const comprobanteAspersionService = {
     const comprobante = await cargarOFallar(uuid, user);
     assertBorrador(comprobante);
     await comprobanteAspersionRepository.update(comprobante, { kml: null, kmlNombre: null, kmlGeometria: null, kmlSubidoEn: null, updatedBy: actorId });
+    return this.getByUuid(uuid, user);
+  },
+
+  // Envía el comprobante YA EMITIDO por correo: el PDF (con el mapa) y el KMZ del recorrido, a los destinatarios configurados para
+  // la finca (Configuración → Programación de Aspersiones: roles de la finca, usuarios en copia y correos externos).
+  async enviarCorreo(uuid, { pdfBuffer, pdfNombre, kmzBuffer, kmzNombre }, actorId, user) {
+    const comprobante = await cargarOFallar(uuid, user);
+    if (comprobante.estado !== 'EMITIDO') throw ApiError.badRequest('Primero aprueba (emite) el comprobante; después se envía');
+    if (!pdfBuffer?.length) throw ApiError.badRequest('Falta el PDF del comprobante');
+    const { aspersionProgramacionService } = await import('./aspersionProgramacion.service.js');
+    const destinatarios = await aspersionProgramacionService.resolverDestinatariosConfigurados(comprobante.aspersion?.fincaId);
+    if (!destinatarios.length) throw ApiError.badRequest('No hay destinatarios configurados para la finca (Programación de Aspersiones → engranaje)');
+    await mailService.sendComprobanteAspersion({
+      destinatarios,
+      numero: comprobante.numero,
+      fincaNombre: comprobante.aspersion?.finca?.nombre || '',
+      fechaEjecucion: comprobante.ejecutadoEn ? new Date(new Date(comprobante.ejecutadoEn).getTime() - 5 * 3600 * 1000).toISOString().slice(0, 10) : null,
+      mezclaNombre: comprobante.aspersion?.mezcla?.nombre || comprobante.aspersion?.mezcla?.codigo || '',
+      hectareas: comprobante.hectareasAplicadas,
+      pdfBuffer,
+      pdfNombre,
+      kmzBuffer,
+      kmzNombre,
+    });
+    await comprobanteAspersionRepository.update(comprobante, { correoEnviadoEn: new Date(), correoEnviadoPorId: actorId });
     return this.getByUuid(uuid, user);
   },
 

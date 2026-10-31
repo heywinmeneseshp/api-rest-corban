@@ -4,7 +4,7 @@ import { auth } from '../../middlewares/auth.middleware.js';
 import { permission } from '../../middlewares/permission.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
-import { uploadKmlComprobante } from '../../middlewares/upload.middleware.js';
+import { uploadKmlComprobante, uploadCorreoComprobante } from '../../middlewares/upload.middleware.js';
 import {
   anularComprobanteAspersionSchema,
   reporteHectareasSchema,
@@ -37,6 +37,8 @@ router.put('/:uuid', auth, permission(PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION
 router.put('/:uuid/kml', auth, permission(PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_EDITAR), validate(getComprobanteAspersionSchema), uploadKmlComprobante, comprobanteAspersionController.subirKml);
 router.delete('/:uuid/kml', auth, permission(PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_EDITAR), validate(getComprobanteAspersionSchema), comprobanteAspersionController.quitarKml);
 router.get('/:uuid/kml', auth, permission(PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_VER), validate(getComprobanteAspersionSchema), comprobanteAspersionController.descargarKml);
+// Enviar por correo el comprobante ya emitido (PDF con el mapa + KMZ del recorrido).
+router.post('/:uuid/correo', auth, permission(PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_EMITIR), validate(getComprobanteAspersionSchema), uploadCorreoComprobante, comprobanteAspersionController.enviarCorreo);
 router.post('/:uuid/emitir', auth, permission(PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_EMITIR), validate(getComprobanteAspersionSchema), comprobanteAspersionController.emitir);
 router.post('/:uuid/anular', auth, permission(PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_ANULAR), validate(anularComprobanteAspersionSchema), comprobanteAspersionController.anular);
 router.post('/:uuid/regenerar', auth, permission(PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_ANULAR), validate(getComprobanteAspersionSchema), comprobanteAspersionController.regenerar);
