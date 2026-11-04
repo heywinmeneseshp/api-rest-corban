@@ -7,6 +7,11 @@ export const createAspersionSchema = Joi.object({
   body: Joi.object({
     fincaUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
     fecha: Joi.date().iso().required(),
+    // Programación parcial: días con sus hectáreas; deben sumar las hectáreas totales y empezar en `fecha`.
+    partes: Joi.array()
+      .items(Joi.object({ fecha: Joi.date().iso().required(), hectareas: Joi.number().positive().required() }))
+      .min(2)
+      .max(15),
     // Array: el aviso permite marcar más de una casilla a la vez (Sigatoka
     // Negra + Defoliador, por ejemplo).
     tipo: Joi.array().items(Joi.string().valid(...TIPOS)).min(1).required(),

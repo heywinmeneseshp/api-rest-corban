@@ -655,6 +655,15 @@ export const aspersionProgramacionService = {
     const mezcla = await resolveMezclaConDosis(payload.mezclaUuid);
 
     const hectareas = Number(payload.hectareas);
+    const partes = [...(payload.partes || [])].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+    if (partes.length) {
+      const dia = (f) => new Date(f).toISOString().slice(0, 10);
+      if (redondear2(partes.reduce((s, p) => s + Number(p.hectareas), 0)) !== redondear2(hectareas)) {
+        throw ApiError.badRequest(`Las hectáreas por día deben sumar ${hectareas}`);
+      }
+      if (new Set(partes.map((p) => dia(p.fecha))).size !== partes.length) throw ApiError.badRequest('Cada parte debe tener un día distinto');
+      if (dia(partes[0].fecha) !== dia(payload.fecha)) throw ApiError.badRequest('La primera parte debe ser la fecha de la aspersión');
+    }
     // Se sugiere sola (dosis × hectáreas), pero el operador la puede
     // corregir a mano antes de guardar (ej. redondear al tamaño real del
     // tanque de aspersión) — si vino en el payload, se respeta esa en vez
@@ -664,7 +673,9 @@ export const aspersionProgramacionService = {
     // La semana se resuelve contra la tabla `Semana` ya generada
     // (Configuración → Semanas) — si esa fecha todavía no tiene semana
     // generada, no bloquea la programación, solo queda sin semana asignada.
-    const semana = await semanaRepository.findByFecha(payload.fecha);
+    // El validador entrega un Date en UTC: se guarda ese día sin que la zona horaria del servidor lo corra.
+    const fechaDia = new Date(payload.fecha).toISOString().slice(0, 10);
+    const semana = await semanaRepository.findByFecha(fechaDia);
 
     return sequelize.transaction(async (t) => {
       const numero = await generarCorrelativo(AspersionProgramacion, { prefijo: MOTIVO_PREFIJO, columna: 'numero', transaction: t });
@@ -673,7 +684,7 @@ export const aspersionProgramacionService = {
         {
           numero,
           fincaId: finca.id,
-          fecha: payload.fecha,
+          fecha: fechaDia,
           semanaId: semana?.id || null,
           cicloParte: 1,
           tipo: payload.tipo,
@@ -707,6 +718,13 @@ export const aspersionProgramacionService = {
         await construirFilasComponentes({ componentesReceta, payloadComponentes: payload.componentes, actorId, transaction: t }),
         { transaction: t },
       );
+
+      // Programación parcial: se reparte igual que una ejecución parcial, una aspersión por día en el mismo ciclo.
+      let actual = await aspersionProgramacionRepository.findByUuid(aspersion.uuid, { transaction: t });
+      for (let i = 0; i < partes.length - 1; i += 1) {
+        const siguiente = await dividirParteParcial(actual, Number(partes[i].hectareas), partes[i + 1].fecha, actorId, { transaction: t });
+        actual = await aspersionProgramacionRepository.findByUuid(siguiente.uuid, { transaction: t });
+      }
 
       return aspersionProgramacionRepository.findByUuid(aspersion.uuid, { transaction: t });
     });
@@ -874,8 +892,8 @@ export const aspersionProgramacionService = {
     }
 
     if (payload.fecha) {
-      data.fecha = payload.fecha;
-      const semana = await semanaRepository.findByFecha(payload.fecha);
+      data.fecha = new Date(payload.fecha).toISOString().slice(0, 10);
+      const semana = await semanaRepository.findByFecha(data.fecha);
       data.semanaId = semana?.id || null;
     }
 
@@ -1275,6 +1293,19 @@ export const aspersionProgramacionService = {
         const comprobante = await comprobanteAspersionService.crearBorradorDesdeEjecucion(fresh, { ...datosComprobante, hectareasProgramadasTotal }, actorId, { transaction: t });
         // Una sola aspersión, un solo comprobante: la parte restante se sumará a este al ejecutarse.
         if (parteRestante) await AspersionProgramacion.update({ comprobanteParcialId: comprobante.id }, { where: { id: parteRestante.id }, transaction: t });
+        // Programada en partes desde el inicio: las demás partes pendientes también se suman a este comprobante.
+        const delCiclo = fresh.cicloUuid
+          ? await AspersionProgramacion.findAll({ where: { cicloUuid: fresh.cicloUuid, id: { [Op.ne]: fresh.id } }, attributes: ['id', 'estado', 'hectareas', 'observaciones', 'comprobanteParcialId'], transaction: t })
+          : [];
+        const esPorPartes = delCiclo.some((p) => /^Parte restante de /.test(p.observaciones || ''));
+        const sinVincular = esPorPartes ? delCiclo.filter((p) => p.estado === 'PROGRAMADA' && !p.comprobanteParcialId && p.id !== parteRestante?.id) : [];
+        if (sinVincular.length) {
+          await AspersionProgramacion.update({ comprobanteParcialId: comprobante.id }, { where: { id: sinVincular.map((p) => p.id) }, transaction: t });
+          await comprobante.update(
+            { hectareasProgramadas: Number(comprobante.hectareasProgramadas) + sinVincular.reduce((s, p) => s + Number(p.hectareas), 0) },
+            { transaction: t },
+          );
+        }
 
         // "Esta aspersión es del mismo ciclo que otra" (misma finca): se unen en un solo ciclo.
         if (datosComprobante?.cicloConAspersionUuid) {
