@@ -48,6 +48,10 @@ export const updateAspersionSchema = Joi.object({
   body: Joi.object({
     fincaUuid: Joi.string().guid({ version: 'uuidv4' }),
     fecha: Joi.date().iso(),
+    partes: Joi.array()
+      .items(Joi.object({ fecha: Joi.date().iso().required(), hectareas: Joi.number().positive().required() }))
+      .min(2)
+      .max(15),
     tipo: Joi.array().items(Joi.string().valid(...TIPOS)).min(1),
     mezclaUuid: Joi.string().guid({ version: 'uuidv4' }),
     almacenUuid: Joi.string().guid({ version: 'uuidv4' }),

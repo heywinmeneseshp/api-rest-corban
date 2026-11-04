@@ -472,6 +472,29 @@ async function dividirParteParcial(fresh, aplicadas, fechaRestante, actorId, { t
   return parte;
 }
 
+// Programación parcial: ordena las partes por fecha y exige que sumen las hectáreas y empiecen en la fecha de la aspersión.
+function validarPartes(partesPayload, hectareas, fecha) {
+  const partes = [...(partesPayload || [])].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+  if (!partes.length) return partes;
+  const dia = (f) => new Date(f).toISOString().slice(0, 10);
+  if (redondear2(partes.reduce((s, p) => s + Number(p.hectareas), 0)) !== redondear2(hectareas)) {
+    throw ApiError.badRequest(`Las hectáreas por día deben sumar ${Number(hectareas)}`);
+  }
+  if (new Set(partes.map((p) => dia(p.fecha))).size !== partes.length) throw ApiError.badRequest('Cada parte debe tener un día distinto');
+  if (dia(partes[0].fecha) !== dia(fecha)) throw ApiError.badRequest('La primera parte debe ser la fecha de la aspersión');
+  return partes;
+}
+
+// Se reparte igual que una ejecución parcial: una aspersión por día en el mismo ciclo.
+async function repartirEnPartes(uuid, partes, actorId, { transaction }) {
+  if (!partes.length) return;
+  let actual = await aspersionProgramacionRepository.findByUuid(uuid, { transaction });
+  for (let i = 0; i < partes.length - 1; i += 1) {
+    const siguiente = await dividirParteParcial(actual, Number(partes[i].hectareas), partes[i + 1].fecha, actorId, { transaction });
+    actual = await aspersionProgramacionRepository.findByUuid(siguiente.uuid, { transaction });
+  }
+}
+
 // Flujo de la programación: Programada → Revisada → Enviada → Ejecutada (o Cancelada). Ya revisada no se edita ni se elimina:
 // hay que quitar la revisión primero (o cancelarla, que avisa por correo).
 function assertNoRevisada(aspersion, accion = 'editarla') {
@@ -655,15 +678,7 @@ export const aspersionProgramacionService = {
     const mezcla = await resolveMezclaConDosis(payload.mezclaUuid);
 
     const hectareas = Number(payload.hectareas);
-    const partes = [...(payload.partes || [])].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
-    if (partes.length) {
-      const dia = (f) => new Date(f).toISOString().slice(0, 10);
-      if (redondear2(partes.reduce((s, p) => s + Number(p.hectareas), 0)) !== redondear2(hectareas)) {
-        throw ApiError.badRequest(`Las hectáreas por día deben sumar ${hectareas}`);
-      }
-      if (new Set(partes.map((p) => dia(p.fecha))).size !== partes.length) throw ApiError.badRequest('Cada parte debe tener un día distinto');
-      if (dia(partes[0].fecha) !== dia(payload.fecha)) throw ApiError.badRequest('La primera parte debe ser la fecha de la aspersión');
-    }
+    const partes = validarPartes(payload.partes, hectareas, payload.fecha);
     // Se sugiere sola (dosis × hectáreas), pero el operador la puede
     // corregir a mano antes de guardar (ej. redondear al tamaño real del
     // tanque de aspersión) — si vino en el payload, se respeta esa en vez
@@ -719,12 +734,7 @@ export const aspersionProgramacionService = {
         { transaction: t },
       );
 
-      // Programación parcial: se reparte igual que una ejecución parcial, una aspersión por día en el mismo ciclo.
-      let actual = await aspersionProgramacionRepository.findByUuid(aspersion.uuid, { transaction: t });
-      for (let i = 0; i < partes.length - 1; i += 1) {
-        const siguiente = await dividirParteParcial(actual, Number(partes[i].hectareas), partes[i + 1].fecha, actorId, { transaction: t });
-        actual = await aspersionProgramacionRepository.findByUuid(siguiente.uuid, { transaction: t });
-      }
+      await repartirEnPartes(aspersion.uuid, partes, actorId, { transaction: t });
 
       return aspersionProgramacionRepository.findByUuid(aspersion.uuid, { transaction: t });
     });
@@ -875,6 +885,7 @@ export const aspersionProgramacionService = {
     const aspersion = await this.getByUuid(uuid, user);
     assertProgramada(aspersion);
     assertNoRevisada(aspersion);
+    const partes = validarPartes(payload.partes, payload.hectareas ?? aspersion.hectareas, payload.fecha ?? aspersion.fecha);
 
     const data = { updatedBy: actorId };
 
@@ -938,6 +949,8 @@ export const aspersionProgramacionService = {
           { transaction: t },
         );
       }
+
+      await repartirEnPartes(uuid, partes, actorId, { transaction: t });
 
       return aspersionProgramacionRepository.findByUuid(uuid, { transaction: t });
     });
