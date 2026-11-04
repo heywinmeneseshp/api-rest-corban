@@ -59,6 +59,11 @@ export const aspersionProgramacionController = {
     ApiResponse.send(res, { message: 'Programación de aspersión eliminada correctamente' });
   }),
 
+  reprogramar: asyncHandler(async (req, res) => {
+    const data = await aspersionProgramacionService.reprogramar(req.params.uuid, req.body, req.user?.id, req.user);
+    ApiResponse.send(res, { message: 'Aspersión reprogramada correctamente', data });
+  }),
+
   revisar: asyncHandler(async (req, res) => {
     const aspersion = await aspersionProgramacionService.revisar(req.params.uuid, req.user?.id, req.user);
     ApiResponse.send(res, { message: 'Aspersión marcada como revisada', data: aspersion });

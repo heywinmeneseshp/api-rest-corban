@@ -66,6 +66,15 @@ export const updateAspersionSchema = Joi.object({
   query: Joi.object({}),
 });
 
+export const reprogramarAspersionSchema = Joi.object({
+  body: Joi.object({
+    fecha: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).required(),
+    motivo: Joi.string().trim().max(300).allow('', null),
+  }),
+  params: Joi.object({ uuid: uuidParam }),
+  query: Joi.object({}),
+});
+
 export const getAspersionSchema = Joi.object({
   body: Joi.object({}),
   params: Joi.object({ uuid: uuidParam }),
@@ -122,6 +131,8 @@ export const ejecutarAspersionSchema = Joi.object({
       // hectárea (gal/ha), clima y horario (HH:MM).
       // Ejecución parcial: fecha en que se hará la parte restante (por defecto, el día siguiente).
       fechaParteRestante: Joi.date().iso(),
+      // Ejecución parcial: true = hoy se prepara y descuenta toda la mezcla (la parte restante no descuenta).
+      prepararTodo: Joi.boolean(),
       // Esta aspersión es del mismo ciclo que otra de la MISMA finca (aplicación en varios días).
       cicloConAspersionUuid: Joi.string().guid({ version: 'uuidv4' }),
       aeronave: Joi.string().trim().max(150).allow(null, ''),

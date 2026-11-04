@@ -23,6 +23,8 @@ AspersionProgramacion.init(
     // Revisión: quién la marcó como revisada y cuándo (su firma va en el aviso). Se borra al editar la programación.
     revisadoPorId: { type: DataTypes.INTEGER, allowNull: true, field: 'revisado_por_id' },
     revisadoEn: { type: DataTypes.DATE, allowNull: true, field: 'revisado_en' },
+    // Parte restante de una ejecución parcial cuya mezcla ya se preparó completa: al ejecutarla no se descuenta otra vez.
+    insumosDescontados: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: 'insumos_descontados' },
     mezclaId: { type: DataTypes.INTEGER, allowNull: false, field: 'mezcla_id' },
     almacenId: { type: DataTypes.INTEGER, allowNull: false, field: 'almacen_id' },
     hectareas: { type: DataTypes.DECIMAL(10, 2), allowNull: false },

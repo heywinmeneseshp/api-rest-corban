@@ -10,6 +10,7 @@ import {
   createAspersionSchema,
   updateAspersionSchema,
   getAspersionSchema,
+  reprogramarAspersionSchema,
   listAspersionSchema,
   ejecutarAspersionSchema,
   enviarCorreoAspersionSchema,
@@ -67,6 +68,8 @@ router.patch(
 );
 router.delete('/:uuid', auth, permission(PERMISSIONS.SANIDAD_ASPERSIONES_ELIMINAR), validate(getAspersionSchema), aspersionProgramacionController.remove);
 router.post('/:uuid/cancelar', auth, permission(PERMISSIONS.SANIDAD_ASPERSIONES_ELIMINAR), validate(getAspersionSchema), aspersionProgramacionController.cancelar);
+// Cambiar la fecha y anunciarlo por correo.
+router.post('/:uuid/reprogramar', auth, permission(PERMISSIONS.SANIDAD_ASPERSIONES_EDITAR), validate(reprogramarAspersionSchema), aspersionProgramacionController.reprogramar);
 // Revisión de la programación (su firma va en el aviso de aspersión).
 router.post('/:uuid/revisar', auth, permission(PERMISSIONS.SANIDAD_ASPERSIONES_REVISAR), validate(getAspersionSchema), aspersionProgramacionController.revisar);
 router.delete('/:uuid/revisar', auth, permission(PERMISSIONS.SANIDAD_ASPERSIONES_REVISAR), validate(getAspersionSchema), aspersionProgramacionController.quitarRevision);

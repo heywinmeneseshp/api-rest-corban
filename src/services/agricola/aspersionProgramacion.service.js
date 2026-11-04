@@ -367,7 +367,7 @@ async function unirCicloInterno(a, b, actorId, { transaction } = {}) {
 
 // Ejecución PARCIAL: la aspersión queda con las hectáreas realmente ejecutadas (insumos proporcionales) y se
 // crea la parte siguiente del mismo ciclo, PROGRAMADA, con las hectáreas que faltan.
-async function dividirParteParcial(fresh, aplicadas, fechaRestante, actorId, { transaction }) {
+async function dividirParteParcial(fresh, aplicadas, fechaRestante, actorId, { transaction, prepararTodo = false }) {
   const programadas = Number(fresh.hectareas);
   const ratio = aplicadas / programadas;
   const restantes = redondear2(programadas - aplicadas);
@@ -390,6 +390,11 @@ async function dividirParteParcial(fresh, aplicadas, fechaRestante, actorId, { t
       hectareas: restantes,
       cantidadCalculada: Number(fresh.cantidadCalculada) * (1 - ratio),
       estado: 'PROGRAMADA',
+      // Es la misma aplicación: ya está revisada y avisada, se puede ejecutar sin repetir el flujo.
+      revisadoPorId: fresh.revisadoPorId ?? null,
+      revisadoEn: fresh.revisadoEn ?? null,
+      correoEnviadoEn: fresh.correoEnviadoEn ?? null,
+      insumosDescontados: Boolean(fresh.insumosDescontados || prepararTodo),
       representanteCorbanaNombre: fresh.representanteCorbanaNombre,
       administradorFincaNombre: fresh.administradorFincaNombre,
       observaciones: `Parte restante de ${fresh.numero} (ejecución parcial)`,
@@ -903,6 +908,42 @@ export const aspersionProgramacionService = {
     await aspersionProgramacionRepository.softDelete(aspersion, actorId);
   },
 
+  // Cambia la fecha (y la semana) de una aspersión programada, aunque ya esté revisada o enviada: conserva su estado y anuncia la
+  // reprogramación por correo a los mismos destinatarios que una cancelación (finca y pista solo si el aviso ya se había enviado).
+  // Si el correo falla, la fecha queda cambiada (igual que al cancelar). Devuelve la aspersión y si el correo salió.
+  async reprogramar(uuid, { fecha, motivo = null }, actorId, user) {
+    const aspersion = await this.getByUuid(uuid, user);
+    assertProgramada(aspersion);
+    const fechaAnterior = String(aspersion.fecha).slice(0, 10);
+    const nueva = String(fecha).slice(0, 10);
+    if (nueva === fechaAnterior) throw ApiError.badRequest('Elige una fecha distinta a la programada');
+    const semana = await semanaRepository.findByFecha(nueva);
+    await aspersionProgramacionRepository.update(aspersion, { fecha: nueva, semanaId: semana?.id || null, updatedBy: actorId });
+    const actualizada = await aspersionProgramacionRepository.findByUuid(uuid);
+
+    let correoEnviado = false;
+    try {
+      const destinatarios = await this.destinatariosCancelacion(actualizada);
+      if (destinatarios.length) {
+        await mailService.sendReprogramacionAspersion({
+          destinatarios,
+          numero: actualizada.numero,
+          fincaNombre: actualizada.finca?.nombre || '',
+          fechaAnterior,
+          fecha: nueva,
+          semanaCodigo: actualizada.semana?.codigo || '—',
+          tipo: actualizada.tipo,
+          mezclaNombre: actualizada.mezcla?.nombre || actualizada.mezcla?.codigo || '',
+          motivo: motivo?.trim() || null,
+        });
+        correoEnviado = true;
+      }
+    } catch (err) {
+      console.error('No se pudo enviar el correo de reprogramación de aspersión:', err.message);
+    }
+    return { aspersion: actualizada, correoEnviado };
+  },
+
   // Al cancelar, se avisa automáticamente por correo a los destinatarios
   // configurados para esta finca (Configuración → Programación de
   // Aspersiones → Destinatarios) — sin bloquear la cancelación si no hay
@@ -1052,10 +1093,14 @@ export const aspersionProgramacionService = {
         const aplicadas = Number(datosComprobante?.hectareasAplicadas);
         let parteRestante = null;
         if (Number.isFinite(aplicadas) && aplicadas > 0 && aplicadas < Number(fresh.hectareas)) {
-          parteRestante = await dividirParteParcial(fresh, aplicadas, datosComprobante?.fechaParteRestante, actorId, { transaction: t });
+          parteRestante = await dividirParteParcial(fresh, aplicadas, datosComprobante?.fechaParteRestante, actorId, {
+            transaction: t,
+            prepararTodo: datosComprobante?.prepararTodo === true,
+          });
           fresh = await aspersionProgramacionRepository.findByUuid(uuid, { transaction: t });
         }
 
+        const adicionalesNuevos = new Set();
         if (insumosAdicionales?.length) {
           const yaEstan = new Set(fresh.componentes.map((c) => c.articulo?.uuid));
           const vistos = new Set();
@@ -1066,6 +1111,7 @@ export const aspersionProgramacionService = {
             vistos.add(extra.articuloUuid);
             const fila = await filaInsumoAdicional(extra, actorId, { transaction: t });
             await AspersionProgramacionComponente.create({ ...fila, aspersionProgramacionId: fresh.id }, { transaction: t });
+            adicionalesNuevos.add(fila.articuloId);
           }
           fresh = await aspersionProgramacionRepository.findByUuid(uuid, { transaction: t });
         }
@@ -1078,7 +1124,14 @@ export const aspersionProgramacionService = {
         // por línea) — no se recalcula desde la receta en vivo de la
         // mezcla, así un cambio posterior a la receta no afecta una
         // aspersión ya programada.
-        for (const fila of fresh.componentes) {
+        // Parte con la mezcla ya preparada: solo se descuentan los adicionales nuevos. Si hoy se prepara toda la mezcla, se descuenta
+        // también lo de la parte restante.
+        const aDescontar = fresh.insumosDescontados ? fresh.componentes.filter((c) => adicionalesNuevos.has(c.articuloId)) : [...fresh.componentes];
+        if (parteRestante && datosComprobante?.prepararTodo === true && !fresh.insumosDescontados) {
+          const restante = await aspersionProgramacionRepository.findByUuid(parteRestante.uuid, { transaction: t });
+          aDescontar.push(...restante.componentes);
+        }
+        for (const fila of aDescontar) {
           const cantidadBase = await convertirACantidadBase(fila.articulo, fila.unidadId, Number(fila.cantidad), { transaction: t });
           await consumirStockConReceta(fresh.almacenId, fila.articulo, cantidadBase, {
             transaction: t,

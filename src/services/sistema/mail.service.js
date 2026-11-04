@@ -463,7 +463,7 @@ export const mailService = {
             Le informamos que en la finca <strong style="color: #166534;">${escaparHtml(fincaNombre)}</strong>
             (semana <strong>${escaparHtml(semanaCodigo)}</strong>) se realizará, el
             <strong>${fechaLegible}</strong>, el ciclo de aspersión para el control de
-            <strong>${tipoLabel}</strong> mediante la mezcla <strong>${escaparHtml(mezclaNombre)}</strong>.
+            <strong>${tipoLabel}</strong>${pistaNombre ? '' : ` mediante la mezcla <strong>${escaparHtml(mezclaNombre)}</strong>`}.
           </p>
           ${
             pistaNombre
@@ -473,7 +473,7 @@ export const mailService = {
               : ''
           }
           <p style="margin: 0; color: #374151; font-size: 14px; line-height: 1.5;">
-            Adjunto encontrará el aviso completo en formato PDF, con las instrucciones y las condiciones
+            Adjunto encontrará el aviso completo en formato PDF, con ${pistaNombre ? '' : 'las instrucciones y '}las condiciones
             climáticas requeridas para la aspersión.
           </p>
         </div>
@@ -558,6 +558,55 @@ export const mailService = {
   // anterior). Destinatarios: los mismos que Configuración → Programación
   // de Aspersiones tenga configurados para esta finca (ver
   // aspersionProgramacion.service.js#resolverDestinatariosConfigurados).
+  // Anuncia que una aspersión cambió de fecha.
+  async sendReprogramacionAspersion({ destinatarios, fincaNombre, fechaAnterior, fecha, semanaCodigo, tipo, mezclaNombre, numero, motivo = null }) {
+    if (!destinatarios?.length) return;
+
+    const TIPO_LABEL = { SIGATOKA_NEGRA: 'Sigatoka Negra', DEFOLIADOR: 'Defoliador', FERTILIZACION: 'Fertilización' };
+    const tipoLabel = (Array.isArray(tipo) ? tipo : [tipo]).map((t) => TIPO_LABEL[t] || t).join(' + ');
+    const anteriorLegible = formatearFechaLarga(fechaAnterior);
+    const fechaLegible = formatearFechaLarga(fecha);
+    const { nombre: marca, nombreHtml: marcaHtml, from } = await obtenerMarca();
+    const html = `
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.08);">
+        <div style="background: linear-gradient(135deg, #b45309 0%, #d97706 100%); padding: 28px 32px; text-align: center;">
+          <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">${marcaHtml}</h1>
+          <p style="color: rgba(255,255,255,.85); margin: 4px 0 0; font-size: 13px;">Sanidad Vegetal — Reprogramación de Aspersión</p>
+        </div>
+        <div style="padding: 32px;">
+          <p style="margin: 0 0 16px; color: #374151; font-size: 15px; line-height: 1.5;">Estimado(a),</p>
+          <p style="margin: 0; color: #374151; font-size: 14px; line-height: 1.5;">
+            Le informamos que la aspersión <strong>${escaparHtml(numero)}</strong> de la finca
+            <strong style="color: #b45309;">${escaparHtml(fincaNombre)}</strong>, para el control de
+            <strong>${tipoLabel}</strong> con la mezcla <strong>${escaparHtml(mezclaNombre)}</strong>,
+            prevista para el <strong>${anteriorLegible}</strong>, <strong>fue reprogramada para el ${fechaLegible}</strong>
+            (semana <strong>${escaparHtml(semanaCodigo)}</strong>).
+          </p>
+          ${motivo ? `<p style="margin: 16px 0 0; color: #374151; font-size: 14px; line-height: 1.5;"><strong>Motivo:</strong> ${escaparHtml(motivo)}</p>` : ''}
+          <p style="margin: 16px 0 0; color: #374151; font-size: 14px; line-height: 1.5;">
+            Agradecemos tener en cuenta esta novedad para la planificación de las labores en la finca.
+          </p>
+        </div>
+        <div style="background: #f9fafb; padding: 16px 32px; text-align: center; border-top: 1px solid #e5e7eb;">
+          <p style="margin: 0; color: #9ca3af; font-size: 11px;">Este mensaje se generó automáticamente, por favor no respondas a este correo.</p>
+        </div>
+      </div>
+    `;
+
+    if (!isConfigured || !transporter) {
+      console.log('📧  MAIL SERVICE (no configurado) — reprogramación de aspersión');
+      console.log(`To:  ${destinatarios.join(', ')} · ${fincaNombre} · ${anteriorLegible} -> ${fechaLegible}`);
+      return;
+    }
+
+    await transporter.sendMail({
+      from,
+      to: destinatarios,
+      subject: `${marca} — Reprogramación de aspersión: ${fincaNombre} (${fechaLegible})`,
+      html,
+    });
+  },
+
   async sendCancelacionAspersion({ destinatarios, fincaNombre, fecha, semanaCodigo, tipo, mezclaNombre }) {
     if (!destinatarios?.length) return;
 
