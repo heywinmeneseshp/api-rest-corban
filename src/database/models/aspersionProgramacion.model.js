@@ -25,6 +25,8 @@ AspersionProgramacion.init(
     revisadoEn: { type: DataTypes.DATE, allowNull: true, field: 'revisado_en' },
     // Parte restante de una ejecución parcial cuya mezcla ya se preparó completa: al ejecutarla no se descuenta otra vez.
     insumosDescontados: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: 'insumos_descontados' },
+    // Parte restante de una ejecución parcial: comprobante al que se suma cuando se ejecute.
+    comprobanteParcialId: { type: DataTypes.INTEGER, allowNull: true, field: 'comprobante_parcial_id' },
     mezclaId: { type: DataTypes.INTEGER, allowNull: false, field: 'mezcla_id' },
     almacenId: { type: DataTypes.INTEGER, allowNull: false, field: 'almacen_id' },
     hectareas: { type: DataTypes.DECIMAL(10, 2), allowNull: false },

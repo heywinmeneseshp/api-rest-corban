@@ -98,6 +98,8 @@ import { AspersionProgramacion } from './models/aspersionProgramacion.model.js';
 import { AspersionProgramacionComponente } from './models/aspersionProgramacionComponente.model.js';
 import { ComprobanteAspersion } from './models/comprobanteAspersion.model.js';
 import { ComprobanteAspersionParticipante } from './models/comprobanteAspersionParticipante.model.js';
+import { ComprobanteAspersionParte } from './models/comprobanteAspersionParte.model.js';
+import { AspersionCantidadAjuste } from './models/aspersionCantidadAjuste.model.js';
 import { IngredienteActivo } from './models/ingredienteActivo.model.js';
 import { FracCodigo } from './models/fracCodigo.model.js';
 import { GrupoQuimico } from './models/grupoQuimico.model.js';
@@ -800,6 +802,9 @@ export const setupAssociations = () => {
   // Piloto de dron y asistentes (colaboradores): cada uno suma las hectáreas aplicadas del comprobante.
   ComprobanteAspersion.belongsTo(Colaborador, { foreignKey: 'pilotoColaboradorId', as: 'pilotoColaborador' });
   ComprobanteAspersion.hasMany(ComprobanteAspersionParticipante, { foreignKey: 'comprobanteId', as: 'participantes' });
+  ComprobanteAspersion.hasMany(ComprobanteAspersionParte, { foreignKey: 'comprobanteId', as: 'partes' });
+  ComprobanteAspersionParte.belongsTo(AspersionProgramacion, { foreignKey: 'aspersionProgramacionId', as: 'aspersion' });
+  AspersionCantidadAjuste.belongsTo(User, { foreignKey: 'usuarioId', as: 'usuario' });
   ComprobanteAspersionParticipante.belongsTo(ComprobanteAspersion, { foreignKey: 'comprobanteId', as: 'comprobante' });
   ComprobanteAspersionParticipante.belongsTo(Colaborador, { foreignKey: 'colaboradorId', as: 'colaborador' });
   withAuditAssociations(ComprobanteAspersion);
@@ -915,6 +920,8 @@ export {
   AspersionProgramacionComponente,
   ComprobanteAspersion,
   ComprobanteAspersionParticipante,
+  ComprobanteAspersionParte,
+  AspersionCantidadAjuste,
   IngredienteActivo,
   FracCodigo,
   GrupoQuimico,

@@ -12,6 +12,8 @@ ComprobanteAspersionParticipante.init(
     comprobanteId: { type: DataTypes.INTEGER, allowNull: false, field: 'comprobante_id' },
     colaboradorId: { type: DataTypes.INTEGER, allowNull: false, field: 'colaborador_id' },
     rol: { type: DataTypes.ENUM('PILOTO', 'ASISTENTE'), allowNull: false },
+    // Hectáreas de esta persona cuando el comprobante tiene varias partes; NULL = las aplicadas del comprobante.
+    hectareas: { type: DataTypes.DECIMAL(12, 2), allowNull: true },
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
   },
   {

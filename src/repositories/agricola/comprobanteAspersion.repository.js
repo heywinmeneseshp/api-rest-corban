@@ -13,6 +13,7 @@ import {
   Pista,
   Colaborador,
   ComprobanteAspersionParticipante,
+  ComprobanteAspersionParte,
 } from '../../database/associations.js';
 
 const USUARIO_ATTRS = ['uuid', 'usuario', 'nombre', 'apellido', 'cargo'];
@@ -118,7 +119,32 @@ export const comprobanteAspersionRepository = {
     return ComprobanteAspersion.findOne({
       where: { uuid },
       attributes: { exclude: ['kml'] },
-      include: [aspersionInclude(undefined, { conInsumos: true }), ...USUARIOS_INCLUDE, PARTICIPANTES_INCLUDE],
+      include: [
+        aspersionInclude(undefined, { conInsumos: true }),
+        ...USUARIOS_INCLUDE,
+        PARTICIPANTES_INCLUDE,
+        {
+          model: ComprobanteAspersionParte,
+          as: 'partes',
+          include: [
+            {
+              model: AspersionProgramacion,
+              as: 'aspersion',
+              attributes: ['id', 'uuid', 'numero'],
+              include: [
+                {
+                  model: AspersionProgramacionComponente,
+                  as: 'componentes',
+                  include: [
+                    { model: Articulo, as: 'articulo', attributes: ['id', 'uuid', 'nombre', 'codigo'] },
+                    { model: UnidadMedida, as: 'unidad', attributes: ['uuid', 'nombre', 'simbolo'] },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
       transaction,
     });
   },

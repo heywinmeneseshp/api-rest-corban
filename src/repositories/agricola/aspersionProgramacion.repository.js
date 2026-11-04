@@ -73,7 +73,7 @@ const DETAIL_INCLUDE = [
             model: MezclaComponente,
             as: 'componentes',
             include: [
-              { model: Articulo, as: 'articulo', attributes: ['id', 'uuid', 'nombre', 'codigo', 'costoCompra', 'unidadMedidaId', 'manejaInventario'] },
+              { model: Articulo, as: 'articulo', attributes: ['id', 'uuid', 'nombre', 'codigo', 'costoCompra', 'unidadMedidaId', 'dosisUnidadId', 'manejaInventario'] },
               { model: UnidadMedida, as: 'unidad', attributes: ['uuid', 'nombre', 'simbolo', 'codigo'] },
             ],
           },
@@ -93,7 +93,7 @@ const DETAIL_INCLUDE = [
     model: AspersionProgramacionComponente,
     as: 'componentes',
     include: [
-      { model: Articulo, as: 'articulo', attributes: ['id', 'uuid', 'nombre', 'codigo', 'costoCompra', 'unidadMedidaId', 'manejaInventario'] },
+      { model: Articulo, as: 'articulo', attributes: ['id', 'uuid', 'nombre', 'codigo', 'costoCompra', 'unidadMedidaId', 'dosisUnidadId', 'manejaInventario'] },
       { model: UnidadMedida, as: 'unidad', attributes: ['uuid', 'nombre', 'simbolo', 'codigo'] },
     ],
   },

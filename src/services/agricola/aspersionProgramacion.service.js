@@ -8,6 +8,7 @@ import {
   MezclaComponente,
   Articulo,
   UnidadMedida,
+  AspersionCantidadAjuste,
   Almacen,
   MovimientoInventario,
   AspersionProgramacion,
@@ -288,6 +289,14 @@ async function adjuntarGalonesProgramados(rows) {
     const conteo = await AspersionProgramacion.findAll({ attributes: ['cicloUuid', [sequelize.fn('COUNT', sequelize.col('id')), 'n']], where: { cicloUuid: ciclos }, group: ['cicloUuid'], raw: true });
     const porCiclo = new Map(conteo.map((c) => [c.cicloUuid, Number(c.n)]));
     for (const r of rows) r.setDataValue('partesCiclo', porCiclo.get(r.cicloUuid) || 1);
+    // Ejecutada con una parte restante por ejecutar: en pantalla sale como «Ejecución parcial».
+    const pendientes = await AspersionProgramacion.findAll({
+      attributes: ['cicloUuid'],
+      where: { cicloUuid: ciclos, estado: 'PROGRAMADA', observaciones: { [Op.like]: 'Parte restante de %' } },
+      raw: true,
+    });
+    const conPendiente = new Set(pendientes.map((p) => p.cicloUuid));
+    for (const r of rows) r.setDataValue('ejecucionParcial', r.estado === 'EJECUTADA' && conPendiente.has(r.cicloUuid));
   }
   // Días desde la aspersión anterior de la MISMA finca (la más reciente con fecha anterior, sin contar las canceladas): `diasDesdeUltima`.
   const fincaIds = [...new Set(rows.map((r) => r.fincaId).filter(Boolean))];
@@ -335,6 +344,25 @@ async function adjuntarGalonesProgramados(rows) {
 
 const redondear2 = (n) => Math.round(Number(n) * 100) / 100;
 
+// Regla de redondeo de la programación para la parte de una ejecución parcial: 0.5 en la unidad propia del insumo, 0.1 el
+// ACONDICIONADOR y entero el Agua. Devuelve el paso expresado en la unidad de la fila.
+async function pasoRedondeoComponente(c, { transaction } = {}) {
+  const nombre = (c.articulo?.nombre || '').trim();
+  if (/^agua$/i.test(nombre)) return 1;
+  const paso = /^acondicionador$/i.test(nombre) ? 0.1 : 0.5;
+  const propia = c.articulo?.dosisUnidadId || c.articulo?.unidadMedidaId;
+  if (!propia || !c.unidadId || propia === c.unidadId) return paso;
+  const factor = await resolverFactorConversion(propia, c.unidadId, { transaction });
+  return factor ? paso * factor : paso;
+}
+
+// Si redondear deja la cantidad en 0 o se come toda la parte restante, se conserva la cantidad exacta.
+function redondearParcial(cantidadTotal, ratio, paso) {
+  const exacta = Number(cantidadTotal) * ratio;
+  const redondeada = Math.round(Math.round(exacta / paso) * paso * 1e6) / 1e6;
+  return redondeada > 0 && redondeada < Number(cantidadTotal) ? redondeada : exacta;
+}
+
 function sumarDias(fechaIso, dias) {
   const d = new Date(`${String(fechaIso).slice(0, 10)}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + dias);
@@ -372,7 +400,8 @@ async function dividirParteParcial(fresh, aplicadas, fechaRestante, actorId, { t
   const ratio = aplicadas / programadas;
   const restantes = redondear2(programadas - aplicadas);
   if (!(restantes > 0)) return null;
-  const fecha = fechaRestante ? String(fechaRestante).slice(0, 10) : sumarDias(fresh.fecha, 1);
+  // El validador la entrega como Date: String(Date) daría "Tue Oct 27" y se guardaría con otro año.
+  const fecha = fechaRestante ? new Date(fechaRestante).toISOString().slice(0, 10) : sumarDias(fresh.fecha, 1);
   const semana = await semanaRepository.findByFecha(fecha);
   const numero = await generarCorrelativo(AspersionProgramacion, { prefijo: MOTIVO_PREFIJO, columna: 'numero', transaction });
   const maxParte = (await AspersionProgramacion.max('cicloParte', { where: { cicloUuid: fresh.cicloUuid }, transaction })) || fresh.cicloParte || 1;
@@ -395,6 +424,7 @@ async function dividirParteParcial(fresh, aplicadas, fechaRestante, actorId, { t
       revisadoEn: fresh.revisadoEn ?? null,
       correoEnviadoEn: fresh.correoEnviadoEn ?? null,
       insumosDescontados: Boolean(fresh.insumosDescontados || prepararTodo),
+      comprobanteParcialId: fresh.comprobanteParcialId ?? null,
       representanteCorbanaNombre: fresh.representanteCorbanaNombre,
       administradorFincaNombre: fresh.administradorFincaNombre,
       observaciones: `Parte restante de ${fresh.numero} (ejecución parcial)`,
@@ -405,13 +435,18 @@ async function dividirParteParcial(fresh, aplicadas, fechaRestante, actorId, { t
     },
     { transaction },
   );
+  // Lo de hoy se redondea y la parte restante es lo que falta, así las dos partes suman lo programado.
+  const cantidadHoy = new Map();
+  for (const c of fresh.componentes) {
+    cantidadHoy.set(c.id, redondearParcial(c.cantidad, ratio, await pasoRedondeoComponente(c, { transaction })));
+  }
   await aspersionProgramacionRepository.replaceComponentes(
     parte.id,
     fresh.componentes.map((c) => ({
       articuloId: c.articuloId,
       unidadId: c.unidadId,
       cantidadCalculada: Number(c.cantidadCalculada) * (1 - ratio),
-      cantidad: Number(c.cantidad) * (1 - ratio),
+      cantidad: Number(c.cantidad) - cantidadHoy.get(c.id),
       esAdicional: Boolean(c.esAdicional),
       createdBy: actorId,
     })),
@@ -426,7 +461,7 @@ async function dividirParteParcial(fresh, aplicadas, fechaRestante, actorId, { t
   for (const c of fresh.componentes) {
     await aspersionProgramacionRepository.updateComponente(
       c,
-      { cantidadCalculada: Number(c.cantidadCalculada) * ratio, cantidad: Number(c.cantidad) * ratio, updatedBy: actorId },
+      { cantidadCalculada: Number(c.cantidadCalculada) * ratio, cantidad: cantidadHoy.get(c.id), updatedBy: actorId },
       { transaction },
     );
   }
@@ -525,6 +560,26 @@ export const aspersionProgramacionService = {
     const permitidos = getAlmacenIdsPermitidas(user);
     if (permitidos !== null && !permitidos.includes(aspersion.almacenId)) {
       throw ApiError.notFound('Programación de aspersión no encontrada');
+    }
+    return aspersion;
+  },
+
+  // Detalle para pantalla: cada insumo lleva `pasoRedondeo` para mostrar lo mismo que se descontará en una ejecución parcial.
+  async getDetalle(uuid, user) {
+    const aspersion = await this.getByUuid(uuid, user);
+    const historial = await AspersionCantidadAjuste.findAll({
+      where: { aspersionProgramacionId: aspersion.id },
+      include: [{ model: User, as: 'usuario', attributes: ['uuid', 'usuario', 'nombre', 'apellido'] }],
+      order: [['createdAt', 'DESC'], ['id', 'DESC']],
+    });
+    aspersion.setDataValue('historialCantidades', historial);
+    const kilogramo = await UnidadMedida.findOne({ where: { nombre: 'Kilogramo' }, attributes: ['id'] });
+    for (const c of aspersion.componentes || []) {
+      c.setDataValue('pasoRedondeo', await pasoRedondeoComponente(c));
+      // El ACONDICIONADOR se muestra siempre en kilogramos al ejecutar.
+      if (kilogramo && c.unidadId && /^acondicionador$/i.test((c.articulo?.nombre || '').trim())) {
+        c.setDataValue('factorKg', await resolverFactorConversion(c.unidadId, kilogramo.id));
+      }
     }
     return aspersion;
   },
@@ -1004,6 +1059,7 @@ export const aspersionProgramacionService = {
       cicloParte: p.cicloParte,
       mezcla: p.mezcla?.nombre || p.mezcla?.codigo || '—',
       actual: p.uuid === aspersion.uuid,
+      correoEnviadoEn: p.correoEnviadoEn,
     }));
   },
 
@@ -1092,12 +1148,38 @@ export const aspersionProgramacionService = {
         // Ejecución parcial: menos hectáreas que las programadas → parte restante pendiente en el mismo ciclo.
         const aplicadas = Number(datosComprobante?.hectareasAplicadas);
         let parteRestante = null;
-        if (Number.isFinite(aplicadas) && aplicadas > 0 && aplicadas < Number(fresh.hectareas)) {
+        const hectareasProgramadasTotal = Number(fresh.hectareas);
+        const esParcial = Number.isFinite(aplicadas) && aplicadas > 0 && aplicadas < Number(fresh.hectareas);
+        const ajustes = datosComprobante?.cantidadesAjustadas || [];
+        if (ajustes.length && fresh.insumosDescontados) throw ApiError.badRequest('La mezcla de esta parte ya se descontó: sus cantidades no se pueden modificar');
+        const aplicarAjustes = async () => {
+          for (const a of ajustes) {
+            const c = fresh.componentes.find((x) => x.uuid === a.componenteUuid);
+            if (!c) throw ApiError.badRequest('Uno de los insumos modificados no pertenece a esta aspersión');
+            await AspersionCantidadAjuste.create(
+              {
+                aspersionProgramacionId: fresh.id,
+                articuloNombre: c.articulo?.nombre || '—',
+                unidadSimbolo: c.unidad?.simbolo || null,
+                cantidadAnterior: c.cantidad,
+                cantidadNueva: a.cantidad,
+                usuarioId: actorId,
+              },
+              { transaction: t },
+            );
+            await aspersionProgramacionRepository.updateComponente(c, { cantidad: a.cantidad, updatedBy: actorId }, { transaction: t });
+          }
+        };
+        // Preparando solo lo de hoy el ajuste es de hoy y la parte restante no cambia; si no, es de toda la mezcla y se reparte.
+        const ajusteDeHoy = esParcial && datosComprobante?.prepararTodo !== true;
+        if (!ajusteDeHoy) await aplicarAjustes();
+        if (esParcial) {
           parteRestante = await dividirParteParcial(fresh, aplicadas, datosComprobante?.fechaParteRestante, actorId, {
             transaction: t,
             prepararTodo: datosComprobante?.prepararTodo === true,
           });
           fresh = await aspersionProgramacionRepository.findByUuid(uuid, { transaction: t });
+          if (ajusteDeHoy) await aplicarAjustes();
         }
 
         const adicionalesNuevos = new Set();
@@ -1112,6 +1194,19 @@ export const aspersionProgramacionService = {
             const fila = await filaInsumoAdicional(extra, actorId, { transaction: t });
             await AspersionProgramacionComponente.create({ ...fila, aspersionProgramacionId: fresh.id }, { transaction: t });
             adicionalesNuevos.add(fila.articuloId);
+            const articuloAdicional = await Articulo.findByPk(fila.articuloId, { attributes: ['nombre'], transaction: t });
+            const unidadAdicional = fila.unidadId ? await UnidadMedida.findByPk(fila.unidadId, { attributes: ['simbolo'], transaction: t }) : null;
+            await AspersionCantidadAjuste.create(
+              {
+                aspersionProgramacionId: fresh.id,
+                articuloNombre: articuloAdicional?.nombre || '—',
+                unidadSimbolo: unidadAdicional?.simbolo || null,
+                cantidadAnterior: null,
+                cantidadNueva: fila.cantidad,
+                usuarioId: actorId,
+              },
+              { transaction: t },
+            );
           }
           fresh = await aspersionProgramacionRepository.findByUuid(uuid, { transaction: t });
         }
@@ -1177,7 +1272,9 @@ export const aspersionProgramacionService = {
 
         // Comprobante de aplicación en BORRADOR, en la misma transacción: si
         // algo falla, no queda ejecutada una aspersión sin su comprobante.
-        const comprobante = await comprobanteAspersionService.crearBorradorDesdeEjecucion(fresh, datosComprobante, actorId, { transaction: t });
+        const comprobante = await comprobanteAspersionService.crearBorradorDesdeEjecucion(fresh, { ...datosComprobante, hectareasProgramadasTotal }, actorId, { transaction: t });
+        // Una sola aspersión, un solo comprobante: la parte restante se sumará a este al ejecutarse.
+        if (parteRestante) await AspersionProgramacion.update({ comprobanteParcialId: comprobante.id }, { where: { id: parteRestante.id }, transaction: t });
 
         // "Esta aspersión es del mismo ciclo que otra" (misma finca): se unen en un solo ciclo.
         if (datosComprobante?.cicloConAspersionUuid) {

@@ -12,7 +12,7 @@ export const aspersionProgramacionController = {
   }),
 
   getByUuid: asyncHandler(async (req, res) => {
-    const aspersion = await aspersionProgramacionService.getByUuid(req.params.uuid, req.user);
+    const aspersion = await aspersionProgramacionService.getDetalle(req.params.uuid, req.user);
     ApiResponse.send(res, { message: 'Programación de aspersión obtenida correctamente', data: aspersion });
   }),
 

@@ -4,6 +4,7 @@ import { Op } from 'sequelize';
 import {
   ComprobanteAspersion,
   ComprobanteAspersionParticipante,
+  ComprobanteAspersionParte,
   AspersionProgramacion,
   Colaborador,
   Cargo,
@@ -94,9 +95,27 @@ async function mapaPrincipales(mezclaIds) {
 // `aspersion.componentes` no sale en la respuesta; solo `insumos`.
 // `puedeRegenerar`: el comprobante está anulado y su aspersión no tiene otro vigente, así que se puede crear un borrador
 // nuevo con los mismos datos de la aplicación (ver regenerar()).
+// Día en hora de Bogotá.
+const diaBogota = (d) => new Date(new Date(d).getTime() - 5 * 3600 * 1000).toISOString().slice(0, 10);
+
 function aDto(comprobante, principalArticuloId, { puedeRegenerar = false } = {}) {
   const json = comprobante.toJSON();
-  const componentes = json.aspersion?.componentes || [];
+  // Con varias partes, las cantidades son la suma de lo ejecutado en todas (por insumo y unidad).
+  const partes = [...(json.partes || [])].sort((a, b) => (a.fecha === b.fecha ? a.id - b.id : a.fecha < b.fecha ? -1 : 1));
+  let componentes = json.aspersion?.componentes || [];
+  if (partes.length > 1) {
+    const suma = new Map();
+    for (const c of partes.flatMap((p) => p.aspersion?.componentes || [])) {
+      const k = `${c.articuloId}|${c.unidadId}`;
+      const x = suma.get(k);
+      if (x) x.cantidad = Number(x.cantidad) + Number(c.cantidad);
+      else suma.set(k, { ...c });
+    }
+    componentes = [...suma.values()];
+    // La dosis por hectárea del detalle se calcula sobre todas las hectáreas.
+    if (json.aspersion) json.aspersion.hectareas = partes.reduce((s, p) => s + Number(p.hectareas), 0);
+  }
+  json.partes = partes.map((p) => ({ fecha: p.fecha, hectareas: Number(p.hectareas), observaciones: p.observaciones, aspersion: p.aspersion?.numero || null }));
   json.insumos = ordenarComponentesReceta(componentes, principalArticuloId).map((c) => ({
     nombre: c.articulo?.nombre || '—',
     codigo: c.articulo?.codigo || null,
@@ -115,6 +134,48 @@ function aDto(comprobante, principalArticuloId, { puedeRegenerar = false } = {})
       .map((p) => ({ rol: p.rol, colaborador: { uuid: p.colaborador.uuid, nombre: nombreColaborador(p.colaborador), cargo: p.colaborador.cargo || null } }));
   }
   return json;
+}
+
+// Suma una parte ejecutada al comprobante: hectáreas, galones y las hectáreas de quienes participaron en esa parte.
+async function agregarParte(comprobante, aspersion, datos, actorId, { transaction } = {}) {
+  const hectareas = Number(datos?.hectareasAplicadas ?? aspersion.hectareas);
+  const previas = Number(comprobante.hectareasAplicadas) || 0;
+  const galones = datos?.galonesTotales ?? (await galonesDeAspersion(aspersion, { transaction }));
+  await ComprobanteAspersionParte.create(
+    {
+      comprobanteId: comprobante.id,
+      aspersionProgramacionId: aspersion.id,
+      fecha: diaBogota(new Date()),
+      hectareas,
+      observaciones: datos?.observaciones?.trim() || null,
+      createdBy: actorId,
+    },
+    { transaction },
+  );
+  if (comprobante.medio === 'DRON') {
+    const actuales = await ComprobanteAspersionParticipante.findAll({ where: { comprobanteId: comprobante.id }, transaction });
+    for (const p of actuales) if (p.hectareas === null) await p.update({ hectareas: previas }, { transaction });
+    const piloto = datos?.pilotoColaboradorUuid ? await colaboradorActivoOFallar(datos.pilotoColaboradorUuid, { transaction }) : null;
+    const hoy = new Map(piloto ? [[piloto.id, 'PILOTO']] : []);
+    for (const uuid of datos?.asistentesUuids || []) {
+      const a = await colaboradorActivoOFallar(uuid, { transaction });
+      if (!hoy.has(a.id)) hoy.set(a.id, 'ASISTENTE');
+    }
+    for (const [colaboradorId, rol] of hoy) {
+      const fila = actuales.find((p) => p.colaboradorId === colaboradorId);
+      if (fila) await fila.update({ hectareas: Number(fila.hectareas) + hectareas }, { transaction });
+      else await ComprobanteAspersionParticipante.create({ comprobanteId: comprobante.id, colaboradorId, rol, hectareas, createdBy: actorId }, { transaction });
+    }
+  }
+  await comprobante.update(
+    {
+      hectareasAplicadas: previas + hectareas,
+      ...(galones !== null && galones !== undefined ? { galonesTotales: (Number(comprobante.galonesTotales) || 0) + Number(galones) } : {}),
+      updatedBy: actorId,
+    },
+    { transaction },
+  );
+  return comprobante;
 }
 
 async function cargarOFallar(uuid, user) {
@@ -194,6 +255,12 @@ export const comprobanteAspersionService = {
     const existente = await comprobanteAspersionRepository.activeForAspersion(aspersion.id, { transaction });
     if (existente) return existente;
 
+    // Parte restante de una ejecución parcial: se suma al comprobante de la primera parte. Si ese se anuló, lleva uno propio.
+    if (aspersion.comprobanteParcialId) {
+      const vinculado = await ComprobanteAspersion.findByPk(aspersion.comprobanteParcialId, { transaction, lock: transaction?.LOCK.UPDATE });
+      if (vinculado?.estado === 'BORRADOR') return agregarParte(vinculado, aspersion, datos, actorId, { transaction });
+    }
+
     const galonesAuto = await galonesDeAspersion(aspersion, { transaction });
     const numero = await generarCorrelativo(ComprobanteAspersion, { prefijo: PREFIJO, columna: 'numero', transaction });
     const creado = await comprobanteAspersionRepository.create(
@@ -203,7 +270,7 @@ export const comprobanteAspersionService = {
         estado: 'BORRADOR',
         medio: aspersion.medio || null,
         piloto: datos?.piloto?.trim() || null,
-        hectareasProgramadas: aspersion.hectareas,
+        hectareasProgramadas: datos?.hectareasProgramadasTotal ?? aspersion.hectareas,
         hectareasAplicadas: datos?.hectareasAplicadas ?? aspersion.hectareas,
         galonesTotales: datos?.galonesTotales ?? galonesAuto,
         observaciones: datos?.observaciones?.trim() || OBSERVACION_COMPROBANTE_DEFECTO,
@@ -230,6 +297,17 @@ export const comprobanteAspersionService = {
       { transaction },
     );
     if (Object.keys(extra).length) await creado.update(extra, { transaction });
+    await ComprobanteAspersionParte.create(
+      {
+        comprobanteId: creado.id,
+        aspersionProgramacionId: aspersion.id,
+        fecha: diaBogota(creado.ejecutadoEn),
+        hectareas: creado.hectareasAplicadas,
+        observaciones: datos?.observaciones?.trim() || null,
+        createdBy: actorId,
+      },
+      { transaction },
+    );
     return creado;
   },
 
@@ -282,13 +360,17 @@ export const comprobanteAspersionService = {
 
     await sequelize.transaction(async (transaction) => {
       const medio = data.medio !== undefined ? data.medio : comprobante.medio;
-      const extra = await aplicarParticipantes(
-        comprobante,
-        medio,
-        { pilotoColaboradorUuid: payload.pilotoColaboradorUuid, asistentesUuids: payload.asistentesUuids },
-        actorId,
-        { transaction },
-      );
+      // Con varias partes cada persona lleva sus hectáreas: el piloto y los asistentes quedan como se registraron al ejecutar.
+      const extra =
+        (comprobante.partes?.length || 0) > 1
+          ? {}
+          : await aplicarParticipantes(
+              comprobante,
+              medio,
+              { pilotoColaboradorUuid: payload.pilotoColaboradorUuid, asistentesUuids: payload.asistentesUuids },
+              actorId,
+              { transaction },
+            );
       await comprobanteAspersionRepository.update(comprobante, { ...data, ...extra }, { transaction });
     });
     return this.getByUuid(uuid, user);
@@ -297,6 +379,10 @@ export const comprobanteAspersionService = {
   async emitir(uuid, actorId, user) {
     const comprobante = await cargarOFallar(uuid, user);
     assertBorrador(comprobante);
+    const pendiente = await AspersionProgramacion.findOne({ where: { comprobanteParcialId: comprobante.id, estado: 'PROGRAMADA' }, attributes: ['numero', 'fecha'] });
+    if (pendiente) {
+      throw ApiError.badRequest(`Falta ejecutar la parte restante ${pendiente.numero} (${pendiente.fecha}): ejecútala o cancélala antes de aprobar el comprobante`);
+    }
     if (!comprobante.piloto?.trim() || !(Number(comprobante.hectareasAplicadas) > 0)) {
       throw ApiError.badRequest('Completa el piloto y las hectáreas aplicadas antes de emitir el comprobante');
     }
@@ -403,7 +489,6 @@ export const comprobanteAspersionService = {
   // Hectáreas asperjadas por colaborador: cada participante (piloto o asistente) suma las hectáreas aplicadas del comprobante.
   // Sin anulados. Por día de ejecución (hora de Bogotá).
   async reporteHectareas(query, user) {
-    const diaBogota = (d) => new Date(new Date(d).getTime() - 5 * 3600 * 1000).toISOString().slice(0, 10);
     const desde = query.desde ? new Date(`${String(query.desde).slice(0, 10)}T00:00:00-05:00`) : null;
     const hasta = query.hasta ? new Date(`${String(query.hasta).slice(0, 10)}T23:59:59.999-05:00`) : null;
     const whereComp = { estado: query.soloEmitidos === true || query.soloEmitidos === 'true' ? 'EMITIDO' : { [Op.ne]: 'ANULADO' } };
@@ -448,7 +533,7 @@ export const comprobanteAspersionService = {
         aspersion: p.comprobante.aspersion?.numero || '—',
         comprobante: p.comprobante.numero,
         estado: p.comprobante.estado,
-        hectareas: Number(p.comprobante.hectareasAplicadas) || 0,
+        hectareas: Number(p.hectareas ?? p.comprobante.hectareasAplicadas) || 0,
       }))
       .sort((a, b) => (a.fecha === b.fecha ? a.colaborador.nombre.localeCompare(b.colaborador.nombre, 'es') : a.fecha < b.fecha ? 1 : -1));
     const sumar = (clave) => {
@@ -527,10 +612,26 @@ export const comprobanteAspersionService = {
       const participantes = await ComprobanteAspersionParticipante.findAll({ where: { comprobanteId: anulado.id }, transaction });
       if (participantes.length) {
         await ComprobanteAspersionParticipante.bulkCreate(
-          participantes.map((p) => ({ comprobanteId: creado.id, colaboradorId: p.colaboradorId, rol: p.rol, createdBy: actorId })),
+          participantes.map((p) => ({ comprobanteId: creado.id, colaboradorId: p.colaboradorId, rol: p.rol, hectareas: p.hectareas, createdBy: actorId })),
           { transaction },
         );
       }
+      // Las partes también, y la parte restante pendiente se sumará al borrador nuevo.
+      const partes = await ComprobanteAspersionParte.findAll({ where: { comprobanteId: anulado.id }, transaction });
+      if (partes.length) {
+        await ComprobanteAspersionParte.bulkCreate(
+          partes.map((p) => ({
+            comprobanteId: creado.id,
+            aspersionProgramacionId: p.aspersionProgramacionId,
+            fecha: p.fecha,
+            hectareas: p.hectareas,
+            observaciones: p.observaciones,
+            createdBy: actorId,
+          })),
+          { transaction },
+        );
+      }
+      await AspersionProgramacion.update({ comprobanteParcialId: creado.id }, { where: { comprobanteParcialId: anulado.id, estado: 'PROGRAMADA' }, transaction });
       return creado.uuid;
     });
 

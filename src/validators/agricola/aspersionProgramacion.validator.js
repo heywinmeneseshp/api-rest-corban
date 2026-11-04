@@ -133,6 +133,10 @@ export const ejecutarAspersionSchema = Joi.object({
       fechaParteRestante: Joi.date().iso(),
       // Ejecución parcial: true = hoy se prepara y descuenta toda la mezcla (la parte restante no descuenta).
       prepararTodo: Joi.boolean(),
+      // Cantidades modificadas al ejecutar, en la unidad de la fila. En parcial "solo hoy" son las de hoy; si no, las de toda la mezcla.
+      cantidadesAjustadas: Joi.array()
+        .items(Joi.object({ componenteUuid: Joi.string().guid({ version: 'uuidv4' }).required(), cantidad: Joi.number().positive().required() }))
+        .max(50),
       // Esta aspersión es del mismo ciclo que otra de la MISMA finca (aplicación en varios días).
       cicloConAspersionUuid: Joi.string().guid({ version: 'uuidv4' }),
       aeronave: Joi.string().trim().max(150).allow(null, ''),
