@@ -65,6 +65,18 @@ export const removeRoleSchema = Joi.object({
   query: Joi.object({}),
 });
 
+export const assignLugarSchema = Joi.object({
+  body: Joi.object({ lugarUuid: Joi.string().guid({ version: 'uuidv4' }).required() }),
+  params: Joi.object({ uuid: uuidParam }),
+  query: Joi.object({}),
+});
+
+export const removeLugarSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({ uuid: uuidParam, lugarUuid: Joi.string().guid({ version: 'uuidv4' }).required() }),
+  query: Joi.object({}),
+});
+
 export const assignFincaSchema = Joi.object({
   body: Joi.object({
     fincaUuid: Joi.string().guid({ version: 'uuidv4' }).required(),

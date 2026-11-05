@@ -1,6 +1,8 @@
 import { Op } from 'sequelize';
 import { sequelize } from '../../database/connection.js';
-import { Colaborador, ColaboradorRostro, ColaboradorRostroSolicitud, AsistenciaMarcacion, AsistenciaLugar, Finca, User } from '../../database/associations.js';
+import { Colaborador, ColaboradorRostro, ColaboradorRostroSolicitud, AsistenciaMarcacion, AsistenciaLugar, AsistenciaAvisoJornada, AsistenciaAvisoSuperior, Finca, User, Role, Permiso } from '../../database/associations.js';
+import { mailService } from '../sistema/mail.service.js';
+import { logger } from '../../utils/logger.js';
 import { alcanceColaboradores, enAlcance, MODULO_SANIDAD, MODULOS_COLABORADOR, puedeColaboradoresSanidad } from './colaborador.service.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
@@ -254,7 +256,120 @@ async function validarNombreLugar(nombre, exceptoId = null) {
   if (otro && otro.id !== exceptoId) throw ApiError.conflict('Ya existe un lugar con ese nombre');
 }
 
+// Resumen diario a los superiores: usuarios con el permiso, según el lugar PREDETERMINADO del colaborador. Sin fincas ni lugares
+// asignados reciben todos.
+async function enviarResumenesSuperiores(fecha, incompletas, detalle, r) {
+  const superiores = await User.findAll({
+    where: { estado: true },
+    attributes: ['id', 'nombre', 'apellido', 'email'],
+    include: [
+      {
+        model: Role,
+        as: 'roles',
+        attributes: ['id'],
+        required: true,
+        through: { attributes: [] },
+        include: [{ model: Permiso, as: 'permisos', attributes: ['id'], required: true, where: { codigo: PERMISSIONS.ASISTENCIA_RESUMEN_JORNADAS }, through: { attributes: [] } }],
+      },
+      { model: Finca, as: 'fincas', attributes: ['id'], through: { attributes: [] } },
+      { model: AsistenciaLugar, as: 'lugares', attributes: ['id'], through: { attributes: [] }, paranoid: false },
+    ],
+  });
+  if (!superiores.length) return;
+  const avisados = new Set((await AsistenciaAvisoSuperior.findAll({ where: { fecha }, attributes: ['usuarioId'] })).map((a) => a.usuarioId));
+  const fincaIds = [...new Set(incompletas.map((j) => j.colaborador.fincaId).filter(Boolean))];
+  const lugarIds = [...new Set(incompletas.map((j) => j.colaborador.lugarId).filter(Boolean))];
+  const nombresFinca = new Map((await Finca.findAll({ where: { id: fincaIds }, attributes: ['id', 'nombre'] })).map((f) => [f.id, f.nombre]));
+  const nombresLugar = new Map((await AsistenciaLugar.findAll({ where: { id: lugarIds }, attributes: ['id', 'nombre'], paranoid: false })).map((l) => [l.id, l.nombre]));
+
+  for (const s of superiores) {
+    const email = s.email?.trim();
+    if (!email || avisados.has(s.id)) continue;
+    const fincas = new Set(s.fincas.map((f) => f.id));
+    const lugares = new Set(s.lugares.map((l) => l.id));
+    const veTodo = !fincas.size && !lugares.size;
+    const filas = incompletas
+      .filter((j) => veTodo || fincas.has(j.colaborador.fincaId) || lugares.has(j.colaborador.lugarId))
+      .map((j) => ({
+        colaborador: j.colaborador.nombre,
+        lugar: nombresFinca.get(j.colaborador.fincaId) || nombresLugar.get(j.colaborador.lugarId) || 'Sin lugar predeterminado',
+        detalle: detalle.get(j).map((t) => `${t.lugar}: ${t.detalle}`).join(' · '),
+      }));
+    if (!filas.length) continue;
+    try {
+      await mailService.sendResumenJornadasIncompletas({ destinatario: email, nombre: nombreCompleto(s), fecha, filas });
+      await AsistenciaAvisoSuperior.create({ usuarioId: s.id, fecha, email });
+      r.resumenes += 1;
+    } catch (error) {
+      r.fallidos += 1;
+      logger.error('No se pudo enviar el resumen de jornadas incompletas', { usuarioId: s.id, fecha, message: error.message });
+    }
+  }
+}
+
 export const asistenciaService = {
+  // Correo a cada colaborador con jornada incompleta en `fecha` (por defecto ayer). Una vez por colaborador y día.
+  async enviarAvisosJornadaIncompleta(fecha = diaBogota(Date.now() - MS_DIA)) {
+    const rows = await AsistenciaMarcacion.findAll({
+      where: { fechaHora: { [Op.between]: [new Date(inicioDiaBogota(fecha).getTime() - MAX_TURNO_MS), new Date(finDiaBogota(fecha).getTime() + MAX_TURNO_MS)] } },
+      attributes: ['tipo', 'fechaHora'],
+      include: [
+        { model: Colaborador, as: 'colaborador', attributes: ['id', 'nombre', 'apellido', 'email', 'estado', 'fincaId', 'lugarId'] },
+        { model: Finca, as: 'finca', attributes: ['id', 'uuid', 'nombre'] },
+        { model: AsistenciaLugar, as: 'lugar', attributes: LUGAR_ATTRS, paranoid: false },
+      ],
+    });
+    const marcaciones = rows
+      .filter((r) => r.colaborador && (r.finca || r.lugar))
+      .map((r) => ({
+        tipo: r.tipo,
+        ms: new Date(isoUtc(r.fechaHora)).getTime(),
+        finca: ubicacionDe(r),
+        colaborador: {
+          id: r.colaborador.id,
+          nombre: nombreCompleto(r.colaborador),
+          email: r.colaborador.email,
+          estado: r.colaborador.estado,
+          fincaId: r.colaborador.fincaId,
+          lugarId: r.colaborador.lugarId,
+        },
+      }));
+    const incompletas = armarJornadas(marcaciones).filter((j) => j.fecha === fecha && j.incompleta && j.colaborador.estado);
+    const avisados = await AsistenciaAvisoJornada.findAll({ where: { fecha }, attributes: ['colaboradorId'] });
+    const yaAvisados = new Set(avisados.map((a) => a.colaboradorId));
+    const hora = (ms) => new Date(ms).toLocaleTimeString('es-CO', { timeZone: 'America/Bogota', hour: '2-digit', minute: '2-digit' });
+
+    const r = { fecha, incompletas: incompletas.length, enviados: 0, sinEmail: 0, resumenes: 0, fallidos: 0 };
+    const detalle = new Map(); // jornada → tramos, también para el resumen de los superiores
+    for (const j of incompletas) {
+      const tramos = j.tramos
+        .filter((t) => t.tipo === 'ESTANCIA' && (t.estado === 'SIN_SALIDA' || t.estado === 'SIN_ENTRADA'))
+        .map((t) =>
+          t.estado === 'SIN_SALIDA'
+            ? { lugar: t.finca.nombre, detalle: `Entrada a las ${hora(t.entrada)}: falta la salida` }
+            : { lugar: t.finca.nombre, detalle: `Salida a las ${hora(t.salida)}: falta la entrada` },
+        );
+      detalle.set(j, tramos);
+      if (yaAvisados.has(j.colaborador.id)) continue;
+      const email = j.colaborador.email?.trim();
+      if (!email) {
+        r.sinEmail += 1;
+        logger.info('Jornada incompleta sin email del colaborador', { colaboradorId: j.colaborador.id, fecha });
+        continue;
+      }
+      try {
+        await mailService.sendJornadaIncompleta({ destinatario: email, nombre: j.colaborador.nombre, fecha, tramos });
+        await AsistenciaAvisoJornada.create({ colaboradorId: j.colaborador.id, fecha, email });
+        r.enviados += 1;
+      } catch (error) {
+        r.fallidos += 1;
+        logger.error('No se pudo enviar el aviso de jornada incompleta', { colaboradorId: j.colaborador.id, fecha, message: error.message });
+      }
+    }
+    if (incompletas.length) await enviarResumenesSuperiores(fecha, incompletas, detalle, r);
+    return r;
+  },
+
   // ─── Enrolamiento ───
   // `muestras`: [{ pose, descriptor }] — una por ángulo. Con `reforzar` se agregan a las existentes (tope MAX_MUESTRAS);
   // si no, reemplazan todo. Los vectores anteriores se borran de verdad (no soft delete): es un dato biométrico.

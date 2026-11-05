@@ -233,6 +233,7 @@ export const PERMISOS_CATALOGO = [
           especial('asistencia.marcar', 'Marcar con rostro en este equipo (cualquier persona) y ver solo lo propio'),
           especial('asistencia.marcar_cuadrilla', 'Marcar la asistencia de otros y probar rostros'),
           especial('asistencia.lugares', 'Crear y editar lugares de asistencia (oficinas, plantas...)'),
+          especial('asistencia.resumen_jornadas', 'Recibir por correo el resumen diario de jornadas incompletas de sus fincas y lugares'),
           especial('asistencia.aprobar_rostro', 'Aprobar nuevos registros de rostro y quitar rostros', { sensible: true }),
         ],
       },

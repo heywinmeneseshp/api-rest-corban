@@ -58,6 +58,21 @@ export const userController = {
     ApiResponse.send(res, { message: 'Rol removido correctamente', data: null });
   }),
 
+  listLugares: asyncHandler(async (req, res) => {
+    const lugares = await userService.listUserLugares(req.params.uuid);
+    ApiResponse.send(res, { message: 'Lugares del usuario obtenidos correctamente', data: lugares });
+  }),
+
+  assignLugar: asyncHandler(async (req, res) => {
+    await userService.assignLugar(req.params.uuid, req.body.lugarUuid, req.user?.id);
+    ApiResponse.send(res, { message: 'Lugar asignado correctamente', data: null });
+  }),
+
+  removeLugar: asyncHandler(async (req, res) => {
+    await userService.removeLugar(req.params.uuid, req.params.lugarUuid);
+    ApiResponse.send(res, { message: 'Lugar removido correctamente', data: null });
+  }),
+
   listFincas: asyncHandler(async (req, res) => {
     const fincas = await userService.listUserFincas(req.params.uuid);
     ApiResponse.send(res, { message: 'Fincas del usuario obtenidas correctamente', data: fincas });

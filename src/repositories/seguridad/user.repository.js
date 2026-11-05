@@ -1,6 +1,6 @@
 import { Op } from 'sequelize';
-import { User, Role, Finca, Almacen } from '../../database/associations.js';
-import { UsuarioRol, UsuarioFinca, UsuarioAlmacen } from '../../database/models/pivotModels.js';
+import { User, Role, Finca, Almacen, AsistenciaLugar } from '../../database/associations.js';
+import { UsuarioRol, UsuarioFinca, UsuarioLugar, UsuarioAlmacen } from '../../database/models/pivotModels.js';
 
 export const userRepository = {
   async findAndCountAll({ limit, offset, search, fincaId }) {
@@ -30,16 +30,18 @@ export const userRepository = {
         { model: Role, as: 'roles', through: { attributes: [] } },
         { model: Finca, as: 'fincas', through: { attributes: [] }, attributes: ['id', 'uuid', 'codigo', 'nombre'] },
         { model: Almacen, as: 'almacenes', through: { attributes: [] }, attributes: ['id', 'uuid', 'codigo', 'nombre'] },
+        { model: AsistenciaLugar, as: 'lugares', through: { attributes: [] }, attributes: ['id', 'uuid', 'nombre'] },
       ],
       distinct: true,
     });
   },
 
-  findByUuid(uuid, { includeRoles = true, includeFincas = false, includeAlmacenes = false } = {}) {
+  findByUuid(uuid, { includeRoles = true, includeFincas = false, includeAlmacenes = false, includeLugares = false } = {}) {
     const include = [];
     if (includeRoles) include.push({ model: Role, as: 'roles', through: { attributes: [] } });
     if (includeFincas) include.push({ model: Finca, as: 'fincas', through: { attributes: [] } });
     if (includeAlmacenes) include.push({ model: Almacen, as: 'almacenes', through: { attributes: [] } });
+    if (includeLugares) include.push({ model: AsistenciaLugar, as: 'lugares', through: { attributes: [] } });
     return User.findOne({ where: { uuid }, include });
   },
 
@@ -125,6 +127,14 @@ export const userRepository = {
 
   removeFinca(userId, fincaId, { transaction } = {}) {
     return UsuarioFinca.destroy({ where: { userId, fincaId }, transaction });
+  },
+
+  async assignLugar(userId, lugarId, createdBy, { transaction } = {}) {
+    return UsuarioLugar.findOrCreate({ where: { userId, lugarId }, defaults: { userId, lugarId, createdBy }, transaction });
+  },
+
+  removeLugar(userId, lugarId, { transaction } = {}) {
+    return UsuarioLugar.destroy({ where: { userId, lugarId }, transaction });
   },
 
   async assignAlmacen(userId, almacenId, createdBy, { transaction } = {}) {

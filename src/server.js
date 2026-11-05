@@ -6,6 +6,7 @@ import { runPendingMigrationsAndSeeders } from './database/migrationRunner.js';
 import { iniciarJobAlertasSanidadVegetal } from './jobs/alertasSanidadVegetal.job.js';
 import { iniciarJobEstacionSinDatos } from './jobs/estacionSinDatos.job.js';
 import { iniciarJobOpenMeteo } from './jobs/openMeteo.job.js';
+import { iniciarJobJornadaIncompleta } from './jobs/jornadaIncompleta.job.js';
 import { logger } from './utils/logger.js';
 import { verificarCatalogo, describirProblemas } from './constants/permisosCatalogo.check.js';
 
@@ -41,6 +42,7 @@ const start = async () => {
     iniciarJobAlertasSanidadVegetal();
     iniciarJobEstacionSinDatos();
     iniciarJobOpenMeteo();
+    iniciarJobJornadaIncompleta();
 
     const shutdown = (signal) => {
       logger.info(`Señal ${signal} recibida, cerrando servidor...`);

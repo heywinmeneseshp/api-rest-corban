@@ -1,7 +1,7 @@
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { sequelize } from '../../database/connection.js';
-import { User, Role, Finca, Almacen } from '../../database/associations.js';
+import { User, Role, Finca, Almacen, AsistenciaLugar } from '../../database/associations.js';
 import { userRepository } from '../../repositories/seguridad/user.repository.js';
 import { mailService } from '../sistema/mail.service.js';
 import { resolverCargo } from './cargo.service.js';
@@ -188,6 +188,28 @@ export const userService = {
     if (!user) throw ApiError.notFound('Usuario no encontrado');
     const finca = await findFincaByUuidOrFail(fincaUuid);
     await userRepository.removeFinca(user.id, finca.id);
+  },
+
+  async listUserLugares(uuid) {
+    const user = await userRepository.findByUuid(uuid, { includeRoles: false, includeLugares: true });
+    if (!user) throw ApiError.notFound('Usuario no encontrado');
+    return user.lugares || [];
+  },
+
+  async assignLugar(uuid, lugarUuid, actorId) {
+    const user = await userRepository.findByUuid(uuid, { includeRoles: false });
+    if (!user) throw ApiError.notFound('Usuario no encontrado');
+    const lugar = await AsistenciaLugar.findOne({ where: { uuid: lugarUuid } });
+    if (!lugar) throw ApiError.notFound('Lugar no encontrado');
+    await userRepository.assignLugar(user.id, lugar.id, actorId);
+  },
+
+  async removeLugar(uuid, lugarUuid) {
+    const user = await userRepository.findByUuid(uuid, { includeRoles: false });
+    if (!user) throw ApiError.notFound('Usuario no encontrado');
+    const lugar = await AsistenciaLugar.findOne({ where: { uuid: lugarUuid }, paranoid: false });
+    if (!lugar) throw ApiError.notFound('Lugar no encontrado');
+    await userRepository.removeLugar(user.id, lugar.id);
   },
 
   async listUserAlmacenes(uuid) {

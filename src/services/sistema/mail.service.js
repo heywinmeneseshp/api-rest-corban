@@ -504,6 +504,74 @@ export const mailService = {
     });
   },
 
+  // Aviso al colaborador: su jornada del día quedó incompleta. `tramos`: [{ lugar, detalle }].
+  async sendJornadaIncompleta({ destinatario, nombre, fecha, tramos }) {
+    const { nombre: marca, nombreHtml: marcaHtml, from } = await obtenerMarca();
+    const fechaLegible = formatearFechaLarga(fecha);
+    const filas = tramos
+      .map((t) => `<li style="margin-bottom: 6px;"><strong>${escaparHtml(t.lugar)}</strong>: ${escaparHtml(t.detalle)}</li>`)
+      .join('');
+    const html = `
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.08);">
+        <div style="background: linear-gradient(135deg, #166534 0%, #22a35e 100%); padding: 28px 32px; text-align: center;">
+          <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">${marcaHtml}</h1>
+          <p style="color: rgba(255,255,255,.85); margin: 4px 0 0; font-size: 13px;">Asistencia — Jornada incompleta</p>
+        </div>
+        <div style="padding: 32px; color: #374151; font-size: 14px; line-height: 1.5;">
+          <p style="margin: 0 0 16px; font-size: 15px;">Hola, ${escaparHtml(nombre)}:</p>
+          <p style="margin: 0 0 12px;">Tu jornada del <strong>${fechaLegible}</strong> quedó incompleta:</p>
+          <ul style="margin: 0 0 16px; padding-left: 20px;">${filas}</ul>
+          <p style="margin: 0;">Si es un error, comunícate con tu supervisor o con el responsable de asistencia para corregirla.</p>
+        </div>
+        <div style="background: #f9fafb; padding: 16px 32px; text-align: center; border-top: 1px solid #e5e7eb;">
+          <p style="margin: 0; color: #9ca3af; font-size: 11px;">Este mensaje se generó automáticamente, por favor no respondas a este correo.</p>
+        </div>
+      </div>
+    `;
+
+    if (!isConfigured || !transporter) {
+      console.log(`📧  MAIL SERVICE (no configurado) — jornada incompleta: ${destinatario} ${fecha} ${tramos.map((t) => t.detalle).join(' | ')}`);
+      return;
+    }
+
+    await transporter.sendMail({ from, to: destinatario, subject: `${marca} — Jornada incompleta del ${fecha}`, html });
+  },
+
+  // Resumen al superior: colaboradores con jornada incompleta. `filas`: [{ colaborador, lugar, detalle }].
+  async sendResumenJornadasIncompletas({ destinatario, nombre, fecha, filas }) {
+    const { nombre: marca, nombreHtml: marcaHtml, from } = await obtenerMarca();
+    const celda = 'padding: 8px; border-bottom: 1px solid #e5e7eb; text-align: left;';
+    const cuerpo = filas
+      .map((f) => `<tr><td style="${celda}"><strong>${escaparHtml(f.colaborador)}</strong></td><td style="${celda}">${escaparHtml(f.lugar)}</td><td style="${celda}">${escaparHtml(f.detalle)}</td></tr>`)
+      .join('');
+    const html = `
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.08);">
+        <div style="background: linear-gradient(135deg, #166534 0%, #22a35e 100%); padding: 28px 32px; text-align: center;">
+          <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">${marcaHtml}</h1>
+          <p style="color: rgba(255,255,255,.85); margin: 4px 0 0; font-size: 13px;">Asistencia — Jornadas incompletas</p>
+        </div>
+        <div style="padding: 32px; color: #374151; font-size: 14px; line-height: 1.5;">
+          <p style="margin: 0 0 16px; font-size: 15px;">Hola, ${escaparHtml(nombre)}:</p>
+          <p style="margin: 0 0 12px;">Estos colaboradores dejaron incompleta su jornada del <strong>${formatearFechaLarga(fecha)}</strong>:</p>
+          <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+            <thead><tr><th style="${celda}">Colaborador</th><th style="${celda}">Lugar predeterminado</th><th style="${celda}">Qué falta</th></tr></thead>
+            <tbody>${cuerpo}</tbody>
+          </table>
+        </div>
+        <div style="background: #f9fafb; padding: 16px 32px; text-align: center; border-top: 1px solid #e5e7eb;">
+          <p style="margin: 0; color: #9ca3af; font-size: 11px;">Este mensaje se generó automáticamente, por favor no respondas a este correo.</p>
+        </div>
+      </div>
+    `;
+
+    if (!isConfigured || !transporter) {
+      console.log(`📧  MAIL SERVICE (no configurado) — resumen jornadas: ${destinatario} ${fecha} ${filas.length} filas: ${filas.map((f) => f.colaborador).join(', ')}`);
+      return;
+    }
+
+    await transporter.sendMail({ from, to: destinatario, subject: `${marca} — Jornadas incompletas del ${fecha} (${filas.length})`, html });
+  },
+
   // Comprobante de aplicación de aspersión (ya emitido): PDF (con el mapa del recorrido en la segunda hoja si hay KML) y, si hay,
   // el KMZ del recorrido.
   async sendComprobanteAspersion({ destinatarios, cc, numero, fincaNombre, fechaEjecucion, mezclaNombre, hectareas, pdfBuffer, pdfNombre, kmzBuffer = null, kmzNombre = null }) {

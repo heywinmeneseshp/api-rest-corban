@@ -210,7 +210,7 @@ router.get(
 router.get(
   '/lugares',
   auth,
-  permission(PERMISSIONS.ASISTENCIA_VER, PERMISSIONS.ASISTENCIA_LUGARES, ...PUEDE_MARCAR),
+  permission(PERMISSIONS.ASISTENCIA_VER, PERMISSIONS.ASISTENCIA_LUGARES, PERMISSIONS.MENU_MAESTROS_USUARIOS, ...PUEDE_MARCAR),
   validate(listarLugaresSchema),
   asyncHandler(async (req, res) => {
     ApiResponse.send(res, { message: 'Lugares obtenidos correctamente', data: await asistenciaService.listarLugares(req.query) });

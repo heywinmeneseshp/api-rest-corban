@@ -3,7 +3,7 @@ import { Role } from './models/role.model.js';
 import { Permiso } from './models/permiso.model.js';
 import { MenuItem } from './models/menuItem.model.js';
 import { RefreshToken } from './models/refreshToken.model.js';
-import { UsuarioRol, RolPermiso, UsuarioFinca, UsuarioAlmacen, ZonaFinca } from './models/pivotModels.js';
+import { UsuarioRol, RolPermiso, UsuarioFinca, UsuarioLugar, UsuarioAlmacen, ZonaFinca } from './models/pivotModels.js';
 
 import { Finca } from './models/finca.model.js';
 import { GrupoFinca } from './models/grupoFinca.model.js';
@@ -99,6 +99,8 @@ import { AspersionProgramacionComponente } from './models/aspersionProgramacionC
 import { ComprobanteAspersion } from './models/comprobanteAspersion.model.js';
 import { ComprobanteAspersionParticipante } from './models/comprobanteAspersionParticipante.model.js';
 import { ComprobanteAspersionParte } from './models/comprobanteAspersionParte.model.js';
+import { AsistenciaAvisoJornada } from './models/asistenciaAvisoJornada.model.js';
+import { AsistenciaAvisoSuperior } from './models/asistenciaAvisoSuperior.model.js';
 import { AspersionCantidadAjuste } from './models/aspersionCantidadAjuste.model.js';
 import { IngredienteActivo } from './models/ingredienteActivo.model.js';
 import { FracCodigo } from './models/fracCodigo.model.js';
@@ -156,6 +158,7 @@ export const setupAssociations = () => {
     otherKey: 'userId',
     as: 'usuarios',
   });
+  User.belongsToMany(AsistenciaLugar, { through: UsuarioLugar, foreignKey: 'userId', otherKey: 'lugarId', as: 'lugares' });
   UsuarioFinca.belongsTo(User, { foreignKey: 'userId', as: 'usuario' });
   UsuarioFinca.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
 
@@ -922,6 +925,9 @@ export {
   ComprobanteAspersionParticipante,
   ComprobanteAspersionParte,
   AspersionCantidadAjuste,
+  AsistenciaAvisoJornada,
+  AsistenciaAvisoSuperior,
+  UsuarioLugar,
   IngredienteActivo,
   FracCodigo,
   GrupoQuimico,

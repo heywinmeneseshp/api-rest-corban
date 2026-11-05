@@ -14,6 +14,8 @@ import {
   assignRoleSchema,
   removeRoleSchema,
   assignFincaSchema,
+  assignLugarSchema,
+  removeLugarSchema,
   removeFincaSchema,
   assignAlmacenSchema,
   removeAlmacenSchema,
@@ -244,6 +246,11 @@ router.delete(
   validate(removeFincaSchema),
   userController.removeFinca,
 );
+
+// Lugares de asistencia del usuario: definen de quiénes recibe el resumen de jornadas incompletas.
+router.get('/:uuid/lugares', auth, permission(PERMISSIONS.MENU_MAESTROS_USUARIOS), validate(getUserSchema), userController.listLugares);
+router.post('/:uuid/lugares', auth, permission(PERMISSIONS.MENU_MAESTROS_USUARIOS), validate(assignLugarSchema), userController.assignLugar);
+router.delete('/:uuid/lugares/:lugarUuid', auth, permission(PERMISSIONS.MENU_MAESTROS_USUARIOS), validate(removeLugarSchema), userController.removeLugar);
 
 /**
  * @openapi

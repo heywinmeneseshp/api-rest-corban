@@ -71,6 +71,25 @@ UsuarioFinca.init(
   },
 );
 
+export class UsuarioLugar extends Model {}
+
+UsuarioLugar.init(
+  {
+    id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
+    userId: { type: DataTypes.INTEGER, allowNull: false, field: 'user_id' },
+    lugarId: { type: DataTypes.INTEGER, allowNull: false, field: 'lugar_id' },
+    createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
+  },
+  {
+    sequelize,
+    modelName: 'UsuarioLugar',
+    tableName: 'usuario_lugares',
+    underscored: true,
+    timestamps: true,
+    updatedAt: false,
+  },
+);
+
 export class UsuarioAlmacen extends Model {}
 
 UsuarioAlmacen.init(
