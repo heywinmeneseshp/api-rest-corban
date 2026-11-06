@@ -101,30 +101,6 @@ const ubicacionDe = (m) =>
       ? { id: `l${m.lugar.id}`, uuid: m.lugar.uuid, nombre: m.lugar.nombre, tipo: m.lugar.tipo }
       : null;
 
-// Correo al colaborador que marca fuera del perímetro de la finca. Solo si marcó con internet: una marcación reciente. Las que suben
-// después desde la cola sin conexión se guardan sin avisar. No detiene la marcación si el correo falla.
-const MAX_MS_MARCACION_EN_LINEA = 5 * 60 * 1000;
-
-async function avisarFueraDelPerimetro(marcacion, finca, colaborador) {
-  try {
-    if (!finca || Date.now() - new Date(marcacion.fechaHora).getTime() > MAX_MS_MARCACION_EN_LINEA) return;
-    const fuera = await evaluadorFueraDelArea([marcacion]);
-    if (!fuera(marcacion)) return;
-    const c = await Colaborador.findByPk(colaborador.id, { attributes: ['email'] });
-    const email = c?.email?.trim();
-    if (!email) return;
-    await mailService.sendMarcacionFueraPerimetro({
-      destinatario: email,
-      nombre: nombreCompleto(colaborador),
-      fincaNombre: finca.nombre,
-      tipo: marcacion.tipo,
-      fechaHora: marcacion.fechaHora,
-    });
-  } catch (error) {
-    logger.error('No se pudo avisar la marcación fuera del perímetro', { message: error.message });
-  }
-}
-
 // Filtro por texto: nombre, apellido o identificación del colaborador.
 async function aplicarBusqueda(where, search) {
   const texto = String(search || '').trim();
@@ -140,8 +116,6 @@ async function aplicarBusqueda(where, search) {
 }
 
 // ─── Marcación fuera del área ───
-const RADIO_LUGAR_METROS = 300; // los lugares solo tienen un punto, no perímetro
-
 function perimetroDe(valor) {
   let datos = valor;
   if (typeof datos === 'string') {
@@ -179,7 +153,7 @@ async function evaluadorFueraDelArea(rows) {
   const fincaIds = [...new Set(rows.map((r) => r.fincaId).filter(Boolean))];
   const lugarIds = [...new Set(rows.map((r) => r.lugarId).filter(Boolean))];
   const fincas = fincaIds.length ? await Finca.findAll({ where: { id: fincaIds }, attributes: ['id', 'perimetro'], paranoid: false }) : [];
-  const lugares = lugarIds.length ? await AsistenciaLugar.findAll({ where: { id: lugarIds }, attributes: ['id', 'lat', 'lng'], paranoid: false }) : [];
+  const lugares = lugarIds.length ? await AsistenciaLugar.findAll({ where: { id: lugarIds }, attributes: ['id', 'lat', 'lng', 'radioMetros'], paranoid: false }) : [];
   const perimetros = new Map(fincas.map((f) => [f.id, perimetroDe(f.perimetro)]));
   const puntos = new Map(lugares.map((l) => [l.id, l]));
   return (m) => {
@@ -192,7 +166,7 @@ async function evaluadorFueraDelArea(rows) {
     }
     const lugar = puntos.get(m.lugarId);
     if (!lugar || lugar.lat === null || lugar.lng === null) return false;
-    return metrosEntre(lat, lng, Number(lugar.lat), Number(lugar.lng)) > RADIO_LUGAR_METROS;
+    return metrosEntre(lat, lng, Number(lugar.lat), Number(lugar.lng)) > lugar.radioMetros;
   };
 }
 
@@ -207,6 +181,7 @@ const mapLugar = (l) => ({
   direccion: l.direccion ?? null,
   lat: l.lat === null || l.lat === undefined ? null : Number(l.lat),
   lng: l.lng === null || l.lng === undefined ? null : Number(l.lng),
+  radioMetros: l.radioMetros,
   estado: l.estado,
 });
 
@@ -342,7 +317,7 @@ async function soloPropio(user, modulo = null) {
 
 const datosLugar = (d) => {
   const out = {};
-  for (const k of ['nombre', 'tipo', 'direccion', 'lat', 'lng', 'estado']) if (d[k] !== undefined) out[k] = k === 'nombre' ? String(d[k]).trim() : d[k];
+  for (const k of ['nombre', 'tipo', 'direccion', 'lat', 'lng', 'radioMetros', 'estado']) if (d[k] !== undefined) out[k] = k === 'nombre' ? String(d[k]).trim() : d[k];
   return out;
 };
 
@@ -711,8 +686,9 @@ export const asistenciaService = {
         createdBy: actorId,
       });
       yaRegistradas.add(item.uuid);
-      avisarFueraDelPerimetro(creada, finca, colaborador);
-      res('CREADA', { colaborador: { uuid: colaborador.uuid, nombre: nombreCompleto(colaborador) }, distancia: redondear(r.mejor.distancia) });
+      // La app avisa en pantalla si marcó fuera del sitio (solo cuando marca con internet y recibe esta respuesta).
+      const fueraDelPerimetro = (await evaluadorFueraDelArea([creada]))(creada);
+      res('CREADA', { colaborador: { uuid: colaborador.uuid, nombre: nombreCompleto(colaborador) }, distancia: redondear(r.mejor.distancia), fueraDelPerimetro });
     }
 
     const cuenta = (e) => resultados.filter((x) => x.estado === e).length;

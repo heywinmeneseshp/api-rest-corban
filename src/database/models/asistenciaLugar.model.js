@@ -16,6 +16,8 @@ AsistenciaLugar.init(
     direccion: { type: DataTypes.STRING(200), allowNull: true },
     lat: { type: DataTypes.DECIMAL(10, 7), allowNull: true },
     lng: { type: DataTypes.DECIMAL(10, 7), allowNull: true },
+    // Tolerancia alrededor del punto: más lejos es marcar fuera del área.
+    radioMetros: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 150, field: 'radio_metros' },
     estado: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
     updatedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'updated_by' },

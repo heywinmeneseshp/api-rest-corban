@@ -102,6 +102,7 @@ const camposLugar = {
   direccion: Joi.string().trim().max(200).allow('', null),
   lat: Joi.number().min(-90).max(90).allow(null),
   lng: Joi.number().min(-180).max(180).allow(null),
+  radioMetros: Joi.number().integer().min(10).max(5000),
   estado: Joi.boolean(),
 };
 
