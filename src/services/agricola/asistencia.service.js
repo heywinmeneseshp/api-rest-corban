@@ -101,6 +101,77 @@ const ubicacionDe = (m) =>
       ? { id: `l${m.lugar.id}`, uuid: m.lugar.uuid, nombre: m.lugar.nombre, tipo: m.lugar.tipo }
       : null;
 
+// Filtro por texto: nombre, apellido o identificación del colaborador.
+async function aplicarBusqueda(where, search) {
+  const texto = String(search || '').trim();
+  if (!texto) return;
+  const like = { [Op.like]: `%${texto}%` };
+  const filas = await Colaborador.findAll({
+    where: { [Op.or]: [{ nombre: like }, { apellido: like }, { documento: like }, sequelize.where(sequelize.fn('CONCAT_WS', ' ', sequelize.col('nombre'), sequelize.col('apellido')), like)] },
+    attributes: ['id'],
+    paranoid: false,
+    raw: true,
+  });
+  where.colaboradorId = { [Op.in]: filas.length ? filas.map((f) => f.id) : [0] };
+}
+
+// ─── Marcación fuera del área ───
+const RADIO_LUGAR_METROS = 300; // los lugares solo tienen un punto, no perímetro
+
+function perimetroDe(valor) {
+  let datos = valor;
+  if (typeof datos === 'string') {
+    try {
+      datos = JSON.parse(datos);
+    } catch {
+      return null;
+    }
+  }
+  if (!Array.isArray(datos)) return null;
+  const puntos = datos.filter((p) => Array.isArray(p) && p.length === 2 && Number.isFinite(Number(p[0])) && Number.isFinite(Number(p[1])));
+  return puntos.length > 2 ? puntos.map(([lat, lng]) => [Number(lat), Number(lng)]) : null;
+}
+
+// Punto en polígono (ray casting) con pares [lat, lng].
+export function puntoEnPoligono(lat, lng, poligono) {
+  let dentro = false;
+  for (let i = 0, j = poligono.length - 1; i < poligono.length; j = i, i += 1) {
+    const [yi, xi] = poligono[i];
+    const [yj, xj] = poligono[j];
+    if (yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) dentro = !dentro;
+  }
+  return dentro;
+}
+
+function metrosEntre(lat1, lng1, lat2, lng2) {
+  const rad = (g) => (g * Math.PI) / 180;
+  const a = Math.sin(rad(lat2 - lat1) / 2) ** 2 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(rad(lng2 - lng1) / 2) ** 2;
+  return 2 * 6371000 * Math.asin(Math.sqrt(a));
+}
+
+// Devuelve una función que dice si una marcación quedó fuera de su finca o lugar. Sin GPS, sin perímetro o sin punto guardado no se
+// puede saber y da false. Los perímetros se consultan una vez, no por cada marcación.
+async function evaluadorFueraDelArea(rows) {
+  const fincaIds = [...new Set(rows.map((r) => r.fincaId).filter(Boolean))];
+  const lugarIds = [...new Set(rows.map((r) => r.lugarId).filter(Boolean))];
+  const fincas = fincaIds.length ? await Finca.findAll({ where: { id: fincaIds }, attributes: ['id', 'perimetro'], paranoid: false }) : [];
+  const lugares = lugarIds.length ? await AsistenciaLugar.findAll({ where: { id: lugarIds }, attributes: ['id', 'lat', 'lng'], paranoid: false }) : [];
+  const perimetros = new Map(fincas.map((f) => [f.id, perimetroDe(f.perimetro)]));
+  const puntos = new Map(lugares.map((l) => [l.id, l]));
+  return (m) => {
+    if (m.lat === null || m.lng === null) return false;
+    const lat = Number(m.lat);
+    const lng = Number(m.lng);
+    if (m.fincaId) {
+      const poligono = perimetros.get(m.fincaId);
+      return poligono ? !puntoEnPoligono(lat, lng, poligono) : false;
+    }
+    const lugar = puntos.get(m.lugarId);
+    if (!lugar || lugar.lat === null || lugar.lng === null) return false;
+    return metrosEntre(lat, lng, Number(lugar.lat), Number(lugar.lng)) > RADIO_LUGAR_METROS;
+  };
+}
+
 // Alcance por fincas asignadas: el usuario ve las marcaciones de sus fincas y todas las de lugares (oficinas, etc.).
 const whereAlcance = (fincaIds) => (fincaIds ? { [Op.or]: [{ fincaId: { [Op.in]: fincaIds } }, { lugarId: { [Op.ne]: null } }] } : {});
 
@@ -649,6 +720,7 @@ export const asistenciaService = {
       const c = await findColaboradorOrFail(query.colaboradorUuid);
       where.colaboradorId = c.id;
     }
+    await aplicarBusqueda(where, query.search);
     const modulo = moduloAsistencia(query, user);
     if (modulo) Object.assign(where, { [Op.and]: [...(where[Op.and] || []), whereModulo(modulo)] });
     const propio = await soloPropio(user, modulo);
@@ -679,8 +751,10 @@ export const asistenciaService = {
     });
     const nombreAutor = new Map(autores.map((u) => [u.id, `${u.nombre} ${u.apellido || ''}`.trim()]));
 
+    const fueraDelArea = await evaluadorFueraDelArea(rows);
     const items = rows.map((m) => ({
       uuid: m.uuid,
+      fueraDelArea: fueraDelArea(m),
       colaborador: m.colaborador ? { uuid: m.colaborador.uuid, nombre: nombreCompleto(m.colaborador), documento: m.colaborador.documento, cargo: m.colaborador.cargo || null } : null,
       finca: m.finca ? { uuid: m.finca.uuid, nombre: m.finca.nombre } : null,
       lugar: m.lugar ? { uuid: m.lugar.uuid, nombre: m.lugar.nombre, tipo: m.lugar.tipo } : null,
@@ -720,6 +794,7 @@ export const asistenciaService = {
     };
     Object.assign(where, whereAlcance(getFincaIdsPermitidas(user)));
     if (query.colaboradorUuid) where.colaboradorId = (await findColaboradorOrFail(query.colaboradorUuid)).id;
+    await aplicarBusqueda(where, query.search);
     const modulo = moduloAsistencia(query, user);
     if (modulo) Object.assign(where, { [Op.and]: [...(where[Op.and] || []), whereModulo(modulo)] });
     const propio = await soloPropio(user, modulo);
@@ -727,20 +802,21 @@ export const asistenciaService = {
 
     const rows = await AsistenciaMarcacion.findAll({
       where,
-      attributes: ['tipo', 'fechaHora', 'lat', 'lng'],
+      attributes: ['tipo', 'fechaHora', 'lat', 'lng', 'fincaId', 'lugarId'],
       include: [
         { model: Colaborador, as: 'colaborador', attributes: ['id', 'uuid', 'nombre', 'apellido', 'documento', 'cargo'] },
         { model: Finca, as: 'finca', attributes: ['id', 'uuid', 'nombre'] },
         { model: AsistenciaLugar, as: 'lugar', attributes: LUGAR_ATTRS, paranoid: false },
       ],
     });
+    const fueraDelArea = await evaluadorFueraDelArea(rows);
     const marcaciones = rows
       .filter((r) => r.colaborador && (r.finca || r.lugar))
       .map((r) => ({
         tipo: r.tipo,
         ms: new Date(isoUtc(r.fechaHora)).getTime(),
         finca: ubicacionDe(r), // la «finca» de la jornada es la ubicación: finca o lugar
-        gps: r.lat === null || r.lng === null ? null : { lat: Number(r.lat), lng: Number(r.lng) },
+        gps: r.lat === null || r.lng === null ? null : { lat: Number(r.lat), lng: Number(r.lng), fueraDelArea: fueraDelArea(r) },
         colaborador: {
           id: r.colaborador.id,
           uuid: r.colaborador.uuid,
