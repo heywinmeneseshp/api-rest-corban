@@ -733,6 +733,14 @@ export const asistenciaService = {
       };
     }
     if (query.tipo) where.tipo = query.tipo;
+    if (query.alerta === 'SIN_GPS') where[Op.or] = [{ lat: null }, { lng: null }];
+    if (query.alerta === 'FUERA') {
+      // «Fuera del área» se calcula con el perímetro: se evalúan las que cumplen los demás filtros y se pagina sobre esas.
+      const candidatas = await AsistenciaMarcacion.findAll({ where, attributes: ['id', 'fincaId', 'lugarId', 'lat', 'lng'] });
+      const fuera = await evaluadorFueraDelArea(candidatas);
+      const ids = candidatas.filter(fuera).map((m) => m.id);
+      where.id = { [Op.in]: ids.length ? ids : [0] };
+    }
 
     const { rows, count } = await AsistenciaMarcacion.findAndCountAll({
       where,
@@ -830,6 +838,12 @@ export const asistenciaService = {
     const todas = armarJornadas(marcaciones, hoy)
       .filter((j) => j.fecha >= desde && j.fecha <= hasta)
       .filter((j) => !filtroId || j.tramos.some((t) => t.tipo === 'ESTANCIA' && t.finca.id === filtroId))
+      .filter((j) => {
+        if (!query.alerta) return true;
+        const estancias = j.tramos.filter((t) => t.tipo === 'ESTANCIA');
+        if (query.alerta === 'FUERA') return estancias.some((t) => t.entradaGps?.fueraDelArea || t.salidaGps?.fueraDelArea);
+        return estancias.some((t) => (t.entrada !== null && !t.entradaGps) || (t.salida !== null && !t.salidaGps));
+      })
       .sort((a, b) => b.fecha.localeCompare(a.fecha) || a.colaborador.nombre.localeCompare(b.colaborador.nombre, 'es'));
 
     const iso = (ms) => (ms === null ? null : new Date(ms).toISOString());
