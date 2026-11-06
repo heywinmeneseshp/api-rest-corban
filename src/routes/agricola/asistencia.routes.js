@@ -4,6 +4,8 @@ import { permission } from '../../middlewares/permission.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import { asistenciaService } from '../../services/agricola/asistencia.service.js';
+import { configuracionService } from '../../services/sistema/configuracion.service.js';
+import { requireAdmin } from '../../middlewares/requireAdmin.middleware.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { ApiResponse } from '../../utils/ApiResponse.js';
 import { HTTP_STATUS } from '../../constants/httpStatus.constants.js';
@@ -24,6 +26,24 @@ import {
 } from '../../validators/agricola/asistencia.validator.js';
 
 const router = Router();
+
+// Roles en copia de las alertas por correo.
+router.get(
+  '/alertas/destinatarios',
+  auth,
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { message: 'Destinatarios obtenidos correctamente', data: await configuracionService.getAsistenciaAlertasDestinatarios() });
+  }),
+);
+router.put(
+  '/alertas/destinatarios',
+  auth,
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { message: 'Destinatarios guardados correctamente', data: await configuracionService.setAsistenciaAlertasDestinatarios(req.body, req.user?.id) });
+  }),
+);
 
 // Quien marca (propio o cuadrilla) también necesita ver los colaboradores enrolados de su finca.
 const PUEDE_MARCAR = [PERMISSIONS.ASISTENCIA_MARCAR, PERMISSIONS.ASISTENCIA_MARCAR_CUADRILLA];

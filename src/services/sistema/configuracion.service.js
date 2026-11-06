@@ -19,6 +19,7 @@ export const CLAVE_OPEN_METEO_CONFIG = 'open_meteo_config';
 export const CLAVE_ASPERSION_RESUMEN_SEMANAL_DESTINATARIOS = 'aspersion_resumen_semanal_destinatarios';
 // Quién recibe el Informe semanal de producción (Reportes → Resumen semanal) al pulsar «Enviar».
 export const CLAVE_INFORME_SEMANAL_DESTINATARIOS = 'informe_semanal_destinatarios';
+export const CLAVE_ASISTENCIA_ALERTAS_DESTINATARIOS = 'asistencia_alertas_destinatarios';
 
 // "Cajas de 20kg" es el nombre convencional de la unidad, pero el peso neto
 // real de referencia es otro (ej. 18.6) — configurable en vez de fijo por
@@ -362,6 +363,24 @@ export const configuracionService = {
   },
 
   // Destinatarios del Informe semanal de producción: correos sueltos + roles + usuarios (sin filtro de finca). Sin configurar = nadie.
+  async getAsistenciaAlertasDestinatarios() {
+    const config = await configuracionRepository.findByClave(CLAVE_ASISTENCIA_ALERTAS_DESTINATARIOS);
+    const vacio = { jornadaIncompleta: { rolesUuids: [] } };
+    if (!config?.valor) return vacio;
+    try {
+      return { ...vacio, ...JSON.parse(config.valor) };
+    } catch {
+      return vacio;
+    }
+  },
+
+  async setAsistenciaAlertasDestinatarios(datos, actorId) {
+    const rolesUuids = [...new Set((datos?.jornadaIncompleta?.rolesUuids || []).filter((x) => typeof x === 'string'))];
+    const valor = { jornadaIncompleta: { rolesUuids } };
+    await configuracionRepository.upsert(CLAVE_ASISTENCIA_ALERTAS_DESTINATARIOS, JSON.stringify(valor), actorId);
+    return valor;
+  },
+
   async getInformeSemanalDestinatarios() {
     const config = await configuracionRepository.findByClave(CLAVE_INFORME_SEMANAL_DESTINATARIOS);
     const vacio = { correos: [], rolesUuids: [], usuariosUuids: [] };

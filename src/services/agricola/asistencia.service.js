@@ -2,6 +2,7 @@ import { Op } from 'sequelize';
 import { sequelize } from '../../database/connection.js';
 import { Colaborador, ColaboradorRostro, ColaboradorRostroSolicitud, AsistenciaMarcacion, AsistenciaLugar, AsistenciaAvisoJornada, AsistenciaAvisoSuperior, Finca, User, Role, Permiso } from '../../database/associations.js';
 import { mailService } from '../sistema/mail.service.js';
+import { configuracionService } from '../sistema/configuracion.service.js';
 import { logger } from '../../utils/logger.js';
 import { alcanceColaboradores, enAlcance, MODULO_SANIDAD, MODULOS_COLABORADOR, puedeColaboradoresSanidad } from './colaborador.service.js';
 import { ApiError } from '../../utils/ApiError.js';
@@ -411,6 +412,30 @@ export const asistenciaService = {
 
     const r = { fecha, incompletas: incompletas.length, enviados: 0, sinEmail: 0, resumenes: 0, fallidos: 0 };
     const detalle = new Map(); // jornada → tramos, también para el resumen de los superiores
+    const { jornadaIncompleta } = await configuracionService.getAsistenciaAlertasDestinatarios();
+    const usuariosCopia = jornadaIncompleta.rolesUuids.length
+      ? await User.findAll({
+          where: { estado: true },
+          attributes: ['id', 'email'],
+          include: [
+            { model: Role, as: 'roles', attributes: ['id'], required: true, where: { uuid: jornadaIncompleta.rolesUuids }, through: { attributes: [] } },
+            { model: Finca, as: 'fincas', attributes: ['id'], through: { attributes: [] } },
+            { model: AsistenciaLugar, as: 'lugares', attributes: ['id'], through: { attributes: [] }, paranoid: false },
+          ],
+        })
+      : [];
+    // Copia según el lugar predeterminado del colaborador: sus fincas y lugares asignados; sin ninguno asignado, todos.
+    const copiasDe = (colaborador) => [
+      ...new Set(
+        usuariosCopia
+          .filter((u) => {
+            const veTodo = !u.fincas.length && !u.lugares.length;
+            return veTodo || u.fincas.some((f) => f.id === colaborador.fincaId) || u.lugares.some((l) => l.id === colaborador.lugarId);
+          })
+          .map((u) => u.email?.trim())
+          .filter(Boolean),
+      ),
+    ];
     for (const j of incompletas) {
       const tramos = j.tramos
         .filter((t) => t.tipo === 'ESTANCIA' && (t.estado === 'SIN_SALIDA' || t.estado === 'SIN_ENTRADA'))
@@ -422,14 +447,17 @@ export const asistenciaService = {
       detalle.set(j, tramos);
       if (yaAvisados.has(j.colaborador.id)) continue;
       const email = j.colaborador.email?.trim();
+      const copias = copiasDe(j.colaborador);
       if (!email) {
         r.sinEmail += 1;
         logger.info('Jornada incompleta sin email del colaborador', { colaboradorId: j.colaborador.id, fecha });
-        continue;
+        if (!copias.length) continue;
       }
       try {
-        await mailService.sendJornadaIncompleta({ destinatario: email, nombre: j.colaborador.nombre, fecha, tramos });
-        await AsistenciaAvisoJornada.create({ colaboradorId: j.colaborador.id, fecha, email });
+        // Sin email del colaborador, el correo llega igual a quienes están en copia.
+        const para = email || copias[0];
+        await mailService.sendJornadaIncompleta({ destinatario: para, cc: copias.filter((c) => c !== para), nombre: j.colaborador.nombre, fecha, tramos });
+        await AsistenciaAvisoJornada.create({ colaboradorId: j.colaborador.id, fecha, email: para });
         r.enviados += 1;
       } catch (error) {
         r.fallidos += 1;

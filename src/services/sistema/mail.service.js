@@ -505,7 +505,7 @@ export const mailService = {
   },
 
   // Aviso al colaborador: su jornada del día quedó incompleta. `tramos`: [{ lugar, detalle }].
-  async sendJornadaIncompleta({ destinatario, nombre, fecha, tramos }) {
+  async sendJornadaIncompleta({ destinatario, cc = [], nombre, fecha, tramos }) {
     const { nombre: marca, nombreHtml: marcaHtml, from } = await obtenerMarca();
     const fechaLegible = formatearFechaLarga(fecha);
     const filas = tramos
@@ -534,7 +534,7 @@ export const mailService = {
       return;
     }
 
-    await transporter.sendMail({ from, to: destinatario, subject: `${marca} — Jornada incompleta del ${fecha}`, html });
+    await transporter.sendMail({ from, to: destinatario, cc: cc.length ? cc : undefined, subject: `${marca} — Jornada incompleta del ${fecha}`, html });
   },
 
   // Resumen al superior: colaboradores con jornada incompleta. `filas`: [{ colaborador, lugar, detalle }].
