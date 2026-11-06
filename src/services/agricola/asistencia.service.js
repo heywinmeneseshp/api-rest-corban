@@ -101,6 +101,30 @@ const ubicacionDe = (m) =>
       ? { id: `l${m.lugar.id}`, uuid: m.lugar.uuid, nombre: m.lugar.nombre, tipo: m.lugar.tipo }
       : null;
 
+// Correo al colaborador que marca fuera del perímetro de la finca. Solo si marcó con internet: una marcación reciente. Las que suben
+// después desde la cola sin conexión se guardan sin avisar. No detiene la marcación si el correo falla.
+const MAX_MS_MARCACION_EN_LINEA = 5 * 60 * 1000;
+
+async function avisarFueraDelPerimetro(marcacion, finca, colaborador) {
+  try {
+    if (!finca || Date.now() - new Date(marcacion.fechaHora).getTime() > MAX_MS_MARCACION_EN_LINEA) return;
+    const fuera = await evaluadorFueraDelArea([marcacion]);
+    if (!fuera(marcacion)) return;
+    const c = await Colaborador.findByPk(colaborador.id, { attributes: ['email'] });
+    const email = c?.email?.trim();
+    if (!email) return;
+    await mailService.sendMarcacionFueraPerimetro({
+      destinatario: email,
+      nombre: nombreCompleto(colaborador),
+      fincaNombre: finca.nombre,
+      tipo: marcacion.tipo,
+      fechaHora: marcacion.fechaHora,
+    });
+  } catch (error) {
+    logger.error('No se pudo avisar la marcación fuera del perímetro', { message: error.message });
+  }
+}
+
 // Filtro por texto: nombre, apellido o identificación del colaborador.
 async function aplicarBusqueda(where, search) {
   const texto = String(search || '').trim();
@@ -674,7 +698,7 @@ export const asistenciaService = {
         }
       }
 
-      await AsistenciaMarcacion.create({
+      const creada = await AsistenciaMarcacion.create({
         uuid: item.uuid,
         colaboradorId: colaborador.id,
         fincaId: finca ? finca.id : null,
@@ -687,6 +711,7 @@ export const asistenciaService = {
         createdBy: actorId,
       });
       yaRegistradas.add(item.uuid);
+      avisarFueraDelPerimetro(creada, finca, colaborador);
       res('CREADA', { colaborador: { uuid: colaborador.uuid, nombre: nombreCompleto(colaborador) }, distancia: redondear(r.mejor.distancia) });
     }
 

@@ -537,6 +537,36 @@ export const mailService = {
     await transporter.sendMail({ from, to: destinatario, subject: `${marca} — Jornada incompleta del ${fecha}`, html });
   },
 
+  // Aviso al colaborador: marcó fuera del perímetro de la finca.
+  async sendMarcacionFueraPerimetro({ destinatario, nombre, fincaNombre, tipo, fechaHora }) {
+    const { nombre: marca, nombreHtml: marcaHtml, from } = await obtenerMarca();
+    const cuando = new Date(fechaHora).toLocaleString('es-CO', { timeZone: 'America/Bogota', dateStyle: 'long', timeStyle: 'short' });
+    const accion = tipo === 'ENTRADA' ? 'entrada' : 'salida';
+    const html = `
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.08);">
+        <div style="background: linear-gradient(135deg, #166534 0%, #22a35e 100%); padding: 28px 32px; text-align: center;">
+          <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">${marcaHtml}</h1>
+          <p style="color: rgba(255,255,255,.85); margin: 4px 0 0; font-size: 13px;">Asistencia — Marcación fuera del perímetro</p>
+        </div>
+        <div style="padding: 32px; color: #374151; font-size: 14px; line-height: 1.5;">
+          <p style="margin: 0 0 16px; font-size: 15px;">Hola, ${escaparHtml(nombre)}:</p>
+          <p style="margin: 0 0 12px;">Tu marcación de <strong>${accion}</strong> del <strong>${escaparHtml(cuando)}</strong> quedó registrada fuera del perímetro de la finca <strong>${escaparHtml(fincaNombre)}</strong>.</p>
+          <p style="margin: 0;">Si es un error, comunícate con tu supervisor o con el responsable de asistencia.</p>
+        </div>
+        <div style="background: #f9fafb; padding: 16px 32px; text-align: center; border-top: 1px solid #e5e7eb;">
+          <p style="margin: 0; color: #9ca3af; font-size: 11px;">Este mensaje se generó automáticamente, por favor no respondas a este correo.</p>
+        </div>
+      </div>
+    `;
+
+    if (!isConfigured || !transporter) {
+      console.log(`📧  MAIL SERVICE (no configurado) — fuera del perímetro: ${destinatario} ${fincaNombre} ${cuando}`);
+      return;
+    }
+
+    await transporter.sendMail({ from, to: destinatario, subject: `${marca} — Marcación fuera del perímetro: ${fincaNombre}`, html });
+  },
+
   // Resumen al superior: colaboradores con jornada incompleta. `filas`: [{ colaborador, lugar, detalle }].
   async sendResumenJornadasIncompletas({ destinatario, nombre, fecha, filas }) {
     const { nombre: marca, nombreHtml: marcaHtml, from } = await obtenerMarca();
