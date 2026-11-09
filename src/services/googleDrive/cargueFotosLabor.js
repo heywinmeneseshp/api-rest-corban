@@ -318,4 +318,44 @@ export async function descargarArchivoDeDrive(fileId) {
   return { stream: contenido.data, mimeType: metadata.data.mimeType, nombre: metadata.data.name };
 }
 
-export default { cargarFotosLaborCultural, cargarFotosMezclaPrueba, cargarFirmaUsuario, eliminarFotoDeDrive, descargarArchivoDeDrive };
+// ─── Copias de seguridad de la base de datos ───
+// GOOGLE_DRIVE_FOLDER / Respaldos_Base_Datos / respaldo_corbana_AAAA-MM-DD.sql.gz
+const MODULO_RESPALDOS = 'Respaldos_Base_Datos';
+
+export async function listarRespaldos() {
+  const drive = getDrive();
+  const carpetaId = await obtenerCarpetaModulo(MODULO_RESPALDOS);
+  const archivos = [];
+  let pageToken;
+  do {
+    const r = await drive.files.list({
+      q: `'${carpetaId}' in parents and trashed=false`,
+      fields: 'nextPageToken, files(id, name, size, createdTime)',
+      pageSize: 200,
+      pageToken,
+      ...SHARED_DRIVE_OPTIONS,
+    });
+    archivos.push(...(r.data.files || []));
+    pageToken = r.data.nextPageToken;
+  } while (pageToken);
+  return archivos;
+}
+
+// `stream`: el contenido (ya comprimido). Devuelve el id del archivo en Drive.
+export async function subirRespaldo(nombre, stream) {
+  const drive = getDrive();
+  try {
+    const carpetaId = await obtenerCarpetaModulo(MODULO_RESPALDOS);
+    const subido = await drive.files.create({
+      resource: { name: nombre, parents: [carpetaId] },
+      media: { mimeType: 'application/gzip', body: stream },
+      fields: 'id, size',
+      supportsAllDrives: true,
+    });
+    return subido.data;
+  } catch (error) {
+    throw normalizarErrorGoogleDrive(error);
+  }
+}
+
+export default { cargarFotosLaborCultural, cargarFotosMezclaPrueba, cargarFirmaUsuario, eliminarFotoDeDrive, descargarArchivoDeDrive, listarRespaldos, subirRespaldo };
