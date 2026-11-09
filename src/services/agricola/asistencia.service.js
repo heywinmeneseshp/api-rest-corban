@@ -1,8 +1,9 @@
 import { Op } from 'sequelize';
 import { sequelize } from '../../database/connection.js';
-import { Colaborador, ColaboradorRostro, ColaboradorRostroSolicitud, AsistenciaMarcacion, AsistenciaLugar, AsistenciaAvisoJornada, AsistenciaAvisoSuperior, Finca, User, Role, Permiso } from '../../database/associations.js';
+import { Colaborador, ColaboradorRostro, ColaboradorRostroSolicitud, AsistenciaMarcacion, AsistenciaLugar, AsistenciaAvisoJornada, AsistenciaAvisoSuperior, Finca, User, Role, Permiso, Semana } from '../../database/associations.js';
 import { mailService } from '../sistema/mail.service.js';
 import { configuracionService } from '../sistema/configuracion.service.js';
+import { asistenciaNovedadService, whereColaboradores } from './asistenciaNovedad.service.js';
 import { logger } from '../../utils/logger.js';
 import { alcanceColaboradores, enAlcance, MODULO_SANIDAD, MODULOS_COLABORADOR, puedeColaboradoresSanidad } from './colaborador.service.js';
 import { ApiError } from '../../utils/ApiError.js';
@@ -405,7 +406,9 @@ export const asistenciaService = {
           lugarId: r.colaborador.lugarId,
         },
       }));
-    const incompletas = armarJornadas(marcaciones).filter((j) => j.fecha === fecha && j.incompleta && j.colaborador.estado);
+    // Quien tiene una novedad ese día (vacaciones, incapacidad...) no recibe la alerta.
+    const ausencias = await asistenciaNovedadService.ausenciasEn(fecha, fecha);
+    const incompletas = armarJornadas(marcaciones).filter((j) => j.fecha === fecha && j.incompleta && j.colaborador.estado && !ausencias.has(`${j.colaborador.id}|${fecha}`));
     const avisados = await AsistenciaAvisoJornada.findAll({ where: { fecha }, attributes: ['colaboradorId'] });
     const yaAvisados = new Set(avisados.map((a) => a.colaboradorId));
     const hora = (ms) => new Date(ms).toLocaleTimeString('es-CO', { timeZone: 'America/Bogota', hour: '2-digit', minute: '2-digit' });
@@ -805,6 +808,44 @@ export const asistenciaService = {
     return { items, meta: buildPaginationMeta({ page, limit, total: count }) };
   },
 
+  // Informe de horas trabajadas por semana y colaborador (semanas del calendario de la empresa). Suma el tiempo en lugares de
+  // cada jornada; una jornada incompleta no suma horas y se cuenta aparte.
+  async horasSemanales(query, user) {
+    const jornadas = [];
+    let rango = null;
+    for (let page = 1; ; page += 1) {
+      const r = await this.jornadas({ ...query, page, limit: 500 }, user);
+      rango = { desde: r.desde, hasta: r.hasta };
+      jornadas.push(...r.items);
+      if (page >= (r.meta?.totalPages || 1)) break;
+    }
+    const semanas = await Semana.findAll({
+      where: { fechaFin: { [Op.gte]: rango.desde }, fechaInicio: { [Op.lte]: rango.hasta } },
+      attributes: ['codigo', 'fechaInicio', 'fechaFin'],
+      order: [['fechaInicio', 'ASC']],
+      raw: true,
+    });
+    const semanaDe = (fecha) => semanas.find((s) => fecha >= String(s.fechaInicio).slice(0, 10) && fecha <= String(s.fechaFin).slice(0, 10))?.codigo || 'Sin semana';
+    const porColaborador = new Map();
+    for (const j of jornadas) {
+      const x = porColaborador.get(j.colaborador.uuid) || { colaborador: j.colaborador, semanas: {}, minutos: 0, dias: 0, incompletas: 0, novedades: 0 };
+      const codigo = semanaDe(j.fecha);
+      x.semanas[codigo] = (x.semanas[codigo] || 0) + (j.minutosEnFincas || 0);
+      x.minutos += j.minutosEnFincas || 0;
+      if (j.tramos.length) x.dias += 1;
+      if (j.incompleta && !j.novedad) x.incompletas += 1;
+      if (j.novedad) x.novedades += 1;
+      porColaborador.set(j.colaborador.uuid, x);
+    }
+    const columnas = semanas.map((s) => ({ codigo: s.codigo, desde: String(s.fechaInicio).slice(0, 10), hasta: String(s.fechaFin).slice(0, 10) }));
+    if ([...porColaborador.values()].some((x) => x.semanas['Sin semana'])) columnas.push({ codigo: 'Sin semana', desde: null, hasta: null });
+    return {
+      ...rango,
+      semanas: columnas,
+      items: [...porColaborador.values()].sort((a, b) => a.colaborador.nombre.localeCompare(b.colaborador.nombre, 'es')),
+    };
+  },
+
   async jornadas(query, user) {
     const { page, limit, offset } = getPagination(query);
     const hoy = diaBogota(Date.now());
@@ -873,6 +914,45 @@ export const asistenciaService = {
         return estancias.some((t) => (t.entrada !== null && !t.entradaGps) || (t.salida !== null && !t.salidaGps));
       })
       .sort((a, b) => b.fecha.localeCompare(a.fecha) || a.colaborador.nombre.localeCompare(b.colaborador.nombre, 'es'));
+
+    // Novedades (vacaciones, incapacidad...): el día lleva el tipo, y los días de ausencia sin marcaciones también se listan.
+    const ausencias = await asistenciaNovedadService.ausenciasEn(desde, hasta);
+    for (const j of todas) j.novedad = ausencias.get(`${j.colaborador.id}|${j.fecha}`)?.tipo || null;
+    if (ausencias.size && !query.alerta && !filtroId) {
+      const permitidos = new Set(
+        (
+          await Colaborador.findAll({
+            where: { ...whereColaboradores({ ...query, modulo }, user), ...(propio ? { id: propio.id } : {}) },
+            attributes: ['id'],
+            raw: true,
+          })
+        ).map((c) => c.id),
+      );
+      const yaListados = new Set(todas.map((j) => `${j.colaborador.id}|${j.fecha}`));
+      for (const [clave, a] of ausencias) {
+        const [id, fecha] = clave.split('|');
+        if (yaListados.has(clave) || !permitidos.has(Number(id)) || !a.colaborador) continue;
+        todas.push({
+          fecha,
+          colaborador: { id: a.colaborador.id, uuid: a.colaborador.uuid, nombre: nombreCompleto(a.colaborador), documento: a.colaborador.documento, cargo: a.colaborador.cargo || null },
+          primeraEntrada: null,
+          ultimaSalida: null,
+          primeraEntradaGps: null,
+          ultimaSalidaGps: null,
+          primeraEntradaLugar: null,
+          ultimaSalidaLugar: null,
+          minutosEnFincas: 0,
+          minutosTransito: 0,
+          minutosFuera: 0,
+          lugares: 0,
+          incompleta: false,
+          enCurso: false,
+          tramos: [],
+          novedad: a.tipo,
+        });
+      }
+      todas.sort((a, b) => b.fecha.localeCompare(a.fecha) || a.colaborador.nombre.localeCompare(b.colaborador.nombre, 'es'));
+    }
 
     const iso = (ms) => (ms === null ? null : new Date(ms).toISOString());
     const finca = (f) => ({ uuid: f.uuid, nombre: f.nombre, tipo: f.tipo });

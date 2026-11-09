@@ -174,6 +174,8 @@ export const colaboradorService = {
           documento: payload.documento || null,
           telefono: payload.telefono || null,
           email: payload.email || null,
+          fechaIngreso: payload.fechaIngreso ? new Date(payload.fechaIngreso).toISOString().slice(0, 10) : null,
+          vacacionesPrevias: Number(payload.vacacionesPrevias) || 0,
           ...cargoResuelto,
           fincaId,
           lugarId,
@@ -204,6 +206,8 @@ export const colaboradorService = {
     if (payload.documento !== undefined) data.documento = payload.documento || null;
     if (payload.telefono !== undefined) data.telefono = payload.telefono || null;
     if (payload.email !== undefined) data.email = payload.email || null;
+    if (payload.fechaIngreso !== undefined) data.fechaIngreso = payload.fechaIngreso ? new Date(payload.fechaIngreso).toISOString().slice(0, 10) : null;
+    if (payload.vacacionesPrevias !== undefined) data.vacacionesPrevias = Number(payload.vacacionesPrevias) || 0;
     if (payload.cargo !== undefined) Object.assign(data, await resolverCargo(payload.cargo));
     if (payload.estado !== undefined) data.estado = payload.estado;
     // Cambiar de módulo solo con el permiso general de colaboradores.

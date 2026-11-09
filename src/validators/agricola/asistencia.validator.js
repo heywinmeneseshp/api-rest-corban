@@ -143,3 +143,57 @@ export const eliminarMarcacionSchema = Joi.object({
   params: Joi.object({ uuid: uuidRef.required() }),
   query: Joi.object({}),
 });
+
+// ─── Novedades ───
+const TIPOS_NOVEDAD = ['VACACIONES', 'COMPENSATORIO_GANADO', 'COMPENSATORIO_TOMADO', 'INCAPACIDAD', 'PERMISO_REMUNERADO', 'PERMISO_NO_REMUNERADO', 'LICENCIA', 'CALAMIDAD'];
+const datosNovedad = {
+  tipo: Joi.string().valid(...TIPOS_NOVEDAD),
+  fechaDesde: Joi.date().iso(),
+  fechaHasta: Joi.date().iso(),
+  horas: Joi.number().positive().max(10000).allow(null),
+  referencia: Joi.string().max(100).allow('', null),
+  observaciones: Joi.string().max(1000).allow('', null),
+};
+export const listarNovedadesSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({}),
+  query: Joi.object({
+    page: Joi.number().integer().min(1),
+    limit: Joi.number().integer().min(1).max(100),
+    search: Joi.string().allow('').max(150),
+    tipo: Joi.string().valid(...TIPOS_NOVEDAD).allow(''),
+    desde: Joi.date().iso().allow(''),
+    hasta: Joi.date().iso().allow(''),
+    modulo: Joi.string().valid('GENERAL', 'SANIDAD_VEGETAL'),
+  }),
+});
+export const crearNovedadSchema = Joi.object({
+  body: Joi.object({
+    ...datosNovedad,
+    colaboradorUuid: uuidRef.required(),
+    tipo: datosNovedad.tipo.required(),
+    fechaDesde: datosNovedad.fechaDesde.required(),
+    fechaHasta: datosNovedad.fechaHasta.required(),
+  }),
+  params: Joi.object({}),
+  query: Joi.object({}),
+});
+export const actualizarNovedadSchema = Joi.object({
+  body: Joi.object(datosNovedad).min(1),
+  params: Joi.object({ uuid: uuidRef.required() }),
+  query: Joi.object({}),
+});
+export const novedadUuidSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({ uuid: uuidRef.required() }),
+  query: Joi.object({}),
+});
+export const saldoNovedadSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({ colaboradorUuid: uuidRef.required() }),
+  query: Joi.object({
+    desde: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).allow(''),
+    hasta: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).allow(''),
+    excluirUuid: uuidRef.allow(''),
+  }),
+});

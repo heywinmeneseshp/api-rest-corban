@@ -101,6 +101,7 @@ import { ComprobanteAspersionParticipante } from './models/comprobanteAspersionP
 import { ComprobanteAspersionParte } from './models/comprobanteAspersionParte.model.js';
 import { AsistenciaAvisoJornada } from './models/asistenciaAvisoJornada.model.js';
 import { AsistenciaAvisoSuperior } from './models/asistenciaAvisoSuperior.model.js';
+import { AsistenciaNovedad } from './models/asistenciaNovedad.model.js';
 import { AspersionCantidadAjuste } from './models/aspersionCantidadAjuste.model.js';
 import { IngredienteActivo } from './models/ingredienteActivo.model.js';
 import { FracCodigo } from './models/fracCodigo.model.js';
@@ -808,6 +809,7 @@ export const setupAssociations = () => {
   ComprobanteAspersion.hasMany(ComprobanteAspersionParte, { foreignKey: 'comprobanteId', as: 'partes' });
   ComprobanteAspersionParte.belongsTo(AspersionProgramacion, { foreignKey: 'aspersionProgramacionId', as: 'aspersion' });
   AspersionCantidadAjuste.belongsTo(User, { foreignKey: 'usuarioId', as: 'usuario' });
+  AsistenciaNovedad.belongsTo(Colaborador, { foreignKey: 'colaboradorId', as: 'colaborador' });
   ComprobanteAspersionParticipante.belongsTo(ComprobanteAspersion, { foreignKey: 'comprobanteId', as: 'comprobante' });
   ComprobanteAspersionParticipante.belongsTo(Colaborador, { foreignKey: 'colaboradorId', as: 'colaborador' });
   withAuditAssociations(ComprobanteAspersion);
@@ -927,6 +929,7 @@ export {
   AspersionCantidadAjuste,
   AsistenciaAvisoJornada,
   AsistenciaAvisoSuperior,
+  AsistenciaNovedad,
   UsuarioLugar,
   IngredienteActivo,
   FracCodigo,

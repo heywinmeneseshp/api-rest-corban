@@ -4,6 +4,14 @@ import { permission } from '../../middlewares/permission.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import { asistenciaService } from '../../services/agricola/asistencia.service.js';
+import { asistenciaNovedadService } from '../../services/agricola/asistenciaNovedad.service.js';
+import {
+  listarNovedadesSchema,
+  crearNovedadSchema,
+  actualizarNovedadSchema,
+  novedadUuidSchema,
+  saldoNovedadSchema,
+} from '../../validators/agricola/asistencia.validator.js';
 import { configuracionService } from '../../services/sistema/configuracion.service.js';
 import { requireAdmin } from '../../middlewares/requireAdmin.middleware.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
@@ -26,6 +34,32 @@ import {
 } from '../../validators/agricola/asistencia.validator.js';
 
 const router = Router();
+
+// ─── Novedades: vacaciones, compensatorios, incapacidades y permisos ───
+const VER_NOVEDADES = permission(PERMISSIONS.ASISTENCIA_NOVEDADES_VER, PERMISSIONS.ASISTENCIA_NOVEDADES_GESTIONAR);
+const GESTIONAR_NOVEDADES = permission(PERMISSIONS.ASISTENCIA_NOVEDADES_GESTIONAR);
+router.get('/novedades', auth, VER_NOVEDADES, validate(listarNovedadesSchema), asyncHandler(async (req, res) => {
+  ApiResponse.send(res, { message: 'Novedades obtenidas correctamente', data: await asistenciaNovedadService.listar(req.query, req.user) });
+}));
+router.get('/novedades/saldos', auth, VER_NOVEDADES, validate(listarNovedadesSchema), asyncHandler(async (req, res) => {
+  ApiResponse.send(res, { message: 'Saldos obtenidos correctamente', data: await asistenciaNovedadService.saldos(req.query, req.user) });
+}));
+router.get('/novedades/colaboradores', auth, GESTIONAR_NOVEDADES, asyncHandler(async (req, res) => {
+  ApiResponse.send(res, { message: 'Colaboradores obtenidos correctamente', data: await asistenciaNovedadService.colaboradores(req.user) });
+}));
+router.get('/novedades/saldo/:colaboradorUuid', auth, VER_NOVEDADES, validate(saldoNovedadSchema), asyncHandler(async (req, res) => {
+  ApiResponse.send(res, { message: 'Saldo obtenido correctamente', data: await asistenciaNovedadService.saldoDe(req.params.colaboradorUuid, req.user, req.query) });
+}));
+router.post('/novedades', auth, GESTIONAR_NOVEDADES, validate(crearNovedadSchema), asyncHandler(async (req, res) => {
+  ApiResponse.send(res, { statusCode: HTTP_STATUS.CREATED, message: 'Novedad registrada', data: await asistenciaNovedadService.crear(req.body, req.user?.id, req.user) });
+}));
+router.put('/novedades/:uuid', auth, GESTIONAR_NOVEDADES, validate(actualizarNovedadSchema), asyncHandler(async (req, res) => {
+  ApiResponse.send(res, { message: 'Novedad actualizada', data: await asistenciaNovedadService.actualizar(req.params.uuid, req.body, req.user?.id, req.user) });
+}));
+router.delete('/novedades/:uuid', auth, GESTIONAR_NOVEDADES, validate(novedadUuidSchema), asyncHandler(async (req, res) => {
+  await asistenciaNovedadService.eliminar(req.params.uuid, req.user?.id, req.user);
+  ApiResponse.send(res, { message: 'Novedad eliminada', data: null });
+}));
 
 // Roles en copia de las alertas por correo.
 router.get(
@@ -207,6 +241,15 @@ router.get(
  *     responses:
  *       200: { description: OK }
  */
+router.get(
+  '/horas-semanales',
+  auth,
+  permission(PERMISSIONS.ASISTENCIA_VER, PERMISSIONS.SV_COLABORADOR_VER, ...PUEDE_MARCAR),
+  validate(jornadasAsistenciaSchema),
+  asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { message: 'Horas obtenidas correctamente', data: await asistenciaService.horasSemanales(req.query, req.user) });
+  }),
+);
 router.get(
   '/jornadas',
   auth,

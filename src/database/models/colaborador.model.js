@@ -15,6 +15,9 @@ Colaborador.init(
     // Cargo del maestro (Maestros → Cargos); `cargo` guarda la copia de su nombre.
     cargoId: { type: DataTypes.INTEGER, allowNull: true, field: 'cargo_id' },
     telefono: { type: DataTypes.STRING(30), allowNull: true },
+    // Vacaciones: causa 15 días hábiles por año desde el ingreso (proporcional) y descuenta los ya disfrutados antes del sistema.
+    fechaIngreso: { type: DataTypes.DATEONLY, allowNull: true, field: 'fecha_ingreso' },
+    vacacionesPrevias: { type: DataTypes.DECIMAL(6, 2), allowNull: false, defaultValue: 0, field: 'vacaciones_previas' },
     // Lugar predeterminado: una finca o un lugar de asistencia (oficina...), nunca ambos. Solo es el habitual: puede marcar en otro.
     fincaId: { type: DataTypes.INTEGER, allowNull: true, field: 'finca_id' },
     lugarId: { type: DataTypes.INTEGER, allowNull: true, field: 'lugar_id' },
