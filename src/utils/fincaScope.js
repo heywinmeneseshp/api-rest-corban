@@ -54,6 +54,29 @@ export const tieneRestriccionDeFincas = (user) => !(user?.roles || []).includes(
 
 // Ids de fincas permitidas para este usuario, o null si no hay restricción
 // (Administrador, o cualquier usuario sin ninguna finca asignada todavía).
+// Lugares de asistencia asignados al usuario. null = sin restricción por lugares.
+export const getLugarIdsPermitidas = (user) => {
+  if (!tieneRestriccionDeFincas(user)) return null;
+  const lugarIds = Array.isArray(user?.lugarIds) ? user.lugarIds : [];
+  return lugarIds.length ? lugarIds : null;
+};
+
+// Condición sobre registros con `fincaId`/`lugarId` (colaboradores, marcaciones) según las fincas y lugares asignados:
+// - nada asignado: sin restricción (null);
+// - solo lugares: solo esos lugares, ninguna finca;
+// - solo fincas: esas fincas y cualquier lugar (`lugaresLibres`) o ninguno;
+// - fincas y lugares: esas fincas y esos lugares.
+export const condicionUbicaciones = (user, { lugaresLibres = false } = {}) => {
+  const fincaIds = getFincaIdsPermitidas(user);
+  const lugarIds = getLugarIdsPermitidas(user);
+  if (!fincaIds && !lugarIds) return null;
+  const partes = [];
+  if (fincaIds) partes.push({ fincaId: { [Op.in]: fincaIds } });
+  if (lugarIds) partes.push({ lugarId: { [Op.in]: lugarIds } });
+  else if (lugaresLibres) partes.push({ lugarId: { [Op.ne]: null } });
+  return { [Op.or]: partes };
+};
+
 export const getFincaIdsPermitidas = (user) => {
   if (!tieneRestriccionDeFincas(user)) return null;
   const fincaIds = Array.isArray(user?.fincaIds) ? user.fincaIds : [];

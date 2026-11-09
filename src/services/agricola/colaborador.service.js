@@ -6,7 +6,7 @@ import { Op, fn, col } from 'sequelize';
 import { Finca, ColaboradorRostro, User, Colaborador, AsistenciaLugar } from '../../database/associations.js';
 import { sequelize } from '../../database/connection.js';
 import { userService } from '../seguridad/user.service.js';
-import { assertFincaPermitida, getFincaIdsPermitidas } from '../../utils/fincaScope.js';
+import { assertFincaPermitida, getFincaIdsPermitidas, getLugarIdsPermitidas, condicionUbicaciones } from '../../utils/fincaScope.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import { resolverCargo } from '../seguridad/cargo.service.js';
 import { ROLES } from '../../constants/roles.constants.js';
@@ -27,8 +27,8 @@ export const soloModuloSanidad = (user, accion = 'ver') =>
 // `porPermisos: false`: sin la restricción de módulo por permisos (quien marca la cuadrilla ve a todos los de sus fincas).
 export const alcanceColaboradores = (user, accion = 'ver', modulo = null, { porPermisos = true } = {}) => {
   const partes = [];
-  const fincaIds = getFincaIdsPermitidas(user);
-  if (fincaIds) partes.push({ [Op.or]: [{ fincaId: { [Op.in]: fincaIds } }, ...(user?.id ? [{ userId: user.id }] : [])] });
+  const ubicaciones = condicionUbicaciones(user);
+  if (ubicaciones) partes.push({ [Op.or]: [ubicaciones, ...(user?.id ? [{ userId: user.id }] : [])] });
   const moduloEfectivo = porPermisos && soloModuloSanidad(user, accion) ? MODULO_SANIDAD : modulo;
   if (moduloEfectivo) partes.push({ modulo: moduloEfectivo });
   if (!partes.length) return null;
@@ -37,7 +37,13 @@ export const alcanceColaboradores = (user, accion = 'ver', modulo = null, { porP
 export const enAlcance = (colaborador, user, accion = 'ver') => {
   if (soloModuloSanidad(user, accion) && colaborador.modulo !== MODULO_SANIDAD) return false;
   const fincaIds = getFincaIdsPermitidas(user);
-  return !fincaIds || (colaborador.fincaId && fincaIds.includes(colaborador.fincaId)) || (user?.id && colaborador.userId === user.id);
+  const lugarIds = getLugarIdsPermitidas(user);
+  if (!fincaIds && !lugarIds) return true;
+  return (
+    Boolean(fincaIds && colaborador.fincaId && fincaIds.includes(colaborador.fincaId)) ||
+    Boolean(lugarIds && colaborador.lugarId && lugarIds.includes(colaborador.lugarId)) ||
+    Boolean(user?.id && colaborador.userId === user.id)
+  );
 };
 
 // Documento de identificación normalizado (sin espacios, puntos ni guiones) para no permitir dos colaboradores con la misma.

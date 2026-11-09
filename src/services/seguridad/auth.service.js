@@ -56,6 +56,8 @@ const buildTokenPair = async (user, { impersonatedBy } = {}) => {
   // expansión por grupo (Almacén no tiene ese concepto).
   const almacenIdsAsignados = esAdmin ? null : await userRepository.findAlmacenIdsByUserId(user.id);
   const almacenIds = almacenIdsAsignados;
+  // Lugares de asistencia asignados: junto con las fincas, limitan qué colaboradores ve en Colaboradores y Asistencia.
+  const lugarIds = esAdmin ? null : await userRepository.findLugarIdsByUserId(user.id);
 
   const accessToken = signAccessToken({
     id: user.id,
@@ -65,6 +67,7 @@ const buildTokenPair = async (user, { impersonatedBy } = {}) => {
     permissions,
     fincaIds,
     almacenIds,
+    lugarIds,
     // Presente solo en tokens de suplantación (ver authService.impersonate)
     // — queda en el JWT para poder rastrear, si hace falta, qué admin
     // suplantó a quién durante una sesión puntual.
@@ -82,7 +85,7 @@ const buildTokenPair = async (user, { impersonatedBy } = {}) => {
   return {
     accessToken,
     refreshToken: refreshTokenPlain,
-    user: { ...user.toSafeJSON(), roles: roleNames, permissions, fincaIds, almacenIds },
+    user: { ...user.toSafeJSON(), roles: roleNames, permissions, fincaIds, almacenIds, lugarIds },
   };
 };
 
@@ -186,8 +189,9 @@ export const authService = {
     const fincaIdsAsignados = esAdmin ? null : await userRepository.findFincaIdsByUserId(fullUser.id);
     const fincaIds = fincaIdsAsignados === null ? null : await expandirFincaIds(fincaIdsAsignados);
     const almacenIds = esAdmin ? null : await userRepository.findAlmacenIdsByUserId(fullUser.id);
+    const lugarIds = esAdmin ? null : await userRepository.findLugarIdsByUserId(fullUser.id);
 
-    return { ...fullUser.toSafeJSON(), roles: roleNames, permissions, fincaIds, almacenIds };
+    return { ...fullUser.toSafeJSON(), roles: roleNames, permissions, fincaIds, almacenIds, lugarIds };
   },
 
   async updateProfile(userId, payload) {

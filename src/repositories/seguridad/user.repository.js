@@ -47,6 +47,11 @@ export const userRepository = {
 
   // Ids de las fincas asignadas a un usuario (para el JWT y el scoping de
   // datos). Consulta liviana, sin traer el modelo completo.
+  async findLugarIdsByUserId(userId) {
+    const filas = await UsuarioLugar.findAll({ where: { userId }, attributes: ['lugarId'], raw: true });
+    return filas.map((f) => f.lugarId);
+  },
+
   async findFincaIdsByUserId(userId) {
     const filas = await UsuarioFinca.findAll({ where: { userId }, attributes: ['fincaId'], raw: true });
     return filas.map((f) => f.fincaId);

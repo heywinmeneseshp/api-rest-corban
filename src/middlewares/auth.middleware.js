@@ -28,6 +28,8 @@ export const auth = asyncHandler(async (req, _res, next) => {
       // esta feature (sin este claim), que quedan sin restricción hasta que
       // el usuario vuelva a iniciar sesión.
       almacenIds: payload.almacenIds === null || payload.almacenIds === undefined ? null : payload.almacenIds,
+      // Lugares de asistencia asignados (ver utils/fincaScope.js#getLugarIdsPermitidas). Tokens viejos: sin restricción.
+      lugarIds: Array.isArray(payload.lugarIds) ? payload.lugarIds : null,
     };
 
     // La app móvil (Corbana) NO aplica la restricción de "fincas que puede

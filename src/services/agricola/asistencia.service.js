@@ -8,7 +8,7 @@ import { logger } from '../../utils/logger.js';
 import { alcanceColaboradores, enAlcance, MODULO_SANIDAD, MODULOS_COLABORADOR, puedeColaboradoresSanidad } from './colaborador.service.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
-import { assertFincaPermitida, getFincaIdsPermitidas } from '../../utils/fincaScope.js';
+import { assertFincaPermitida, getFincaIdsPermitidas, getLugarIdsPermitidas, condicionUbicaciones } from '../../utils/fincaScope.js';
 import { ROLES } from '../../constants/roles.constants.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
 
@@ -173,7 +173,8 @@ async function evaluadorFueraDelArea(rows) {
 }
 
 // Alcance por fincas asignadas: el usuario ve las marcaciones de sus fincas y todas las de lugares (oficinas, etc.).
-const whereAlcance = (fincaIds) => (fincaIds ? { [Op.or]: [{ fincaId: { [Op.in]: fincaIds } }, { lugarId: { [Op.ne]: null } }] } : {});
+// Marcaciones que ve el usuario según sus fincas y lugares asignados (ver utils/fincaScope.js#condicionUbicaciones).
+const whereAlcance = (user) => condicionUbicaciones(user, { lugaresLibres: true }) || {};
 
 const LUGAR_ATTRS = ['id', 'uuid', 'nombre', 'tipo'];
 const mapLugar = (l) => ({
@@ -647,6 +648,11 @@ export const asistenciaService = {
         res('ERROR', { mensaje: 'Falta la finca o el lugar' });
         continue;
       }
+      const lugaresUsuario = getLugarIdsPermitidas(user);
+      if (lugaresUsuario && ((lugar && !lugaresUsuario.includes(lugar.id)) || (finca && !getFincaIdsPermitidas(user)))) {
+        res('ERROR', { mensaje: lugar ? 'No tienes acceso a ese lugar' : 'No tienes acceso a esa finca' });
+        continue;
+      }
       if (finca) {
         try {
           assertFincaPermitida(user, finca.id);
@@ -746,7 +752,7 @@ export const asistenciaService = {
     } else if (query.lugarUuid) {
       where.lugarId = (await findLugarOrFail(query.lugarUuid)).id;
     } else {
-      Object.assign(where, whereAlcance(fincaIds));
+      Object.assign(where, whereAlcance(user));
     }
     if (query.colaboradorUuid) {
       const c = await findColaboradorOrFail(query.colaboradorUuid);
@@ -870,7 +876,7 @@ export const asistenciaService = {
     const where = {
       fechaHora: { [Op.between]: [new Date(inicioDiaBogota(desde).getTime() - MAX_TURNO_MS), new Date(finDiaBogota(hasta).getTime() + MAX_TURNO_MS)] },
     };
-    Object.assign(where, whereAlcance(getFincaIdsPermitidas(user)));
+    Object.assign(where, whereAlcance(user));
     if (query.colaboradorUuid) where.colaboradorId = (await findColaboradorOrFail(query.colaboradorUuid)).id;
     await aplicarBusqueda(where, query.search);
     const modulo = moduloAsistencia(query, user);
