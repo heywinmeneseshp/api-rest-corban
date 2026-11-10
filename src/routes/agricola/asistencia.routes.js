@@ -81,6 +81,8 @@ router.put(
 
 // Quien marca (propio o cuadrilla) también necesita ver los colaboradores enrolados de su finca.
 const PUEDE_MARCAR = [PERMISSIONS.ASISTENCIA_MARCAR, PERMISSIONS.ASISTENCIA_MARCAR_CUADRILLA];
+// «Registrar asistencia»: marca, ve la lista para marcar y enrola nuevos; NO ve marcaciones, jornadas ni informes.
+const PUEDE_REGISTRAR = [PERMISSIONS.ASISTENCIA_REGISTRAR];
 // Sanidad Vegetal → Colaboradores: ven, enrolan y ven la asistencia de los colaboradores de su módulo (el servicio los limita).
 const PUEDE_SANIDAD = [PERMISSIONS.SV_COLABORADOR_VER, PERMISSIONS.SV_COLABORADOR_CREAR, PERMISSIONS.SV_COLABORADOR_EDITAR];
 
@@ -97,7 +99,7 @@ const PUEDE_SANIDAD = [PERMISSIONS.SV_COLABORADOR_VER, PERMISSIONS.SV_COLABORADO
 router.get(
   '/rostros-estado',
   auth,
-  permission(PERMISSIONS.ASISTENCIA_VER, PERMISSIONS.COLABORADOR_CREAR, PERMISSIONS.COLABORADOR_EDITAR, ...PUEDE_SANIDAD, ...PUEDE_MARCAR),
+  permission(PERMISSIONS.ASISTENCIA_VER, PERMISSIONS.COLABORADOR_CREAR, PERMISSIONS.COLABORADOR_EDITAR, ...PUEDE_SANIDAD, ...PUEDE_MARCAR, ...PUEDE_REGISTRAR),
   validate(rostrosEstadoSchema),
   asyncHandler(async (req, res) => {
     ApiResponse.send(res, { message: 'Estado de rostros obtenido correctamente', data: await asistenciaService.rostrosEstado(req.query, req.user) });
@@ -115,7 +117,7 @@ router.get(
  *       200: { description: OK }
  */
 // Enrolar: el propio rostro (quien marca) o el de otros (quien crea o edita colaboradores); la regla fina está en el servicio.
-const PUEDE_ENROLAR = [PERMISSIONS.COLABORADOR_CREAR, PERMISSIONS.COLABORADOR_EDITAR, PERMISSIONS.SV_COLABORADOR_CREAR, PERMISSIONS.SV_COLABORADOR_EDITAR, PERMISSIONS.ASISTENCIA_APROBAR_ROSTRO, ...PUEDE_MARCAR];
+const PUEDE_ENROLAR = [PERMISSIONS.COLABORADOR_CREAR, PERMISSIONS.COLABORADOR_EDITAR, PERMISSIONS.SV_COLABORADOR_CREAR, PERMISSIONS.SV_COLABORADOR_EDITAR, PERMISSIONS.ASISTENCIA_APROBAR_ROSTRO, ...PUEDE_MARCAR, PERMISSIONS.ASISTENCIA_REGISTRAR];
 
 /**
  * @openapi
@@ -203,7 +205,7 @@ router.post(
 router.post(
   '/marcaciones',
   auth,
-  permission(...PUEDE_MARCAR),
+  permission(...PUEDE_MARCAR, ...PUEDE_REGISTRAR),
   validate(registrarMarcacionesSchema),
   asyncHandler(async (req, res) => {
     const data = await asistenciaService.registrarMarcaciones(req.body.marcaciones, req.user?.id, req.user);
@@ -273,7 +275,7 @@ router.get(
 router.get(
   '/lugares',
   auth,
-  permission(PERMISSIONS.ASISTENCIA_VER, PERMISSIONS.ASISTENCIA_LUGARES, PERMISSIONS.MENU_MAESTROS_USUARIOS, ...PUEDE_MARCAR),
+  permission(PERMISSIONS.ASISTENCIA_VER, PERMISSIONS.ASISTENCIA_LUGARES, PERMISSIONS.MENU_MAESTROS_USUARIOS, ...PUEDE_MARCAR, ...PUEDE_REGISTRAR),
   validate(listarLugaresSchema),
   asyncHandler(async (req, res) => {
     ApiResponse.send(res, { message: 'Lugares obtenidos correctamente', data: await asistenciaService.listarLugares(req.query) });

@@ -1443,7 +1443,7 @@ export const racimoMovimientoService = {
         // Promedio semanal del año por finca: media de (embolsado ÷ hectáreas) desde la S1 hasta la última semana con
         // registros del año (las semanas futuras no cuentan; las intermedias sin embolse cuentan como 0).
         const ultimaSemanaConRegistro = Math.max(0, ...semanas.filter((s) => (totalesPorSemana.get(s.id) || 0) > 0).map((s) => s.numeroSemana));
-        const acumAnual = new Map(); // fincaId -> { suma, n }
+        const acumAnual = new Map(); // fincaId -> { embolse, hectareas, n }
         for (const [fincaId, haSemanas] of haPorFinca) {
           for (const s of semanas) {
             const ha = haSemanas.get(s.id) || 0;
@@ -1454,15 +1454,17 @@ export const racimoMovimientoService = {
             acc.den += ha;
             numDen.set(s.id, acc);
             if (s.numeroSemana <= ultimaSemanaConRegistro) {
-              const a = acumAnual.get(fincaId) || { suma: 0, n: 0 };
-              a.suma += e / ha;
+              const a = acumAnual.get(fincaId) || { embolse: 0, hectareas: 0, n: 0 };
+              a.embolse += e;
+              a.hectareas += ha;
               a.n += 1;
               acumAnual.set(fincaId, a);
             }
           }
         }
-        const porFincaAnual = new Map(); // fincaId -> promedio semanal de embolse por ha del año
-        for (const [fincaId, a] of acumAnual) if (a.n > 0) porFincaAnual.set(fincaId, a.suma / a.n);
+        // Embolse por ha del año: embolses del año ÷ promedio de las hectáreas en producción de esas semanas.
+        const porFincaAnual = new Map();
+        for (const [fincaId, a] of acumAnual) if (a.n > 0 && a.hectareas > 0) porFincaAnual.set(fincaId, a.embolse / (a.hectareas / a.n));
 
         const puntos = semanas.map((s) => {
           const total = totalesPorSemana.get(s.id);

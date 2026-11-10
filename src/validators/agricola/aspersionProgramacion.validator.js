@@ -75,6 +75,12 @@ export const updateAspersionSchema = Joi.object({
   query: Joi.object({}),
 });
 
+export const revertirEjecucionSchema = Joi.object({
+  body: Joi.object({ motivo: Joi.string().trim().min(3).max(300).required() }),
+  params: Joi.object({ uuid: uuidParam }),
+  query: Joi.object({}),
+});
+
 export const reprogramarAspersionSchema = Joi.object({
   body: Joi.object({
     fecha: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).required(),

@@ -52,6 +52,9 @@ export const auth = asyncHandler(async (req, _res, next) => {
     if (req.headers['x-client-app'] === 'movil' || /^okhttp\//i.test(userAgent)) {
       req.user.fincaIds = null;
     }
+    // Apps de campo (Corbana móvil y App Finca): se puede marcar asistencia en cualquier finca o lugar, aunque el usuario
+    // tenga fincas o lugares asignados (esas asignaciones limitan solo lo que se ve en la web).
+    req.user.esApp = ['movil', 'finca'].includes(req.headers['x-client-app']) || /^okhttp\//i.test(userAgent);
 
     // Suplantación ("Ver como usuario", ver authService.impersonate): el
     // token es el REAL del usuario suplantado (por eso permissions/

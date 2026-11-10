@@ -163,6 +163,10 @@ export const colaboradorService = {
   },
 
   async createColaborador(payload, actorId, actor = null) {
+    // Quien solo registra asistencia crea colaboradores nuevos con los datos básicos (sin vincular usuario ni labores).
+    if (actor && !tienePermiso(actor, PERMISOS_GENERAL.crear) && !tienePermiso(actor, PERMISOS_SANIDAD.crear)) {
+      payload = { ...payload, userUuid: undefined, labores: undefined };
+    }
     // Con fincas asignadas solo se crean colaboradores en esas fincas (la finca es obligatoria); sin restricción, finca u oficina.
     const { fincaId, lugarId } = await resolverLugarPredeterminado(payload, actor, { soloFincasPropias: true });
     await validarDocumentoUnico(payload.documento);

@@ -27,6 +27,8 @@ const umbral = () => {
 
 const esAdmin = (user) => (user?.roles || []).includes(ROLES.ADMINISTRADOR);
 const tienePermiso = (user, codigo) => esAdmin(user) || (user?.permissions || []).includes(codigo);
+// Marca la asistencia de otros: la cuadrilla y quien solo registra asistencia.
+const marcaOtros = (user) => tienePermiso(user, PERMISSIONS.ASISTENCIA_MARCAR_CUADRILLA) || tienePermiso(user, PERMISSIONS.ASISTENCIA_REGISTRAR);
 
 export const descriptorValido = (d) =>
   Array.isArray(d) && d.length === DESCRIPTOR_LEN && d.every((x) => typeof x === 'number' && Number.isFinite(x));
@@ -417,17 +419,25 @@ export const asistenciaService = {
     const r = { fecha, incompletas: incompletas.length, enviados: 0, sinEmail: 0, resumenes: 0, fallidos: 0 };
     const detalle = new Map(); // jornada → tramos, también para el resumen de los superiores
     const { jornadaIncompleta } = await configuracionService.getAsistenciaAlertasDestinatarios();
-    const usuariosCopia = jornadaIncompleta.rolesUuids.length
+    // En copia: los usuarios de los roles elegidos y los usuarios elegidos uno a uno.
+    const asignaciones = [
+      { model: Finca, as: 'fincas', attributes: ['id'], through: { attributes: [] } },
+      { model: AsistenciaLugar, as: 'lugares', attributes: ['id'], through: { attributes: [] }, paranoid: false },
+    ];
+    const porRol = jornadaIncompleta.rolesUuids?.length
       ? await User.findAll({
           where: { estado: true },
           attributes: ['id', 'email'],
           include: [
             { model: Role, as: 'roles', attributes: ['id'], required: true, where: { uuid: jornadaIncompleta.rolesUuids }, through: { attributes: [] } },
-            { model: Finca, as: 'fincas', attributes: ['id'], through: { attributes: [] } },
-            { model: AsistenciaLugar, as: 'lugares', attributes: ['id'], through: { attributes: [] }, paranoid: false },
+            ...asignaciones,
           ],
         })
       : [];
+    const porUsuario = jornadaIncompleta.usuariosUuids?.length
+      ? await User.findAll({ where: { estado: true, uuid: jornadaIncompleta.usuariosUuids }, attributes: ['id', 'email'], include: asignaciones })
+      : [];
+    const usuariosCopia = [...new Map([...porRol, ...porUsuario].map((u) => [u.id, u])).values()];
     // Copia según el lugar predeterminado del colaborador: sus fincas y lugares asignados; sin ninguno asignado, todos.
     const copiasDe = (colaborador) => [
       ...new Set(
@@ -484,8 +494,16 @@ export const asistenciaService = {
       const general = tienePermiso(user, PERMISSIONS.COLABORADOR_EDITAR) || tienePermiso(user, PERMISSIONS.COLABORADOR_CREAR);
       // Con los permisos de Sanidad Vegetal, solo los colaboradores de ese módulo.
       const sanidad = (puedeColaboradoresSanidad(user, 'editar') || puedeColaboradoresSanidad(user, 'crear')) && colaborador.modulo === MODULO_SANIDAD;
-      if (!general && !sanidad) throw ApiError.forbidden('Solo puedes registrar tu propio rostro');
-      if (!enAlcance(colaborador, user, general ? 'ver' : 'editar') && !(sanidad && enAlcance(colaborador, user, 'crear'))) {
+      // «Registrar asistencia»: solo el primer registro de rostro de un colaborador nuevo (sin rostro). Volver a registrar o
+      // reforzar queda para quien administra colaboradores o aprueba rostros.
+      const soloNuevos = !general && !sanidad && tienePermiso(user, PERMISSIONS.ASISTENCIA_REGISTRAR);
+      if (!general && !sanidad && !soloNuevos) throw ApiError.forbidden('Solo puedes registrar tu propio rostro');
+      if (soloNuevos) {
+        if (reforzar || (await ColaboradorRostro.count({ where: { colaboradorId: colaborador.id } })) > 0) {
+          throw ApiError.forbidden('Este colaborador ya tiene rostro registrado: solo puedes registrar el de colaboradores nuevos');
+        }
+        if (!enAlcance(colaborador, user, 'ver')) throw ApiError.forbidden('No tienes acceso a este colaborador');
+      } else if (!enAlcance(colaborador, user, general ? 'ver' : 'editar') && !(sanidad && enAlcance(colaborador, user, 'crear'))) {
         throw ApiError.forbidden('No tienes acceso a este colaborador');
       }
     }
@@ -549,13 +567,14 @@ export const asistenciaService = {
       PERMISSIONS.COLABORADOR_CREAR,
       PERMISSIONS.COLABORADOR_EDITAR,
       PERMISSIONS.ASISTENCIA_MARCAR_CUADRILLA,
+      PERMISSIONS.ASISTENCIA_REGISTRAR,
       PERMISSIONS.SV_COLABORADOR_VER,
       PERMISSIONS.SV_COLABORADOR_CREAR,
       PERMISSIONS.SV_COLABORADOR_EDITAR,
     ].some((c) => tienePermiso(user, c));
     // Quien marca la cuadrilla ve a todos los de su alcance (de cualquier módulo); los demás según sus permisos de colaboradores.
     const moduloPedido = MODULOS_COLABORADOR.includes(query.modulo) ? query.modulo : null;
-    const alcance = alcanceColaboradores(user, 'ver', moduloPedido, { porPermisos: !tienePermiso(user, PERMISSIONS.ASISTENCIA_MARCAR_CUADRILLA) });
+    const alcance = alcanceColaboradores(user, 'ver', moduloPedido, { porPermisos: !marcaOtros(user) });
     const where = { estado: true, ...(veOtros ? (alcance ? { [Op.and]: [alcance] } : {}) : { userId: user?.id ?? -1 }) };
     if (query.fincaUuid) assertFincaPermitida(user, (await findFincaOrFail(query.fincaUuid)).id);
     const colaboradores = await Colaborador.findAll({
@@ -575,7 +594,7 @@ export const asistenciaService = {
     });
     const porId = new Map(conteos.map((c) => [c.colaboradorId, Number(c.n)]));
     const fincas = await Finca.findAll({
-      where: query.fincaUuid ? { uuid: query.fincaUuid } : fincaIds ? { id: { [Op.in]: fincaIds } } : {},
+      where: query.fincaUuid ? { uuid: query.fincaUuid } : fincaIds && !user?.esApp ? { id: { [Op.in]: fincaIds } } : {},
       attributes: ['uuid', 'nombre'],
       order: [['nombre', 'ASC']],
     });
@@ -611,7 +630,7 @@ export const asistenciaService = {
   // ─── Marcaciones ───
   // Lote desde la app (cola offline). Idempotente por `uuid`. Devuelve el resultado de cada elemento.
   async registrarMarcaciones(items, actorId, user) {
-    const puedeCuadrilla = tienePermiso(user, PERMISSIONS.ASISTENCIA_MARCAR_CUADRILLA);
+    const puedeCuadrilla = marcaOtros(user);
     const puedePropia = tienePermiso(user, PERMISSIONS.ASISTENCIA_MARCAR);
     if (!puedeCuadrilla && !puedePropia) throw ApiError.forbidden('No tienes permiso para marcar asistencia');
 
@@ -648,12 +667,12 @@ export const asistenciaService = {
         res('ERROR', { mensaje: 'Falta la finca o el lugar' });
         continue;
       }
-      const lugaresUsuario = getLugarIdsPermitidas(user);
+      const lugaresUsuario = user?.esApp ? null : getLugarIdsPermitidas(user);
       if (lugaresUsuario && ((lugar && !lugaresUsuario.includes(lugar.id)) || (finca && !getFincaIdsPermitidas(user)))) {
         res('ERROR', { mensaje: lugar ? 'No tienes acceso a ese lugar' : 'No tienes acceso a esa finca' });
         continue;
       }
-      if (finca) {
+      if (finca && !user?.esApp) {
         try {
           assertFincaPermitida(user, finca.id);
         } catch {
@@ -834,10 +853,12 @@ export const asistenciaService = {
     const semanaDe = (fecha) => semanas.find((s) => fecha >= String(s.fechaInicio).slice(0, 10) && fecha <= String(s.fechaFin).slice(0, 10))?.codigo || 'Sin semana';
     const porColaborador = new Map();
     for (const j of jornadas) {
-      const x = porColaborador.get(j.colaborador.uuid) || { colaborador: j.colaborador, semanas: {}, minutos: 0, dias: 0, incompletas: 0, novedades: 0 };
+      const x = porColaborador.get(j.colaborador.uuid) || { colaborador: j.colaborador, semanas: {}, transitoSemanas: {}, minutos: 0, transito: 0, dias: 0, incompletas: 0, novedades: 0 };
       const codigo = semanaDe(j.fecha);
       x.semanas[codigo] = (x.semanas[codigo] || 0) + (j.minutosEnFincas || 0);
       x.minutos += j.minutosEnFincas || 0;
+      x.transitoSemanas[codigo] = (x.transitoSemanas[codigo] || 0) + (j.minutosTransito || 0);
+      x.transito += j.minutosTransito || 0;
       if (j.tramos.length) x.dias += 1;
       if (j.incompleta && !j.novedad) x.incompletas += 1;
       if (j.novedad) x.novedades += 1;

@@ -175,6 +175,7 @@ export const PERMISOS_CATALOGO = [
         filas: [crud('sanidad_vegetal.aspersiones')],
         especiales: [
           especial('sanidad_vegetal.aspersiones.ejecutar', 'Ejecutar aspersión (descuenta del inventario)', { sensible: true }),
+          especial('sanidad_vegetal.aspersiones.revertir', 'Revertir una ejecución: devuelve los insumos al inventario y anula el comprobante en borrador', { sensible: true }),
           especial('sanidad_vegetal.aspersiones.enviar_correo', 'Enviar el aviso de aspersión por correo'),
           especial('sanidad_vegetal.aspersiones.revisar', 'Marcar aspersiones como revisadas (su firma va en el aviso)'),
         ],
@@ -231,6 +232,7 @@ export const PERMISOS_CATALOGO = [
         filas: [crud('asistencia', ['ver', 'eliminar'])],
         especiales: [
           especial('asistencia.marcar', 'Marcar con rostro en este equipo (cualquier persona) y ver solo lo propio'),
+          especial('asistencia.registrar', 'Solo registrar asistencia: marca entradas y salidas de cualquier colaborador; crea y enrola rostro solo de colaboradores nuevos. No ve marcaciones, jornadas ni informes'),
           especial('asistencia.marcar_cuadrilla', 'Marcar la asistencia de otros y probar rostros'),
           especial('asistencia.lugares', 'Crear y editar lugares de asistencia (oficinas, plantas...)'),
           especial('asistencia.novedades.ver', 'Ver novedades: vacaciones, compensatorios, incapacidades y permisos'),

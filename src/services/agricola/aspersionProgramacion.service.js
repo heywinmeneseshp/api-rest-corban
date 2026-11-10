@@ -11,6 +11,8 @@ import {
   AspersionCantidadAjuste,
   Almacen,
   MovimientoInventario,
+  ComprobanteAspersion,
+  ComprobanteAspersionParte,
   AspersionProgramacion,
   AspersionProgramacionComponente,
   User,
@@ -21,7 +23,7 @@ import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { generarCorrelativo } from '../../utils/correlativo.js';
 import { convertirACantidadBase, resolverFactorConversion } from '../../utils/unidadConversion.js';
-import { consumirStockConReceta, RequiereConfirmacionStockError } from '../inventario/stock.helper.js';
+import { consumirStockConReceta, RequiereConfirmacionStockError, registrarMovimientoEnCache } from '../inventario/stock.helper.js';
 import { correosDePista } from './pista.service.js';
 import { mailService } from '../sistema/mail.service.js';
 import { configuracionService } from '../sistema/configuracion.service.js';
@@ -1035,6 +1037,83 @@ export const aspersionProgramacionService = {
   // Aspersiones → Destinatarios) — sin bloquear la cancelación si no hay
   // nadie configurado o si el envío falla (la cancelación en sí ya quedó
   // guardada; el correo es un aviso adicional, no un requisito).
+  // Revierte una ejecución: devuelve al almacén lo que se descontó, anula el comprobante en borrador y la aspersión vuelve a quedar
+  // programada con su revisión y aviso, lista para ejecutarse otra vez. En una ejecución parcial se revierte solo esta parte (la
+  // parte restante sigue pendiente). No se puede si el comprobante ya está aprobado o agrupa otras partes ejecutadas.
+  async revertirEjecucion(uuid, { motivo }, actorId, user) {
+    const aspersion = await this.getByUuid(uuid, user);
+    if (aspersion.estado !== 'EJECUTADA') throw ApiError.badRequest('Solo se puede revertir una aspersión ejecutada');
+
+    return sequelize.transaction(async (t) => {
+      const parte = await ComprobanteAspersionParte.findOne({
+        where: { aspersionProgramacionId: aspersion.id },
+        include: [{ model: ComprobanteAspersion, as: 'comprobante', required: true, where: { estado: { [Op.ne]: 'ANULADO' } } }],
+        order: [['id', 'DESC']],
+        transaction: t,
+      });
+      const comprobante =
+        parte?.comprobante ||
+        (await ComprobanteAspersion.findOne({ where: { aspersionProgramacionId: aspersion.id, estado: { [Op.ne]: 'ANULADO' } }, transaction: t }));
+      if (comprobante?.estado === 'EMITIDO') {
+        throw ApiError.badRequest(`El comprobante ${comprobante.numero} ya está aprobado: anúlalo primero para revertir la ejecución`);
+      }
+      if (comprobante) {
+        const partes = await ComprobanteAspersionParte.count({ where: { comprobanteId: comprobante.id }, transaction: t });
+        if (partes > 1) {
+          throw ApiError.badRequest(`El comprobante ${comprobante.numero} agrupa varias partes ejecutadas: no se puede revertir solo una`);
+        }
+      }
+
+      // Devolución al inventario: una entrada por cada salida de esta ejecución.
+      const documento = aspersion.movimientoDocumento;
+      const salidas = documento ? await MovimientoInventario.findAll({ where: { documento, tipo: 'SALIDA' }, transaction: t }) : [];
+      const hoy = new Date().toISOString().slice(0, 10);
+      for (const m of salidas) {
+        await MovimientoInventario.create(
+          {
+            documento: `${documento}-REV`.slice(0, 50),
+            tipo: 'ENTRADA',
+            fecha: hoy,
+            almacenId: m.almacenId,
+            articuloId: m.articuloId,
+            cantidad: m.cantidad,
+            cantidadBase: m.cantidadBase,
+            unidadId: m.unidadId,
+            costoUnitario: m.costoUnitario,
+            costoTotal: m.costoTotal,
+            observaciones: `Reversión de la aspersión ${aspersion.numero}: ${motivo}`.slice(0, 500),
+            usuarioId: actorId,
+          },
+          { transaction: t },
+        );
+        await registrarMovimientoEnCache(m.almacenId, m.articuloId, 'ENTRADA', m.cantidadBase, t);
+      }
+
+      if (comprobante) {
+        await comprobante.update(
+          { estado: 'ANULADO', motivoAnulacion: `Ejecución revertida: ${motivo}`.slice(0, 500), anuladoPorId: actorId, anuladoEn: new Date(), updatedBy: actorId },
+          { transaction: t },
+        );
+        // Si hoy se preparó toda la mezcla, la parte restante tenía los insumos descontados: al devolverlos, vuelve a descontarlos.
+        await AspersionProgramacion.update(
+          { insumosDescontados: false },
+          { where: { comprobanteParcialId: comprobante.id, estado: 'PROGRAMADA', insumosDescontados: true }, transaction: t },
+        );
+      }
+
+      await aspersionProgramacionRepository.update(
+        aspersion,
+        { estado: 'PROGRAMADA', fechaEjecucion: null, movimientoDocumento: null, updatedBy: actorId },
+        { transaction: t },
+      );
+      return {
+        aspersion: await aspersionProgramacionRepository.findByUuid(uuid, { transaction: t }),
+        devoluciones: salidas.length,
+        comprobanteAnulado: comprobante ? comprobante.numero : null,
+      };
+    });
+  },
+
   async cancelar(uuid, actorId, user) {
     const aspersion = await this.getByUuid(uuid, user);
     assertProgramada(aspersion);

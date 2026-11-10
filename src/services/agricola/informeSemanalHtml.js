@@ -65,9 +65,19 @@ export function informeSemanalHtml(data, movimientos) {
   const indicadores = tabla(
     `<tr>${th(`Indicadores de la semana ${esc(data.semana.codigo)} — ${esc(data.finca.nombre)}`, 2)}</tr>` +
       filasInd.map(([l, v, t]) => `<tr>${td(esc(l), fondo(t) + pad(extraIzq))}${td(esc(v), `text-align:right;font-weight:600;${fondo(t)}${pad(extraIzq)}`)}</tr>`).join('') +
-      ['Peso neto racimo', 'Peso vástago', 'Peso bruto racimo', 'Merma']
-        .map((l) => `<tr>${td(esc(l), `color:#64748b;${pad(extraIzq)}`)}${td('Sin dato en el sistema', `text-align:right;color:#64748b;font-style:italic;${pad(extraIzq)}`)}</tr>`)
-        .join(''),
+    (data.anio
+      ? `<tr>${th(`Indicadores anuales ${esc(String(data.semana.anio))}`, 2)}</tr>` +
+        [
+          ['Hectáreas en producción (promedio)', n2(data.anio.hectareasPromedioAnio), ''],
+          ['Embolses acumulados', n0(data.anio.embolsesAcumulados), ''],
+          ['Embolses por hectárea', n0(data.anio.embolsesPorHectareaAnio), ''],
+          ['Cajas acumuladas (18,6)', n0(data.anio.cajasAcumuladas), ''],
+          ['Cajas por hectárea', n0(data.anio.cajasPorHectareaAnio), ''],
+          ['Ratio anual', n2(data.anio.ratioAnual), ''],
+        ]
+          .map(([l, v, t]) => `<tr>${td(esc(l), `background:#f7fdf9;${t ? 'font-weight:700;' : ''}`)}${td(esc(v), 'text-align:right;font-weight:600;background:#f7fdf9;')}</tr>`)
+          .join('')
+      : ''),
   );
 
   const cortados = tabla(

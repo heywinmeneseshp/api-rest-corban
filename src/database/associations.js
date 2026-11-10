@@ -808,6 +808,7 @@ export const setupAssociations = () => {
   ComprobanteAspersion.hasMany(ComprobanteAspersionParticipante, { foreignKey: 'comprobanteId', as: 'participantes' });
   ComprobanteAspersion.hasMany(ComprobanteAspersionParte, { foreignKey: 'comprobanteId', as: 'partes' });
   ComprobanteAspersionParte.belongsTo(AspersionProgramacion, { foreignKey: 'aspersionProgramacionId', as: 'aspersion' });
+  ComprobanteAspersionParte.belongsTo(ComprobanteAspersion, { foreignKey: 'comprobanteId', as: 'comprobante' });
   AspersionCantidadAjuste.belongsTo(User, { foreignKey: 'usuarioId', as: 'usuario' });
   AsistenciaNovedad.belongsTo(Colaborador, { foreignKey: 'colaboradorId', as: 'colaborador' });
   ComprobanteAspersionParticipante.belongsTo(ComprobanteAspersion, { foreignKey: 'comprobanteId', as: 'comprobante' });

@@ -718,6 +718,15 @@ export const dashboardService = {
     // Respeta la selección de varias fincas (`query.fincas`) igual que el
     // gráfico — antes listaba siempre TODAS las fincas del alcance del
     // usuario acá, sin importar el filtro de finca(s) elegido.
+    // Cajas por hectárea del año por finca: cajas de las semanas transcurridas ÷ promedio de sus hectáreas en producción.
+    const semanasTranscurridas = semanasAnio.filter((s) => new Date(s.fechaInicio) <= hoy);
+    const haFincaSemana = await hectareasPorFincaYSemana([...idsInternasFiltradasSet], semanasTranscurridas);
+    const cajasPorHaAnioDe = (fincaId) => {
+      const has = semanasTranscurridas.map((s) => haFincaSemana.get(fincaId)?.get(s.id) || 0).filter((v) => v > 0);
+      if (!has.length) return null;
+      const cajas = semanasTranscurridas.reduce((t, s) => t + (cajasPorSemanaYFinca.get(s.id)?.get(fincaId) || 0), 0);
+      return Math.round((cajas / (has.reduce((t, v) => t + v, 0) / has.length)) * 100) / 100;
+    };
     const rankingCajasRatio = fincasEnAlcance
       .filter((f) => idsInternasFiltradasSet.has(f.id))
       .map((f) => {
@@ -729,6 +738,7 @@ export const dashboardService = {
           nombre: f.nombre,
           cajas: cajasFinca,
           ratio: cortesFinca > 0 ? Math.round((cajasFinca / cortesFinca) * 100) / 100 : null,
+          cajasPorHaAnio: cajasPorHaAnioDe(f.id),
         };
       });
 

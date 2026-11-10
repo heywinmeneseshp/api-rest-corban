@@ -34,7 +34,7 @@ const router = Router();
  *       201: { description: Creado }
  */
 router.get('/', auth, permission(PERMISSIONS.COLABORADOR_VER, PERMISSIONS.SV_COLABORADOR_VER), validate(listColaboradoresSchema), colaboradorController.list);
-router.post('/', auth, permission(PERMISSIONS.COLABORADOR_CREAR, PERMISSIONS.SV_COLABORADOR_CREAR), validate(createColaboradorSchema), colaboradorController.create);
+router.post('/', auth, permission(PERMISSIONS.COLABORADOR_CREAR, PERMISSIONS.SV_COLABORADOR_CREAR, PERMISSIONS.ASISTENCIA_REGISTRAR), validate(createColaboradorSchema), colaboradorController.create);
 
 // Autoservicio: la ficha propia (colaborador vinculado al usuario de la sesión). Antes de /:uuid.
 const PUEDE_MI_FICHA = [PERMISSIONS.ASISTENCIA_MARCAR, PERMISSIONS.ASISTENCIA_MARCAR_CUADRILLA, PERMISSIONS.COLABORADOR_CREAR];

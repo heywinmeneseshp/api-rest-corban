@@ -365,18 +365,21 @@ export const configuracionService = {
   // Destinatarios del Informe semanal de producción: correos sueltos + roles + usuarios (sin filtro de finca). Sin configurar = nadie.
   async getAsistenciaAlertasDestinatarios() {
     const config = await configuracionRepository.findByClave(CLAVE_ASISTENCIA_ALERTAS_DESTINATARIOS);
-    const vacio = { jornadaIncompleta: { rolesUuids: [] } };
+    const vacio = { jornadaIncompleta: { rolesUuids: [], usuariosUuids: [] } };
     if (!config?.valor) return vacio;
     try {
-      return { ...vacio, ...JSON.parse(config.valor) };
+      const guardado = JSON.parse(config.valor);
+      return { jornadaIncompleta: { ...vacio.jornadaIncompleta, ...(guardado.jornadaIncompleta || {}) } };
     } catch {
       return vacio;
     }
   },
 
   async setAsistenciaAlertasDestinatarios(datos, actorId) {
-    const rolesUuids = [...new Set((datos?.jornadaIncompleta?.rolesUuids || []).filter((x) => typeof x === 'string'))];
-    const valor = { jornadaIncompleta: { rolesUuids } };
+    const limpiar = (lista) => [...new Set((lista || []).filter((x) => typeof x === 'string'))];
+    const valor = {
+      jornadaIncompleta: { rolesUuids: limpiar(datos?.jornadaIncompleta?.rolesUuids), usuariosUuids: limpiar(datos?.jornadaIncompleta?.usuariosUuids) },
+    };
     await configuracionRepository.upsert(CLAVE_ASISTENCIA_ALERTAS_DESTINATARIOS, JSON.stringify(valor), actorId);
     return valor;
   },

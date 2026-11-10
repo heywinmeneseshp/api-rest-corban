@@ -59,6 +59,11 @@ export const aspersionProgramacionController = {
     ApiResponse.send(res, { message: 'Programación de aspersión eliminada correctamente' });
   }),
 
+  revertirEjecucion: asyncHandler(async (req, res) => {
+    const data = await aspersionProgramacionService.revertirEjecucion(req.params.uuid, req.body, req.user?.id, req.user);
+    ApiResponse.send(res, { message: 'Ejecución revertida: los insumos volvieron al inventario', data });
+  }),
+
   reprogramar: asyncHandler(async (req, res) => {
     const data = await aspersionProgramacionService.reprogramar(req.params.uuid, req.body, req.user?.id, req.user);
     ApiResponse.send(res, { message: 'Aspersión reprogramada correctamente', data });

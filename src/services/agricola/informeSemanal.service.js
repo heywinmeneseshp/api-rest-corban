@@ -27,6 +27,76 @@ function cintaDe(anio, numeroSemana) {
   return { color: calcularColorSemana(Number(anio), n), consecutivo: n === 53 ? 1 : Math.floor((n - 1) / 8) + 1 };
 }
 
+// Acumulado del año (semana 1 a la elegida): cajas y embolses sumados, y por hectárea = total del año ÷ promedio de las
+// hectáreas en producción de esas semanas. Las cajas de Producción semanal ya vienen convertidas (18,6).
+async function indicadoresAnio(fincaIds, semana) {
+  const semanas = await q('SELECT id, codigo, fecha_inicio AS f FROM semanas WHERE anio = :anio AND numero_semana <= :n ORDER BY fecha_inicio', {
+    anio: semana.anio,
+    n: semana.n,
+  });
+  if (!semanas.length) return null;
+  const ids = semanas.map((s) => s.id);
+  const [cajasRows, embRows, areas, [cortadosRow]] = await Promise.all([
+    q('SELECT semana_id AS sid, SUM(cajas_20kg) AS v FROM produccion_semanal WHERE deleted_at IS NULL AND finca_id IN (:fincaIds) AND semana_id IN (:ids) GROUP BY semana_id', { fincaIds, ids }),
+    q(
+      `SELECT semana_registro_id AS sid, SUM(cantidad) AS v FROM racimo_movimientos
+        WHERE deleted_at IS NULL AND finca_id IN (:fincaIds) AND semana_registro_id IN (:ids) AND tipo = 'EMBOLSE' AND COALESCE(es_ajuste, 0) = 0
+        GROUP BY semana_registro_id`,
+      { fincaIds, ids },
+    ),
+    // Registros de área de los lotes vigentes hasta la semana elegida; por semana se toma el último de cada lote (como indicadoresSemana).
+    q(
+      `SELECT lap.lote_id AS lote, lap.area, s.fecha_inicio AS f, lap.id FROM lote_area_produccion lap
+        JOIN lotes l ON l.id = lap.lote_id AND l.deleted_at IS NULL
+        JOIN semanas s ON s.id = lap.semana_id
+       WHERE l.finca_id IN (:fincaIds) AND s.fecha_inicio <= :f
+       ORDER BY s.fecha_inicio, lap.id`,
+      { fincaIds, f: semana.f },
+    ),
+    // Racimos cosechados del año: procesados + recusados, igual que «Total cortados» de la semana.
+    q(
+      `SELECT COALESCE(SUM(cantidad), 0) AS v FROM racimo_movimientos
+        WHERE deleted_at IS NULL AND finca_id IN (:fincaIds) AND semana_registro_id IN (:ids) AND tipo IN ('PROCESADO','RECUSE') AND COALESCE(es_ajuste, 0) = 0`,
+      { fincaIds, ids },
+    ),
+  ]);
+  const cortadosAnio = Number(cortadosRow?.v || 0);
+  const cajas = new Map(cajasRows.map((r) => [r.sid, Number(r.v)]));
+  const emb = new Map(embRows.map((r) => [r.sid, Number(r.v)]));
+  const fecha = (v) => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10));
+  let cajasTotal = 0;
+  let embTotal = 0;
+  const hectareas = [];
+  for (const s of semanas) {
+    const ultimo = new Map();
+    for (const a of areas) if (fecha(a.f) <= fecha(s.f)) ultimo.set(a.lote, Number(a.area));
+    const ha = [...ultimo.values()].reduce((t, v) => t + v, 0);
+    const c = cajas.get(s.id) || 0;
+    const e = emb.get(s.id) || 0;
+    cajasTotal += c;
+    embTotal += e;
+    if (ha > 0) {
+      hectareas.push(ha);
+    }
+  }
+  const promedio = (lista) => (lista.length ? r2(lista.reduce((t, v) => t + v, 0) / lista.length) : null);
+  return {
+    desde: semanas[0].codigo,
+    hasta: semanas[semanas.length - 1].codigo,
+    semanas: semanas.length,
+    cajasAcumuladas: r2(cajasTotal),
+    // Cajas del año ÷ promedio de las hectáreas en producción de las semanas transcurridas.
+    cajasPorHectareaAnio: hectareas.length ? r2(cajasTotal / (hectareas.reduce((t, v) => t + v, 0) / hectareas.length)) : null,
+    hectareasPromedioAnio: promedio(hectareas),
+    racimosCosechadosAnio: cortadosAnio,
+    // Ratio anual: cajas producidas ÷ racimos cosechados del año (igual que el ratio de la semana).
+    ratioAnual: cajasTotal > 0 && cortadosAnio > 0 ? Math.round((cajasTotal / cortadosAnio) * 1000) / 1000 : null,
+    embolsesAcumulados: embTotal,
+    // Igual que las cajas: embolses del año ÷ promedio de hectáreas en producción.
+    embolsesPorHectareaAnio: hectareas.length ? r2(embTotal / (hectareas.reduce((t, v) => t + v, 0) / hectareas.length)) : null,
+  };
+}
+
 // Indicadores de producción de una semana: racimos cortados, cajas, hectáreas en producción, embolses y ratio.
 async function indicadoresSemana(fincaIds, semana) {
   const rep = { fincaIds, sid: semana.id, f: semana.f };
@@ -188,6 +258,7 @@ export const informeSemanalService = {
       finca: { uuid: finca.uuid, codigo: finca.codigo, nombre: finca.nombre },
       semana: { uuid: semana.uuid, codigo: semana.codigo, anio: semana.anio, numeroSemana: semana.n, criterio },
       indicadores,
+      anio: await indicadoresAnio(fincaIds, semana),
       semanaAnterior: anterior ? { uuid: anterior.uuid, codigo: anterior.codigo } : null,
       semanaSiguiente: siguiente ? { uuid: siguiente.uuid, codigo: siguiente.codigo } : null,
       repicados: repicados.map((r) => ({ edad: Number(r.edad), semana: r.semanaCodigo, ...cintaDe(r.anio, r.numeroSemana), motivo: r.motivo, cantidad: Number(r.cantidad) })),
