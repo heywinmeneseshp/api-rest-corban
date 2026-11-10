@@ -61,7 +61,7 @@ export function informeSemanalHtml(data, movimientos) {
     ['Cajas por hectárea', n2(ind.cajasPorHectarea), ''],
     ['Ratio', n2(ind.ratio), 'fuerte'],
   ];
-  const fondo = (tipo) => (tipo === 'total' ? `background:#f1f5f9;font-weight:700;border-top:2px solid ${VERDE};` : tipo === 'fuerte' ? 'background:#f0fdf4;font-weight:700;' : '');
+  const fondo = (tipo) => (tipo === 'total' ? `background:#f1f5f9;font-weight:700;border-top:2px solid ${VERDE};` : tipo === 'fuerte' ? 'font-weight:700;' : '');
   const indicadores = tabla(
     `<tr>${th(`Indicadores de la semana ${esc(data.semana.codigo)} — ${esc(data.finca.nombre)}`, 2)}</tr>` +
       filasInd.map(([l, v, t]) => `<tr>${td(esc(l), fondo(t) + pad(extraIzq))}${td(esc(v), `text-align:right;font-weight:600;${fondo(t)}${pad(extraIzq)}`)}</tr>`).join('') +
@@ -75,7 +75,7 @@ export function informeSemanalHtml(data, movimientos) {
           ['Cajas por hectárea', n0(data.anio.cajasPorHectareaAnio), ''],
           ['Ratio anual', n2(data.anio.ratioAnual), ''],
         ]
-          .map(([l, v, t]) => `<tr>${td(esc(l), `background:#f7fdf9;${t ? 'font-weight:700;' : ''}`)}${td(esc(v), 'text-align:right;font-weight:600;background:#f7fdf9;')}</tr>`)
+          .map(([l, v, t]) => `<tr>${td(esc(l), `${t ? 'font-weight:700;' : ''}`)}${td(esc(v), 'text-align:right;font-weight:600;')}</tr>`)
           .join('')
       : ''),
   );
