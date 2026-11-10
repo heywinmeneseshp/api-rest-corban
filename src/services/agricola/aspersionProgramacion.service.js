@@ -301,24 +301,29 @@ async function adjuntarGalonesProgramados(rows) {
     for (const r of rows) r.setDataValue('ejecucionParcial', r.estado === 'EJECUTADA' && conPendiente.has(r.cicloUuid));
   }
   // Días desde la aspersión anterior de la MISMA finca (la más reciente con fecha anterior, sin contar las canceladas): `diasDesdeUltima`.
+  // Las partes de un mismo ciclo (una aspersión dividida en varios días) son UNA aplicación: todas llevan el intervalo de la primera
+  // parte, contado desde la aspersión anterior a ese ciclo; no cuentan entre sí.
   const fincaIds = [...new Set(rows.map((r) => r.fincaId).filter(Boolean))];
   if (fincaIds.length) {
     const previas = await AspersionProgramacion.findAll({
       where: { fincaId: fincaIds, estado: { [Op.ne]: 'CANCELADA' } },
-      attributes: ['fincaId', 'fecha'],
+      attributes: ['fincaId', 'fecha', 'cicloUuid'],
       raw: true,
     });
-    const fechasPorFinca = new Map();
+    const porFinca = new Map();
     for (const p of previas) {
-      if (!fechasPorFinca.has(p.fincaId)) fechasPorFinca.set(p.fincaId, new Set());
-      fechasPorFinca.get(p.fincaId).add(String(p.fecha).slice(0, 10));
+      if (!porFinca.has(p.fincaId)) porFinca.set(p.fincaId, []);
+      porFinca.get(p.fincaId).push({ fecha: String(p.fecha).slice(0, 10), ciclo: p.cicloUuid });
     }
     const MS_DIA = 24 * 60 * 60 * 1000;
     for (const r of rows) {
       const propia = String(r.fecha).slice(0, 10);
-      const anteriores = [...(fechasPorFinca.get(r.fincaId) || [])].filter((f) => f < propia).sort();
+      const delaFinca = porFinca.get(r.fincaId) || [];
+      // Primera fecha del ciclo de esta aspersión (o la propia si no tiene ciclo).
+      const inicioCiclo = delaFinca.filter((x) => r.cicloUuid && x.ciclo === r.cicloUuid).reduce((min, x) => (x.fecha < min ? x.fecha : min), propia);
+      const anteriores = [...new Set(delaFinca.filter((x) => !(r.cicloUuid && x.ciclo === r.cicloUuid) && x.fecha < inicioCiclo).map((x) => x.fecha))].sort();
       const ultima = anteriores[anteriores.length - 1];
-      r.setDataValue('diasDesdeUltima', ultima ? Math.round((new Date(`${propia}T00:00:00Z`) - new Date(`${ultima}T00:00:00Z`)) / MS_DIA) : null);
+      r.setDataValue('diasDesdeUltima', ultima ? Math.round((new Date(`${inicioCiclo}T00:00:00Z`) - new Date(`${ultima}T00:00:00Z`)) / MS_DIA) : null);
     }
   }
   // Insumo principal de la receta activa de cada mezcla (el calendario lo muestra en lugar del nombre de la mezcla).

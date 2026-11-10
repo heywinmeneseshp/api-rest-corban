@@ -217,6 +217,70 @@ const resolverFincaUuids = async (query, user) => {
   return permitidos;
 };
 
+// Temperatura y humedad relativa de las gráficas de clima: salen de Open-Meteo (open_meteo_clima_diaria), salvo las fincas que tienen
+// estación meteorológica propia (San Francisco y Pantoja), que usan lo registrado en `clima`. La precipitación no cambia.
+// Número de estación (estacion_clima_diaria, WeatherLink): 1 = Pantoja, 2 = San Francisco.
+const FINCAS_CON_ESTACION = [
+  { patron: /san\s+francisco/i, estacion: 2 },
+  { patron: /pantoja/i, estacion: 1 },
+];
+
+// Devuelve { datos: Map 'fincaUuid-AAAA-MM-DD' → { fincaUuid, fecha, temperatura, humedadRelativa }, nombres: Map fincaUuid → nombre }.
+// `fincaUuids`: null = todas. `desde`/`hasta` (AAAA-MM-DD) y `anio` limitan las fechas.
+async function tempHumPorFincaFecha(fincaUuids, { desde = null, hasta = null, anio = null } = {}) {
+  const aIso = (f) => (f instanceof Date ? f.toISOString().slice(0, 10) : String(f).slice(0, 10));
+  const datos = new Map();
+  const nombres = new Map();
+  if (fincaUuids && fincaUuids.length === 0) return { datos, nombres };
+  const fincas = await sequelize.query(
+    `SELECT id, uuid, nombre FROM fincas WHERE deleted_at IS NULL ${fincaUuids ? 'AND uuid IN (:fincaUuids)' : ''}`,
+    { replacements: { fincaUuids }, type: 'SELECT' },
+  );
+  const estacionDe = (f) => FINCAS_CON_ESTACION.find((x) => x.patron.test(f.nombre))?.estacion ?? null;
+  const conEstacion = fincas.filter((f) => estacionDe(f) !== null);
+  const conOpenMeteo = fincas.filter((f) => !conEstacion.includes(f));
+  for (const f of fincas) nombres.set(f.uuid, f.nombre);
+  const limite = {};
+  let whereFecha = '';
+  if (desde && hasta) {
+    whereFecha = 'AND fecha BETWEEN :desde AND :hasta';
+    limite.desde = desde;
+    limite.hasta = hasta;
+  } else if (anio) {
+    whereFecha = 'AND fecha BETWEEN :desde AND :hasta';
+    limite.desde = `${anio}-01-01`;
+    limite.hasta = `${anio}-12-31`;
+  }
+  if (conOpenMeteo.length) {
+    const uuidPorId = new Map(conOpenMeteo.map((f) => [f.id, f.uuid]));
+    const filas = await sequelize.query(
+      `SELECT finca_id AS fincaId, fecha, temperatura, humedad_relativa AS humedadRelativa FROM open_meteo_clima_diaria
+        WHERE finca_id IN (:ids) AND (temperatura IS NOT NULL OR humedad_relativa IS NOT NULL) ${whereFecha}`,
+      { replacements: { ids: conOpenMeteo.map((f) => f.id), ...limite }, type: 'SELECT' },
+    );
+    for (const r of filas) {
+      const fincaUuid = uuidPorId.get(r.fincaId);
+      const fecha = aIso(r.fecha);
+      datos.set(`${fincaUuid}-${fecha}`, { fincaUuid, fecha, temperatura: r.temperatura === null ? null : Number(r.temperatura), humedadRelativa: r.humedadRelativa === null ? null : Number(r.humedadRelativa) });
+    }
+  }
+  if (conEstacion.length) {
+    // Estación propia: lo que mide su estación meteorológica.
+    const uuidPorEstacion = new Map(conEstacion.map((f) => [estacionDe(f), f.uuid]));
+    const filas = await sequelize.query(
+      `SELECT estacion, fecha, temperatura, humedad_relativa AS humedadRelativa FROM estacion_clima_diaria
+        WHERE estacion IN (:estaciones) AND (temperatura IS NOT NULL OR humedad_relativa IS NOT NULL) ${whereFecha}`,
+      { replacements: { estaciones: [...uuidPorEstacion.keys()], ...limite }, type: 'SELECT' },
+    );
+    for (const r of filas) {
+      const fincaUuid = uuidPorEstacion.get(Number(r.estacion));
+      const fecha = aIso(r.fecha);
+      datos.set(`${fincaUuid}-${fecha}`, { fincaUuid, fecha, temperatura: r.temperatura === null ? null : Number(r.temperatura), humedadRelativa: r.humedadRelativa === null ? null : Number(r.humedadRelativa) });
+    }
+  }
+  return { datos, nombres };
+}
+
 export const climaService = {
   async create(payload, actorId) {
     await ensureTable();
@@ -500,7 +564,8 @@ export const climaService = {
     const rangosPorFinca = [...rangoPorFinca.values()];
 
     const aniosDisponibles = await semanaRepository.findAniosDistintos();
-    if (rangosPorFinca.length === 0) return { items: [], aniosDisponibles };
+    const { datos: tempHum } = await tempHumPorFincaFecha(fincaUuids);
+    if (rangosPorFinca.length === 0 && tempHum.size === 0) return { items: [], aniosDisponibles };
 
     // Todas las filas reales (mm/temperatura/humedad) de esas fincas, para
     // buscar por finca+fecha sin una consulta por día.
@@ -573,18 +638,25 @@ export const climaService = {
         accFinca.sumaMm += mm;
         accFinca.countMm += 1;
 
-        if (!acumTempHumPorSemana.has(semana.uuid)) {
-          acumTempHumPorSemana.set(semana.uuid, { sumaTemp: 0, countTemp: 0, sumaHum: 0, countHum: 0 });
-        }
-        const accSemana = acumTempHumPorSemana.get(semana.uuid);
-        if (real && real.temperatura !== null) {
-          accSemana.sumaTemp += Number(real.temperatura);
-          accSemana.countTemp += 1;
-        }
-        if (real && real.humedadRelativa !== null) {
-          accSemana.sumaHum += Number(real.humedadRelativa);
-          accSemana.countHum += 1;
-        }
+      }
+    }
+
+    // Temperatura y humedad: Open-Meteo (o la estación propia en San Francisco y Pantoja), día a día de cada finca.
+    for (const th of tempHum.values()) {
+      const semana = semanaPorFecha.get(th.fecha);
+      if (!semana) continue;
+      if (!semanaMeta.has(semana.uuid)) {
+        semanaMeta.set(semana.uuid, { semanaCodigo: semana.codigo, numeroSemana: semana.numeroSemana, anio: semana.anio, fecha: semana.fechaInicio });
+      }
+      if (!acumTempHumPorSemana.has(semana.uuid)) acumTempHumPorSemana.set(semana.uuid, { sumaTemp: 0, countTemp: 0, sumaHum: 0, countHum: 0 });
+      const acc = acumTempHumPorSemana.get(semana.uuid);
+      if (th.temperatura !== null) {
+        acc.sumaTemp += th.temperatura;
+        acc.countTemp += 1;
+      }
+      if (th.humedadRelativa !== null) {
+        acc.sumaHum += th.humedadRelativa;
+        acc.countHum += 1;
       }
     }
 
@@ -665,7 +737,8 @@ export const climaService = {
       }
     }
     const aniosDisponibles = await semanaRepository.findAniosDistintos();
-    if (rangoPorFinca.size === 0) return { items: [], aniosDisponibles };
+    const { datos: tempHum } = await tempHumPorFincaFecha(fincaUuids, { anio: query.anio ? Number(query.anio) : null });
+    if (rangoPorFinca.size === 0 && tempHum.size === 0) return { items: [], aniosDisponibles };
 
     const filasReales = await sequelize.query(
       `SELECT finca_uuid AS fincaUuid, fecha, mm, temperatura, humedad_relativa AS humedadRelativa FROM ${TABLE} ${whereFinca}`,
@@ -703,14 +776,23 @@ export const climaService = {
         }
         a.sumaMm += mm;
         a.nMm += 1;
-        if (real && real.temperatura !== null) {
-          a.sumaTemp += Number(real.temperatura);
-          a.nTemp += 1;
-        }
-        if (real && real.humedadRelativa !== null) {
-          a.sumaHum += Number(real.humedadRelativa);
-          a.nHum += 1;
-        }
+      }
+    }
+
+    // Temperatura y humedad: Open-Meteo (o la estación propia en San Francisco y Pantoja), día a día de cada finca.
+    for (const th of tempHum.values()) {
+      let a = porDia.get(th.fecha);
+      if (!a) {
+        a = { sumaMm: 0, nMm: 0, sumaTemp: 0, nTemp: 0, sumaHum: 0, nHum: 0 };
+        porDia.set(th.fecha, a);
+      }
+      if (th.temperatura !== null) {
+        a.sumaTemp += th.temperatura;
+        a.nTemp += 1;
+      }
+      if (th.humedadRelativa !== null) {
+        a.sumaHum += th.humedadRelativa;
+        a.nHum += 1;
       }
     }
 
@@ -770,8 +852,24 @@ export const climaService = {
     );
     const aIso = (f) => (f instanceof Date ? f.toISOString().slice(0, 10) : String(f).slice(0, 10));
     const realPorFincaFecha = new Map(filasReales.map((f) => [`${f.fincaUuid}-${aIso(f.fecha)}`, f]));
+    // Temperatura y humedad: Open-Meteo (o la estación propia en San Francisco y Pantoja).
+    const { datos: tempHum, nombres } = await tempHumPorFincaFecha(fincaUuids, { desde: aIso(semana.fechaInicio), hasta: aIso(semana.fechaFin) });
+    const porFincaTempHum = new Map(); // fincaUuid -> { sumaTemp, countTemp, sumaHum, countHum }
+    for (const th of tempHum.values()) {
+      const a = porFincaTempHum.get(th.fincaUuid) || { sumaTemp: 0, countTemp: 0, sumaHum: 0, countHum: 0 };
+      if (th.temperatura !== null) {
+        a.sumaTemp += th.temperatura;
+        a.countTemp += 1;
+      }
+      if (th.humedadRelativa !== null) {
+        a.sumaHum += th.humedadRelativa;
+        a.countHum += 1;
+      }
+      porFincaTempHum.set(th.fincaUuid, a);
+    }
 
     const detalle = [];
+    const conFilaDeLluvia = new Set();
     for (const r of rangosPorFinca) {
       const desdeFinca = new Date(r.desde).getTime();
       const hastaFinca = new Date(r.hasta).getTime();
@@ -792,22 +890,31 @@ export const climaService = {
         const real = realPorFincaFecha.get(`${r.fincaUuid}-${fechaIso}`);
         sumaMm += real && real.mm !== null ? Number(real.mm) : 0;
         countMm += 1;
-        if (real && real.temperatura !== null) {
-          sumaTemp += Number(real.temperatura);
-          countTemp += 1;
-        }
-        if (real && real.humedadRelativa !== null) {
-          sumaHum += Number(real.humedadRelativa);
-          countHum += 1;
-        }
       }
+      const th = porFincaTempHum.get(r.fincaUuid);
+      sumaTemp = th?.sumaTemp || 0;
+      countTemp = th?.countTemp || 0;
+      sumaHum = th?.sumaHum || 0;
+      countHum = th?.countHum || 0;
 
+      conFilaDeLluvia.add(r.fincaUuid);
       detalle.push({
         fincaUuid: r.fincaUuid,
         fincaNombre: r.fincaNombre,
         totalMm: countMm > 0 ? Math.round(sumaMm * 100) / 100 : null,
         promedioTemperatura: countTemp > 0 ? Math.round((sumaTemp / countTemp) * 100) / 100 : null,
         promedioHumedad: countHum > 0 ? Math.round((sumaHum / countHum) * 100) / 100 : null,
+      });
+    }
+    // Fincas con temperatura/humedad de Open-Meteo pero sin registros de lluvia en `clima`.
+    for (const [fincaUuid, th] of porFincaTempHum) {
+      if (conFilaDeLluvia.has(fincaUuid)) continue;
+      detalle.push({
+        fincaUuid,
+        fincaNombre: nombres.get(fincaUuid) || '—',
+        totalMm: null,
+        promedioTemperatura: th.countTemp > 0 ? Math.round((th.sumaTemp / th.countTemp) * 100) / 100 : null,
+        promedioHumedad: th.countHum > 0 ? Math.round((th.sumaHum / th.countHum) * 100) / 100 : null,
       });
     }
 
@@ -842,6 +949,7 @@ export const climaService = {
 
     const aniosDisponibles = await semanaRepository.findAniosDistintos();
     if (rangosPorFinca.length === 0) return { items: [], aniosDisponibles, granularidad };
+    const { datos: tempHumSerie } = await tempHumPorFincaFecha(fincaUuids);
 
     const filasReales = await sequelize.query(
       `SELECT finca_uuid AS fincaUuid, fecha, mm, temperatura, humedad_relativa AS humedadRelativa FROM ${TABLE} ${whereFinca}`,
@@ -910,12 +1018,13 @@ export const climaService = {
         const acc = acum.get(clave);
         acc.sumaMm += mm;
         acc.countMm += 1;
-        if (real && real.temperatura !== null) {
-          acc.sumaTemp += Number(real.temperatura);
+        const thSerie = tempHumSerie.get(`${r.fincaUuid}-${fechaIso}`);
+        if (thSerie && thSerie.temperatura !== null) {
+          acc.sumaTemp += thSerie.temperatura;
           acc.countTemp += 1;
         }
-        if (real && real.humedadRelativa !== null) {
-          acc.sumaHum += Number(real.humedadRelativa);
+        if (thSerie && thSerie.humedadRelativa !== null) {
+          acc.sumaHum += thSerie.humedadRelativa;
           acc.countHum += 1;
         }
       }
