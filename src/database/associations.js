@@ -40,6 +40,7 @@ import { ProyeccionArea } from './models/proyeccionArea.model.js';
 import { ProyeccionProducto } from './models/proyeccionProducto.model.js';
 import { ProduccionSemanal } from './models/produccionSemanal.model.js';
 import { EstimacionFinca } from './models/estimacionFinca.model.js';
+import { EstimacionFincaCambio } from './models/estimacionFincaCambio.model.js';
 import { CategoriaLabor } from './models/categoriaLabor.model.js';
 import { Labor } from './models/labor.model.js';
 import { LaborSerie } from './models/laborSerie.model.js';
@@ -398,6 +399,10 @@ export const setupAssociations = () => {
   ProyeccionProducto.belongsTo(Producto, { foreignKey: 'productoId', as: 'producto' });
   withAuditAssociations(ProduccionSemanal);
   withAuditAssociations(EstimacionFinca);
+  EstimacionFincaCambio.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+  EstimacionFincaCambio.belongsTo(Semana, { foreignKey: 'semanaId', as: 'semana' });
+  EstimacionFincaCambio.belongsTo(User, { foreignKey: 'solicitadoBy', as: 'solicitadoPor' });
+  EstimacionFincaCambio.belongsTo(User, { foreignKey: 'resueltoBy', as: 'resueltoPor' });
 
   // Calendario de Labores: CategoriaLabor -> Labor -> LaborSerie -> (LaborSerieLote | LaborOcurrencia)
   CategoriaLabor.hasMany(Labor, { foreignKey: 'categoriaLaborId', as: 'labores' });
@@ -869,6 +874,7 @@ export {
   ProyeccionProducto,
   ProduccionSemanal,
   EstimacionFinca,
+  EstimacionFincaCambio,
   CategoriaLabor,
   Labor,
   LaborSerie,

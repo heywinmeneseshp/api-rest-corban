@@ -504,6 +504,53 @@ export const mailService = {
     });
   },
 
+  // Estimaciones de fincas. `tipo`: REESTIMACION (cambio pendiente de aprobación), TARDIA (enviada después del límite), APROBADA o RECHAZADA.
+  // `filas`: [{ finca, semana, anterior, nueva }]. `solicitante`: quien estimó; `detalle`: texto extra (límite, motivo de rechazo…).
+  async sendEstimacionAviso({ destinatario, cc = [], tipo, solicitante, filas, detalle = '' }) {
+    const { nombre: marca, nombreHtml: marcaHtml, from } = await obtenerMarca();
+    const titulos = {
+      REESTIMACION: ['Estimación pendiente de aprobación', 'Se volvió a estimar una finca en la misma semana. El cambio queda pendiente hasta que lo apruebe un usuario con permiso; mientras tanto sigue vigente la estimación anterior.'],
+      TARDIA: ['Estimación enviada fuera de plazo', 'La estimación se envió después del límite establecido para la semana.'],
+      APROBADA: ['Estimación aprobada', 'La nueva estimación fue aprobada y ya está vigente.'],
+      RECHAZADA: ['Estimación rechazada', 'La nueva estimación fue rechazada y sigue vigente la anterior.'],
+    };
+    const [titulo, intro] = titulos[tipo] || titulos.REESTIMACION;
+    const fincasUnicas = [...new Set(filas.map((f) => f.finca).filter(Boolean))];
+    const fechaHoraTexto = new Date().toLocaleString('es-CO', { timeZone: 'America/Bogota', dateStyle: 'long', timeStyle: 'short' });
+    const celda = 'padding: 8px; border-bottom: 1px solid #e5e7eb; text-align: left;';
+    const mostrar = (n) => (n === null || n === undefined ? '—' : Number(n).toLocaleString('es-CO'));
+    const cuerpo = filas
+      .map((f) => `<tr><td style="${celda}"><strong>${escaparHtml(f.finca)}</strong></td><td style="${celda}">${escaparHtml(f.semana)}</td><td style="${celda}">${mostrar(f.anterior)}</td><td style="${celda}"><strong>${mostrar(f.nueva)}</strong></td></tr>`)
+      .join('');
+    const html = `
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb;">
+        <div style="background: linear-gradient(135deg, #166534 0%, #22a35e 100%); padding: 28px 32px; text-align: center;">
+          <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">${marcaHtml}</h1>
+          <p style="color: rgba(255,255,255,.85); margin: 4px 0 0; font-size: 13px;">Estimaciones — ${escaparHtml(titulo)}</p>
+        </div>
+        <div style="padding: 32px; color: #374151; font-size: 14px; line-height: 1.5;">
+          <p style="margin: 0 0 12px;">${escaparHtml(intro)}</p>
+          <p style="margin: 0 0 4px;">Finca${fincasUnicas.length === 1 ? '' : 's'}: <strong>${escaparHtml(fincasUnicas.join(', '))}</strong></p>
+          <p style="margin: 0 0 4px;">Fecha y hora: <strong>${escaparHtml(fechaHoraTexto)}</strong> (hora de Bogotá)</p>
+          <p style="margin: 0 0 12px;">${tipo === 'APROBADA' || tipo === 'RECHAZADA' ? 'Solicitó' : 'Estimó'}: <strong>${escaparHtml(solicitante)}</strong></p>
+          ${detalle ? `<p style="margin: 0 0 12px;">${escaparHtml(detalle)}</p>` : ''}
+          <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+            <thead><tr><th style="${celda}">Finca</th><th style="${celda}">Semana estimada</th><th style="${celda}">Anterior (cajas)</th><th style="${celda}">Nueva (cajas)</th></tr></thead>
+            <tbody>${cuerpo}</tbody>
+          </table>
+        </div>
+        <div style="background: #f9fafb; padding: 16px 32px; text-align: center; border-top: 1px solid #e5e7eb;">
+          <p style="margin: 0; color: #9ca3af; font-size: 11px;">Este mensaje se generó automáticamente, por favor no respondas a este correo.</p>
+        </div>
+      </div>
+    `;
+    if (!isConfigured || !transporter) {
+      console.log(`📧  MAIL SERVICE (no configurado) — estimación ${tipo}: ${destinatario} ${filas.map((f) => `${f.finca} ${f.semana}`).join(' | ')}`);
+      return;
+    }
+    await transporter.sendMail({ from, to: destinatario, cc: cc.length ? cc : undefined, subject: `${marca} — ${titulo}: ${fincasUnicas.join(', ')} (${fechaHoraTexto})`, html });
+  },
+
   // Aviso al colaborador: su jornada del día quedó incompleta. `tramos`: [{ lugar, detalle }].
   async sendJornadaIncompleta({ destinatario, cc = [], nombre, fecha, tramos }) {
     const { nombre: marca, nombreHtml: marcaHtml, from } = await obtenerMarca();
@@ -534,7 +581,7 @@ export const mailService = {
       return;
     }
 
-    await transporter.sendMail({ from, to: destinatario, cc: cc.length ? cc : undefined, subject: `${marca} — Jornada incompleta del ${fecha}`, html });
+    await transporter.sendMail({ from, to: destinatario, cc: cc.length ? cc : undefined, subject: `${marca} — Jornada incompleta de ${nombre}: ${fechaLegible}`, html });
   },
 
   // Resumen al superior: colaboradores con jornada incompleta. `filas`: [{ colaborador, lugar, detalle }].

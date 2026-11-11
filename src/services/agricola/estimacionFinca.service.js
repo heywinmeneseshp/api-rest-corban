@@ -3,7 +3,10 @@ import { estimacionFincaRepository } from '../../repositories/agricola/estimacio
 import { produccionSemanalRepository } from '../../repositories/agricola/produccionSemanal.repository.js';
 import { racimoMovimientoRepository } from '../../repositories/agricola/racimoMovimiento.repository.js';
 import { semanaRepository } from '../../repositories/agricola/semana.repository.js';
-import { Finca, Semana, User, RacimoMovimiento, FincaSemanaLiquidacion } from '../../database/associations.js';
+import { Finca, Semana, User, Role, RacimoMovimiento, FincaSemanaLiquidacion, EstimacionFinca, EstimacionFincaCambio } from '../../database/associations.js';
+import { mailService } from '../sistema/mail.service.js';
+import { logger } from '../../utils/logger.js';
+import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import { sequelize } from '../../database/connection.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getFincaIdsPermitidas, assertFincaPermitida, expandirFincaIds } from '../../utils/fincaScope.js';
@@ -171,6 +174,42 @@ function resolverVisibilidad(user) {
   const fincaIds = getFincaIdsPermitidas(user);
   const soloPropias = fincaIds !== null;
   return { fincaIds, soloPropias };
+}
+
+const puedeAprobar = (user) => (user?.roles || []).includes(ROLES.ADMINISTRADOR) || (user?.permissions || []).includes(PERMISSIONS.ESTIMACION_APROBAR);
+const nombreUsuario = (u) => `${u?.nombre || ''} ${u?.apellido || ''}`.trim() || u?.usuario || 'Usuario';
+const DIAS_SEMANA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+
+// Instante límite de envío dentro de la semana actual (día de la semana y hora de Bogotá), o null si el límite no está activo.
+function limiteDeLaSemana(semanaActual, limite) {
+  if (!limite?.activo || !semanaActual) return null;
+  const dia = (f) => String(f).slice(0, 10);
+  const desde = dia(semanaActual.fechaInicio);
+  const hasta = dia(semanaActual.fechaFin);
+  for (let t = new Date(`${desde}T12:00:00Z`).getTime(); dia(new Date(t).toISOString()) <= hasta; t += 86400000) {
+    const fecha = dia(new Date(t).toISOString());
+    if (new Date(t).getUTCDay() === Number(limite.dia)) return { fecha, instante: new Date(`${fecha}T${limite.hora}:00-05:00`) };
+  }
+  return null;
+}
+
+// Correos: quien estimó + copia (roles y usuarios elegidos en la tuerca de configuración). Nunca rompe el guardado.
+async function enviarAvisoEstimacion({ tipo, solicitanteId, filas, detalle = '' }) {
+  try {
+    const config = await configuracionService.getEstimacionConfig();
+    const solicitante = solicitanteId ? await User.findByPk(solicitanteId, { attributes: ['id', 'usuario', 'nombre', 'apellido', 'email'] }) : null;
+    const porRol = config.rolesUuids.length
+      ? await User.findAll({ where: { estado: true }, attributes: ['id', 'email'], include: [{ model: Role, as: 'roles', attributes: ['id'], required: true, where: { uuid: config.rolesUuids }, through: { attributes: [] } }] })
+      : [];
+    const porUsuario = config.usuariosUuids.length ? await User.findAll({ where: { estado: true, uuid: config.usuariosUuids }, attributes: ['id', 'email'] }) : [];
+    const copias = [...new Set([...porRol, ...porUsuario].map((u) => u.email?.trim()).filter(Boolean))];
+    const propio = solicitante?.email?.trim();
+    const para = propio || copias[0];
+    if (!para) return;
+    await mailService.sendEstimacionAviso({ destinatario: para, cc: copias.filter((c) => c !== para), tipo, solicitante: nombreUsuario(solicitante), filas, detalle });
+  } catch (error) {
+    logger.error('No se pudo enviar el aviso de estimación', { tipo, message: error.message });
+  }
 }
 
 // Estado real (histórico, no proyectado) de las cintas de embolse de una
@@ -584,14 +623,125 @@ export const estimacionFincaService = {
       });
     }
 
+    // Re-estimación: si esa finca ya tiene estimación vigente para esa semana en la misma semana de registro y el valor cambia, el cambio
+    // queda PENDIENTE de aprobación (la vigente no se toca hasta que alguien con permiso lo apruebe).
+    const existentes = filas.length
+      ? await EstimacionFinca.findAll({ where: { [Op.or]: filas.map((f) => ({ semanaId: f.semanaId, fincaId: f.fincaId, semanaRegistroId: f.semanaRegistroId })) } })
+      : [];
+    const claveDe = (f) => `${f.semanaId}-${f.fincaId}-${f.semanaRegistroId}`;
+    const porClave = new Map(existentes.map((e) => [claveDe(e), e]));
+    const nuevas = [];
+    const reestimaciones = [];
+    for (const f of filas) {
+      const e = porClave.get(claveDe(f));
+      if (!e) nuevas.push(f);
+      else if (Number(e.cajas20kg) !== f.cajas20kg || (e.observaciones || null) !== (f.observaciones || null)) reestimaciones.push({ f, e });
+    }
+
+    if (nuevas.length > 0) await estimacionFincaRepository.bulkUpsert(nuevas);
+    for (const { f, e } of reestimaciones) {
+      const datos = { cajasNueva: f.cajas20kg, observaciones: f.observaciones, solicitadoBy: actorId, cajasAnterior: e.cajas20kg };
+      const pendiente = await EstimacionFincaCambio.findOne({ where: { estimacionId: e.id, estado: 'PENDIENTE' } });
+      if (pendiente) await pendiente.update(datos);
+      else await EstimacionFincaCambio.create({ ...datos, estimacionId: e.id, semanaId: f.semanaId, fincaId: f.fincaId, semanaRegistroId: f.semanaRegistroId });
+    }
+
+    // Avisos por correo: re-estimación y envío fuera del plazo configurado.
+    const nombreFinca = new Map(fincas.map((x) => [x.id, x.nombre]));
+    const codigoSemana = new Map(semanas.map((x) => [x.id, x.codigo]));
+    if (reestimaciones.length > 0) {
+      await enviarAvisoEstimacion({
+        tipo: 'REESTIMACION',
+        solicitanteId: actorId,
+        filas: reestimaciones.map(({ f, e }) => ({ finca: nombreFinca.get(f.fincaId), semana: codigoSemana.get(f.semanaId), anterior: e.cajas20kg, nueva: f.cajas20kg })),
+      });
+    }
+    let fueraDePlazo = false;
     if (filas.length > 0) {
-      await estimacionFincaRepository.bulkUpsert(filas);
+      const { limite } = await configuracionService.getEstimacionConfig();
+      const tope = limiteDeLaSemana(semanaActual, limite);
+      if (tope && Date.now() > tope.instante.getTime()) {
+        fueraDePlazo = true;
+        await enviarAvisoEstimacion({
+          tipo: 'TARDIA',
+          solicitanteId: actorId,
+          detalle: `El límite era el ${DIAS_SEMANA[Number(limite.dia)]} ${tope.fecha} a las ${limite.hora} (hora de Bogotá).`,
+          filas: filas.map((f) => ({ finca: nombreFinca.get(f.fincaId), semana: codigoSemana.get(f.semanaId), anterior: porClave.get(claveDe(f))?.cajas20kg ?? null, nueva: f.cajas20kg })),
+        });
+      }
     }
 
     return {
-      guardadas: filas.length,
+      guardadas: nuevas.length,
+      pendientesAprobacion: reestimaciones.length,
+      fueraDePlazo,
       errores: errores.length > 0 ? errores : undefined,
     };
+  },
+
+  // Re-estimaciones: por defecto las pendientes. Quien no puede aprobar solo ve las suyas.
+  async listarCambios(query, user) {
+    const { fincaIds } = resolverVisibilidad(user);
+    const estado = ['PENDIENTE', 'APROBADA', 'RECHAZADA'].includes(query.estado) ? query.estado : 'PENDIENTE';
+    const where = { estado, ...(fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}), ...(puedeAprobar(user) ? {} : { solicitadoBy: user.id }) };
+    const filas = await EstimacionFincaCambio.findAll({
+      where,
+      include: [
+        { model: Finca, as: 'finca', attributes: ['uuid', 'codigo', 'nombre'] },
+        { model: Semana, as: 'semana', attributes: ['uuid', 'codigo'] },
+        { model: User, as: 'solicitadoPor', attributes: ['uuid', 'usuario', 'nombre', 'apellido'] },
+        { model: User, as: 'resueltoPor', attributes: ['uuid', 'usuario', 'nombre', 'apellido'] },
+      ],
+      order: [['createdAt', 'DESC']],
+      limit: 200,
+    });
+    return {
+      puedeAprobar: puedeAprobar(user),
+      items: filas.map((c) => ({
+        uuid: c.uuid,
+        finca: c.finca,
+        semana: c.semana,
+        cajasAnterior: Number(c.cajasAnterior),
+        cajasNueva: Number(c.cajasNueva),
+        observaciones: c.observaciones,
+        estado: c.estado,
+        motivoRechazo: c.motivoRechazo,
+        solicitadoPor: c.solicitadoPor ? { uuid: c.solicitadoPor.uuid, nombre: nombreUsuario(c.solicitadoPor) } : null,
+        resueltoPor: c.resueltoPor ? { uuid: c.resueltoPor.uuid, nombre: nombreUsuario(c.resueltoPor) } : null,
+        resueltoAt: c.resueltoAt,
+        createdAt: c.createdAt,
+      })),
+    };
+  },
+
+  async resolverCambio(uuid, { aprobar, motivo }, actorId, user) {
+    if (!puedeAprobar(user)) throw ApiError.forbidden('No tienes permiso para aprobar o rechazar estimaciones');
+    const cambio = await EstimacionFincaCambio.findOne({
+      where: { uuid },
+      include: [
+        { model: Finca, as: 'finca', attributes: ['id', 'nombre'] },
+        { model: Semana, as: 'semana', attributes: ['id', 'codigo'] },
+      ],
+    });
+    if (!cambio) throw ApiError.notFound('Cambio de estimación no encontrado');
+    assertFincaPermitida(user, cambio.fincaId);
+    if (cambio.estado !== 'PENDIENTE') throw ApiError.conflict('Este cambio ya fue resuelto');
+    if (!aprobar && !String(motivo || '').trim()) throw ApiError.badRequest('Escribe el motivo del rechazo');
+    const estimacion = await EstimacionFinca.findByPk(cambio.estimacionId);
+    await sequelize.transaction(async (transaction) => {
+      if (aprobar) {
+        if (!estimacion) throw ApiError.conflict('La estimación original ya no existe');
+        await estimacion.update({ cajas20kg: cambio.cajasNueva, observaciones: cambio.observaciones, updatedBy: actorId }, { transaction });
+      }
+      await cambio.update({ estado: aprobar ? 'APROBADA' : 'RECHAZADA', motivoRechazo: aprobar ? null : String(motivo).trim(), resueltoBy: actorId, resueltoAt: new Date() }, { transaction });
+    });
+    await enviarAvisoEstimacion({
+      tipo: aprobar ? 'APROBADA' : 'RECHAZADA',
+      solicitanteId: cambio.solicitadoBy,
+      detalle: aprobar ? '' : `Motivo: ${String(motivo).trim()}`,
+      filas: [{ finca: cambio.finca?.nombre, semana: cambio.semana?.codigo, anterior: cambio.cajasAnterior, nueva: cambio.cajasNueva }],
+    });
+    return { uuid: cambio.uuid, estado: cambio.estado };
   },
 
   async listarEstimaciones(query, user) {

@@ -113,12 +113,12 @@ export const PERMISOS_CATALOGO = [
     ],
   },
   {
-    id: 'operacion',
-    nombre: 'Producción y clima',
+    id: 'precipitacion_diaria',
+    nombre: 'Precipitación Diaria',
     codigo: null,
     pantallas: [
       {
-        nombre: 'Precipitación diaria',
+        nombre: 'Precipitación Diaria',
         acceso: 'menu.precipitacion_diaria',
         filas: [{ ver: 'precipitacion_diaria.ver' }],
         especiales: [
@@ -128,18 +128,42 @@ export const PERMISOS_CATALOGO = [
           especial('clima.crear', 'Cargue masivo de clima desde archivo'),
         ],
       },
+    ],
+  },
+  {
+    id: 'produccion_semanal',
+    nombre: 'Producción Semanal',
+    codigo: null,
+    pantallas: [
       {
-        nombre: 'Producción semanal',
+        nombre: 'Producción Semanal',
         acceso: 'menu.produccion_semanal',
         filas: [crud('produccion', ['ver', 'crear', 'eliminar'])],
         especiales: [especial('produccion.actualizar_masivo', 'Sobrescribir en bloque producción ya cargada', { sensible: true })],
       },
+    ],
+  },
+  {
+    id: 'estimaciones',
+    nombre: 'Estimaciones de Fincas',
+    codigo: null,
+    pantallas: [
       {
-        nombre: 'Estimaciones de fincas',
+        nombre: 'Estimaciones de Fincas',
         acceso: 'menu.estimaciones',
         filas: [crud('estimacion', ['ver', 'crear'])],
-        especiales: [especial('estimacion.editar_distribucion', 'Editar el % de distribución por cinta (patrón de corte)')],
+        especiales: [
+          especial('estimacion.editar_distribucion', 'Editar el % de distribución por cinta (patrón de corte)'),
+          especial('estimacion.aprobar', 'Aprobar o rechazar re-estimaciones (volver a estimar una finca en la misma semana)'),
+        ],
       },
+    ],
+  },
+  {
+    id: 'proyeccion',
+    nombre: 'Proyección',
+    codigo: null,
+    pantallas: [
       {
         nombre: 'Proyección',
         acceso: 'menu.pronostico',
@@ -148,15 +172,14 @@ export const PERMISOS_CATALOGO = [
           { nombre: 'Proyección anual', ver: 'proyeccion.ver', editar: 'proyeccion.editar' },
         ],
       },
-      { nombre: 'Estación meteorológica', acceso: 'menu.estacion_meteorologica', filas: [{ ver: 'estacion_meteorologica.ver' }] },
-      { nombre: 'Programación de corte', acceso: 'menu.programacion_corte', filas: [crud('programacion_corte', ['ver', 'crear', 'eliminar'])] },
-      {
-        nombre: 'Precalibración',
-        acceso: 'menu.precalibracion',
-        app: 'campo',
-        filas: [crud('precalibracion', ['ver', 'crear'])],
-        especiales: [especial('precalibracion.configurar', 'Configurar edades y calibres')],
-      },
+    ],
+  },
+  {
+    id: 'estacion_meteorologica',
+    nombre: 'Estación Meteorológica',
+    codigo: null,
+    pantallas: [
+      { nombre: 'Estación Meteorológica', acceso: 'menu.estacion_meteorologica', filas: [{ ver: 'estacion_meteorologica.ver' }] },
     ],
   },
   {
@@ -217,6 +240,28 @@ export const PERMISOS_CATALOGO = [
       },
       { nombre: 'Ingredientes activos', acceso: 'menu.sanidad_vegetal.ingredientes_activos', filas: [crud('ingrediente_activo')] },
       { nombre: 'Insumos', acceso: 'menu.sanidad_vegetal.insumos', filas: [] },
+    ],
+  },
+  {
+    id: 'programacion_corte',
+    nombre: 'Programación de Corte',
+    codigo: null,
+    pantallas: [
+      { nombre: 'Programación de Corte', acceso: 'menu.programacion_corte', filas: [crud('programacion_corte', ['ver', 'crear', 'eliminar'])] },
+    ],
+  },
+  {
+    id: 'precalibracion',
+    nombre: 'Precalibración',
+    codigo: null,
+    pantallas: [
+      {
+        nombre: 'Precalibración',
+        acceso: 'menu.precalibracion',
+        app: 'campo',
+        filas: [crud('precalibracion', ['ver', 'crear'])],
+        especiales: [especial('precalibracion.configurar', 'Configurar edades y calibres')],
+      },
     ],
   },
   {

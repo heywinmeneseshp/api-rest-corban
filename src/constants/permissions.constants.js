@@ -133,6 +133,8 @@ export const PERMISSIONS = {
   // migración 20260909000000-restructura-permisos-estimaciones.cjs).
   ESTIMACION_EDITAR_DISTRIBUCION: 'estimacion.editar_distribucion',
 
+  // Aprueba o rechaza las re-estimaciones (volver a cargar la estimación de una finca en la misma semana de registro).
+  ESTIMACION_APROBAR: 'estimacion.aprobar',
   MENU_ESTIMACIONES: 'menu.estimaciones',
 
   // Captura diaria de precipitación desde app-corbana (distinta del registro
@@ -523,6 +525,7 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.ESTIMACION_VER, nombre: 'Ver estimaciones de fincas' },
   { codigo: PERMISSIONS.ESTIMACION_CREAR, nombre: 'Crear estimaciones de fincas' },
   { codigo: PERMISSIONS.ESTIMACION_EDITAR_DISTRIBUCION, nombre: 'Editar % de distribución del estimado (patrón de corte)' },
+  { codigo: PERMISSIONS.ESTIMACION_APROBAR, nombre: 'Aprobar re-estimaciones de fincas' },
   { codigo: PERMISSIONS.MENU_ESTIMACIONES, nombre: 'Ver ítem de menú Estimaciones de Fincas' },
 
   { codigo: PERMISSIONS.ESTACION_METEOROLOGICA_VER, nombre: 'Ver Estación Meteorológica' },

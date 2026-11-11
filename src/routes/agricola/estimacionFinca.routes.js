@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { estimacionFincaController } from '../../controllers/agricola/estimacionFinca.controller.js';
 import { auth } from '../../middlewares/auth.middleware.js';
+import { requireAdmin } from '../../middlewares/requireAdmin.middleware.js';
 import { permission } from '../../middlewares/permission.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
 import { uploadBulkFile } from '../../middlewares/upload.middleware.js';
@@ -26,6 +27,13 @@ import {
 } from '../../validators/agricola/estimacionFinca.validator.js';
 
 const router = Router();
+
+// Re-estimaciones pendientes de aprobación y configuración (copias de correo y límite de envío).
+router.get('/cambios', auth, permission(PERMISSIONS.ESTIMACION_VER, PERMISSIONS.ESTIMACION_CREAR, PERMISSIONS.ESTIMACION_EDITAR_DISTRIBUCION), estimacionFincaController.listarCambios);
+router.post('/cambios/:uuid/aprobar', auth, permission(PERMISSIONS.ESTIMACION_APROBAR), estimacionFincaController.aprobarCambio);
+router.post('/cambios/:uuid/rechazar', auth, permission(PERMISSIONS.ESTIMACION_APROBAR), estimacionFincaController.rechazarCambio);
+router.get('/configuracion', auth, requireAdmin, estimacionFincaController.getConfig);
+router.put('/configuracion', auth, requireAdmin, estimacionFincaController.setConfig);
 
 /**
  * @openapi

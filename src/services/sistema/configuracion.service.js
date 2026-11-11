@@ -21,6 +21,7 @@ export const CLAVE_ASPERSION_RESUMEN_SEMANAL_DESTINATARIOS = 'aspersion_resumen_
 export const CLAVE_INFORME_SEMANAL_DESTINATARIOS = 'informe_semanal_destinatarios';
 export const CLAVE_ASISTENCIA_ALERTAS_DESTINATARIOS = 'asistencia_alertas_destinatarios';
 export const CLAVE_ASISTENCIA_META_HORAS = 'asistencia_meta_horas_semana';
+export const CLAVE_ESTIMACION_REESTIMACION_DESTINATARIOS = 'estimacion_reestimacion_destinatarios';
 const META_HORAS_DEFAULT = 44;
 
 // "Cajas de 20kg" es el nombre convencional de la unidad, pero el peso neto
@@ -383,6 +384,38 @@ export const configuracionService = {
       jornadaIncompleta: { rolesUuids: limpiar(datos?.jornadaIncompleta?.rolesUuids), usuariosUuids: limpiar(datos?.jornadaIncompleta?.usuariosUuids) },
     };
     await configuracionRepository.upsert(CLAVE_ASISTENCIA_ALERTAS_DESTINATARIOS, JSON.stringify(valor), actorId);
+    return valor;
+  },
+
+  // Configuración de las estimaciones de fincas: quién recibe copia de los correos (re-estimaciones y envíos fuera de plazo) y el límite
+  // de envío de la semana actual (día de la semana y hora de Bogotá). Sin configurar = sin copias y sin límite.
+  async getEstimacionConfig() {
+    const vacio = { rolesUuids: [], usuariosUuids: [], limite: { activo: false, dia: 3, hora: '15:00' } };
+    const config = await configuracionRepository.findByClave(CLAVE_ESTIMACION_REESTIMACION_DESTINATARIOS);
+    if (!config?.valor) return vacio;
+    try {
+      const g = JSON.parse(config.valor);
+      return {
+        rolesUuids: normalizarUuids(g.rolesUuids),
+        usuariosUuids: normalizarUuids(g.usuariosUuids),
+        limite: { ...vacio.limite, ...(g.limite || {}) },
+      };
+    } catch {
+      return vacio;
+    }
+  },
+
+  async setEstimacionConfig(datos, actorId) {
+    const dia = Number(datos?.limite?.dia);
+    const hora = String(datos?.limite?.hora || '15:00');
+    if (!Number.isInteger(dia) || dia < 0 || dia > 6) throw ApiError.badRequest('Día límite no válido');
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(hora)) throw ApiError.badRequest('Hora límite no válida (HH:mm)');
+    const valor = {
+      rolesUuids: [...new Set(normalizarUuids(datos?.rolesUuids))],
+      usuariosUuids: [...new Set(normalizarUuids(datos?.usuariosUuids))],
+      limite: { activo: Boolean(datos?.limite?.activo), dia, hora },
+    };
+    await configuracionRepository.upsert(CLAVE_ESTIMACION_REESTIMACION_DESTINATARIOS, JSON.stringify(valor), actorId);
     return valor;
   },
 

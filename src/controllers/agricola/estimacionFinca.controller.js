@@ -1,8 +1,25 @@
 import { estimacionFincaService } from '../../services/agricola/estimacionFinca.service.js';
+import { configuracionService } from '../../services/sistema/configuracion.service.js';
 import { ApiResponse } from '../../utils/ApiResponse.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 
 export const estimacionFincaController = {
+  listarCambios: asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { message: 'Re-estimaciones obtenidas correctamente', data: await estimacionFincaService.listarCambios(req.query, req.user) });
+  }),
+  aprobarCambio: asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { message: 'Estimación aprobada', data: await estimacionFincaService.resolverCambio(req.params.uuid, { aprobar: true }, req.user?.id, req.user) });
+  }),
+  rechazarCambio: asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { message: 'Estimación rechazada', data: await estimacionFincaService.resolverCambio(req.params.uuid, { aprobar: false, motivo: req.body?.motivo }, req.user?.id, req.user) });
+  }),
+  getConfig: asyncHandler(async (_req, res) => {
+    ApiResponse.send(res, { message: 'Configuración obtenida correctamente', data: await configuracionService.getEstimacionConfig() });
+  }),
+  setConfig: asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { message: 'Configuración guardada correctamente', data: await configuracionService.setEstimacionConfig(req.body, req.user?.id) });
+  }),
+
   // Próximas semanas a estimar + fincas habilitadas + tasa de conversión.
   getSemanas: asyncHandler(async (req, res) => {
     const data = await estimacionFincaService.getSemanasAEstimar(req.query, req.user);
