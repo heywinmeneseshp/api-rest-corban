@@ -1597,7 +1597,38 @@ export const racimoMovimientoService = {
       ? await racimoMovimientoRepository.getTotalPorEdadRepique({ fincaIds: fincaIdsFiltro, semanaIds: semanaIdsParaMotivos, campo, motivoRepiqueId })
       : null;
 
+    // Vista por lotes (`porLote=1`, con UNA finca elegida): una serie por lote con su embolsado semana a semana, del primer año pedido.
+    let porLote = null;
+    if (query.porLote && fincasSeleccionadas.length === 1) {
+      const anioLote = aniosValidos[0].anio;
+      const semanasLote = await semanaRepository.findAllByAnio(anioLote);
+      const porLoteSemana = await racimoMovimientoRepository.getEmbolsePorLoteYSemana({
+        semanaIds: semanasLote.map((s) => s.id),
+        fincaIds: fincaIdsFiltro,
+        tipo,
+        campo,
+        motivoRepiqueId,
+        edadSemanas: edadesSeleccionadas,
+      });
+      const loteIds = [...new Set([...porLoteSemana.keys()].map((k) => Number(k.split('-')[0])))];
+      const lotes = loteIds.length
+        ? await Lote.findAll({ where: { id: { [Op.in]: loteIds } }, attributes: ['id', 'uuid', 'nombre', 'codigo'], raw: true, paranoid: false })
+        : [];
+      lotes.sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es', { numeric: true }));
+      porLote = {
+        anio: anioLote,
+        lotes: lotes.map((l) => ({
+          uuid: l.uuid,
+          nombre: l.nombre,
+          codigo: l.codigo,
+          total: semanasLote.reduce((t, s) => t + (porLoteSemana.get(`${l.id}-${s.id}`) || 0), 0),
+          puntos: semanasLote.map((s) => ({ numeroSemana: s.numeroSemana, codigo: s.codigo, total: porLoteSemana.get(`${l.id}-${s.id}`) ?? null })),
+        })),
+      };
+    }
+
     return {
+      porLote,
       finca: fincasSeleccionadas.length === 1 ? { uuid: fincasSeleccionadas[0].uuid, codigo: fincasSeleccionadas[0].codigo, nombre: fincasSeleccionadas[0].nombre } : null,
       fincasSeleccionadas: fincasSeleccionadas.map((f) => ({ uuid: f.uuid, codigo: f.codigo, nombre: f.nombre })),
       anios: aniosValidos.map(({ semanaIds: _semanaIds, porFincaAnual: _porFincaAnual, ...resto }) => resto),

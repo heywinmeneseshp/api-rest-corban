@@ -168,6 +168,7 @@ export const reporteEmbolsesSchema = Joi.object({
     motivoUuid: uuidRef,
     motivoUuids: Joi.string(),
     edades: Joi.string(),
+    porLote: Joi.boolean().truthy('1').falsy('0'),
   }),
 });
 

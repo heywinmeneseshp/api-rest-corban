@@ -185,6 +185,29 @@ export const racimoMovimientoRepository = {
     return map;
   },
 
+  // Igual que getEmbolsePorSemana, pero agrupado por lote: Map `${loteId}-${semanaId}` -> total (para ver el embolse por lote).
+  async getEmbolsePorLoteYSemana({ semanaIds, fincaIds, tipo = 'EMBOLSE', campo = 'semanaEmbolseId', motivoRepiqueId, edadSemanas }) {
+    if (semanaIds.length === 0) return new Map();
+
+    const condEdad = condicionEdad(edadSemanas);
+    const results = await RacimoMovimiento.findAll({
+      where: {
+        tipo,
+        [campo]: { [Op.in]: semanaIds },
+        ...(fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
+        ...(motivoRepiqueId ? { motivoRepiqueId: Array.isArray(motivoRepiqueId) ? { [Op.in]: motivoRepiqueId } : motivoRepiqueId } : {}),
+        ...(condEdad ? { [Op.and]: [condEdad] } : {}),
+      },
+      attributes: ['loteId', campo, [fn('SUM', col('cantidad')), 'total']],
+      group: ['loteId', campo],
+      raw: true,
+    });
+
+    const map = new Map();
+    for (const r of results) map.set(`${r.loteId}-${r[campo]}`, Number(r.total));
+    return map;
+  },
+
   // Racimos cosechados (= cortados) por finca y semana de registro: la
   // regla de negocio es PROCESADO + RECUSE sumados, nunca PROCESADO solo
   // (un racimo cortado puede terminar recusado en vez de procesado, pero

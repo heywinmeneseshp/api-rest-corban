@@ -24,6 +24,12 @@ export const borrarRostroSchema = Joi.object({
   query: Joi.object({}),
 });
 
+export const descriptoresRostroSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({ colaboradorUuid: uuidRef.required() }),
+  query: Joi.object({}),
+});
+
 export const rostrosEstadoSchema = Joi.object({
   body: Joi.object({}),
   params: Joi.object({}),

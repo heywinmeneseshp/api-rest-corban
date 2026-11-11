@@ -383,6 +383,29 @@ async function enviarResumenesSuperiores(fecha, incompletas, detalle, r) {
 }
 
 export const asistenciaService = {
+  // Vectores faciales de un colaborador para que el celular lo reconozca sin internet. Solo los de quien ESTE usuario ya marcó (o su propia
+  // ficha), para que nadie descargue rostros de gente que no ha marcado en su celular. Devuelve también el umbral y el margen del servidor.
+  async descriptoresDe(colaboradorUuid, user) {
+    const colaborador = await Colaborador.findOne({ where: { uuid: colaboradorUuid, estado: true }, attributes: ['id', 'uuid', 'nombre', 'apellido', 'userId'] });
+    if (!colaborador) throw ApiError.notFound('Colaborador no encontrado');
+    const esPropio = Boolean(user?.id) && colaborador.userId === user.id;
+    if (!esPropio) {
+      const marcado = await AsistenciaMarcacion.count({ where: { colaboradorId: colaborador.id, createdBy: user?.id ?? -1 } });
+      if (!marcado) throw ApiError.forbidden('Solo puedes descargar el rostro de colaboradores que ya marcaste');
+    }
+    const rostros = await ColaboradorRostro.findAll({ where: { colaboradorId: colaborador.id }, attributes: ['descriptor', 'createdAt'] });
+    if (!rostros.length) throw ApiError.notFound('El colaborador no tiene rostro registrado');
+    const muestras = rostros.map((r) => (typeof r.descriptor === 'string' ? JSON.parse(r.descriptor) : r.descriptor));
+    const actualizado = rostros.reduce((max, r) => (r.createdAt && new Date(r.createdAt) > max ? new Date(r.createdAt) : max), new Date(0));
+    return {
+      colaborador: { uuid: colaborador.uuid, nombre: nombreCompleto(colaborador) },
+      muestras,
+      umbral: umbral(),
+      margen: MARGEN_AMBIGUEDAD,
+      actualizado: actualizado.toISOString(),
+    };
+  },
+
   // Correo a cada colaborador con jornada incompleta en `fecha` (por defecto ayer). Una vez por colaborador y día.
   async enviarAvisosJornadaIncompleta(fecha = diaBogota(Date.now() - MS_DIA)) {
     const rows = await AsistenciaMarcacion.findAll({

@@ -20,6 +20,7 @@ import { HTTP_STATUS } from '../../constants/httpStatus.constants.js';
 import {
   enrolarRostroSchema,
   borrarRostroSchema,
+  descriptoresRostroSchema,
   rostrosEstadoSchema,
   probarRostroSchema,
   registrarMarcacionesSchema,
@@ -158,6 +159,17 @@ router.put(
   asyncHandler(async (req, res) => {
     const data = await asistenciaService.enrolarRostro(req.params.colaboradorUuid, req.body, req.user?.id, req.user);
     ApiResponse.send(res, { message: data.solicitud ? 'Nuevo registro enviado: queda pendiente de aprobación' : 'Rostro registrado correctamente', data });
+  }),
+);
+
+// Vectores del colaborador para reconocerlo en el celular sin internet (solo de quienes este usuario ya marcó).
+router.get(
+  '/rostros/:colaboradorUuid/descriptores',
+  auth,
+  permission(...PUEDE_MARCAR, ...PUEDE_REGISTRAR),
+  validate(descriptoresRostroSchema),
+  asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { message: 'Descriptores obtenidos correctamente', data: await asistenciaService.descriptoresDe(req.params.colaboradorUuid, req.user) });
   }),
 );
 
