@@ -623,8 +623,17 @@ export const programacionCorteService = {
         cajasprogramadas: r.cajas,
       }));
 
+    // Si Logística ya no tiene ninguna fila de esta semana (por ejemplo, se borró la última),
+    // Corbana debe reflejar lo mismo: se borra la Programación de Corte de la semana y se
+    // recalcula la Producción Semanal. Es seguro porque una falla al consultar Logística lanza
+    // error más arriba (fetchProgramacionCorteLogistica) y nunca llega a este punto.
     if (filas.length === 0) {
-      return { totalFilas: 0, creados: 0, borrados: 0, errores: undefined };
+      const borrados = await sequelize.transaction((transaction) => programacionCorteRepository.deleteBySemana(semana.id, { transaction }));
+      const fincaIdsConCalculoPrevio = await produccionSemanalRepository.findFincaIdsBySemana(semana.id);
+      if (fincaIdsConCalculoPrevio.length > 0) {
+        await recalcularProduccionSemanal(fincaIdsConCalculoPrevio.map((fincaId) => ({ fincaId, semanaId: semana.id })), null);
+      }
+      return { totalFilas: 0, creados: 0, borrados, errores: undefined };
     }
 
     return reemplazarFilasSemana(filas, null, null, semana.id);

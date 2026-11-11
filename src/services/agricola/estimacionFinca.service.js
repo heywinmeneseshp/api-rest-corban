@@ -193,16 +193,21 @@ function limiteDeLaSemana(semanaActual, limite) {
   return null;
 }
 
+// Correos de los roles y usuarios elegidos en la tuerca de configuración de estimaciones.
+async function correosEnCopia(config) {
+  const porRol = config.rolesUuids.length
+    ? await User.findAll({ where: { estado: true }, attributes: ['id', 'email'], include: [{ model: Role, as: 'roles', attributes: ['id'], required: true, where: { uuid: config.rolesUuids }, through: { attributes: [] } }] })
+    : [];
+  const porUsuario = config.usuariosUuids.length ? await User.findAll({ where: { estado: true, uuid: config.usuariosUuids }, attributes: ['id', 'email'] }) : [];
+  return [...new Set([...porRol, ...porUsuario].map((u) => u.email?.trim()).filter(Boolean))];
+}
+
 // Correos: quien estimó + copia (roles y usuarios elegidos en la tuerca de configuración). Nunca rompe el guardado.
 async function enviarAvisoEstimacion({ tipo, solicitanteId, filas, detalle = '' }) {
   try {
     const config = await configuracionService.getEstimacionConfig();
     const solicitante = solicitanteId ? await User.findByPk(solicitanteId, { attributes: ['id', 'usuario', 'nombre', 'apellido', 'email'] }) : null;
-    const porRol = config.rolesUuids.length
-      ? await User.findAll({ where: { estado: true }, attributes: ['id', 'email'], include: [{ model: Role, as: 'roles', attributes: ['id'], required: true, where: { uuid: config.rolesUuids }, through: { attributes: [] } }] })
-      : [];
-    const porUsuario = config.usuariosUuids.length ? await User.findAll({ where: { estado: true, uuid: config.usuariosUuids }, attributes: ['id', 'email'] }) : [];
-    const copias = [...new Set([...porRol, ...porUsuario].map((u) => u.email?.trim()).filter(Boolean))];
+    const copias = await correosEnCopia(config);
     const propio = solicitante?.email?.trim();
     const para = propio || copias[0];
     if (!para) return;
@@ -677,6 +682,39 @@ export const estimacionFincaService = {
       fueraDePlazo,
       errores: errores.length > 0 ? errores : undefined,
     };
+  },
+
+  // Aviso automático cuando pasa el límite de envío de la semana actual: llega a los roles y usuarios en copia, con las fincas que todavía no
+  // enviaron estimación en esta semana. Se avisa una sola vez por semana (queda anotado en la configuración). Lo llama el job cada pocos minutos.
+  async avisarLimiteVencido() {
+    const config = await configuracionService.getEstimacionConfig();
+    const hoy = new Date(Date.now() - 5 * 3600000).toISOString().slice(0, 10);
+    const semanaActual = await semanaRepository.findByFecha(hoy);
+    const tope = limiteDeLaSemana(semanaActual, config.limite);
+    if (!tope || Date.now() < tope.instante.getTime()) return { enviado: false };
+    const marca = `${semanaActual.codigo}|${config.limite.dia}|${config.limite.hora}`;
+    if ((await configuracionService.getEstimacionLimiteAvisado()) === marca) return { enviado: false };
+    // Si el servidor estuvo apagado y ya pasaron más de 12 h, el aviso ya no sirve: se anota y no se envía.
+    if (Date.now() - tope.instante.getTime() > 12 * 3600000) {
+      await configuracionService.setEstimacionLimiteAvisado(marca);
+      return { enviado: false, vencido: true };
+    }
+    const copias = await correosEnCopia(config);
+    const enviaron = await EstimacionFinca.findAll({ where: { semanaRegistroId: semanaActual.id }, attributes: ['fincaId'], group: ['fincaId'], raw: true });
+    const ya = new Set(enviaron.map((r) => r.fincaId));
+    const fincas = await Finca.findAll({ where: { estado: true }, attributes: ['id', 'nombre'], order: [['nombre', 'ASC']], raw: true });
+    const faltan = fincas.filter((f) => !ya.has(f.id)).map((f) => f.nombre);
+    if (copias.length > 0) {
+      await mailService.sendEstimacionLimiteVencido({
+        destinatarios: copias,
+        semana: semanaActual.codigo,
+        limite: `${DIAS_SEMANA[Number(config.limite.dia)]} ${tope.fecha} a las ${config.limite.hora}`,
+        faltan,
+        total: fincas.length,
+      });
+    }
+    await configuracionService.setEstimacionLimiteAvisado(marca);
+    return { enviado: copias.length > 0, destinatarios: copias.length, faltan: faltan.length };
   },
 
   // Re-estimaciones: por defecto las pendientes. Quien no puede aprobar solo ve las suyas.

@@ -551,6 +551,39 @@ export const mailService = {
     await transporter.sendMail({ from, to: destinatario, cc: cc.length ? cc : undefined, subject: `${marca} — ${titulo}: ${fincasUnicas.join(', ')} (${fechaHoraTexto})`, html });
   },
 
+  // Venció el límite de envío de estimaciones de la semana: lista las fincas que aún no enviaron.
+  async sendEstimacionLimiteVencido({ destinatarios, semana, limite, faltan, total }) {
+    const { nombre: marca, nombreHtml: marcaHtml, from } = await obtenerMarca();
+    const fechaHoraTexto = new Date().toLocaleString('es-CO', { timeZone: 'America/Bogota', dateStyle: 'long', timeStyle: 'short' });
+    const lista = faltan.map((f) => `<li style="margin-bottom: 4px;">${escaparHtml(f)}</li>`).join('');
+    const html = `
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb;">
+        <div style="background: linear-gradient(135deg, #166534 0%, #22a35e 100%); padding: 28px 32px; text-align: center;">
+          <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">${marcaHtml}</h1>
+          <p style="color: rgba(255,255,255,.85); margin: 4px 0 0; font-size: 13px;">Estimaciones — Venció el límite de envío</p>
+        </div>
+        <div style="padding: 32px; color: #374151; font-size: 14px; line-height: 1.5;">
+          <p style="margin: 0 0 12px;">Ya pasó la hora límite para enviar las estimaciones de la semana <strong>${escaparHtml(semana)}</strong> (${escaparHtml(limite)}, hora de Bogotá).</p>
+          <p style="margin: 0 0 12px;">Fecha y hora de este aviso: <strong>${escaparHtml(fechaHoraTexto)}</strong></p>
+          ${
+            faltan.length
+              ? `<p style="margin: 0 0 8px;">Fincas que todavía no han enviado su estimación (${faltan.length} de ${total}):</p><ul style="margin: 0; padding-left: 20px;">${lista}</ul>`
+              : `<p style="margin: 0;">Las ${total} fincas ya enviaron su estimación.</p>`
+          }
+        </div>
+        <div style="background: #f9fafb; padding: 16px 32px; text-align: center; border-top: 1px solid #e5e7eb;">
+          <p style="margin: 0; color: #9ca3af; font-size: 11px;">Este mensaje se generó automáticamente, por favor no respondas a este correo.</p>
+        </div>
+      </div>
+    `;
+    if (!isConfigured || !transporter) {
+      console.log(`MAIL SERVICE (no configurado) — venció el límite de estimaciones ${semana}: ${destinatarios.join(', ')} faltan ${faltan.length}`);
+      return;
+    }
+    const [para, ...copias] = destinatarios;
+    await transporter.sendMail({ from, to: para, cc: copias.length ? copias : undefined, subject: `${marca} — Venció el límite de estimaciones ${semana} (${fechaHoraTexto})`, html });
+  },
+
   // Aviso al colaborador: su jornada del día quedó incompleta. `tramos`: [{ lugar, detalle }].
   async sendJornadaIncompleta({ destinatario, cc = [], nombre, fecha, tramos }) {
     const { nombre: marca, nombreHtml: marcaHtml, from } = await obtenerMarca();

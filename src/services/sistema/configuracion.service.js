@@ -23,6 +23,7 @@ export const CLAVE_ASISTENCIA_ALERTAS_DESTINATARIOS = 'asistencia_alertas_destin
 export const CLAVE_ASISTENCIA_META_HORAS = 'asistencia_meta_horas_semana';
 export const CLAVE_ESTIMACION_REESTIMACION_DESTINATARIOS = 'estimacion_reestimacion_destinatarios';
 const META_HORAS_DEFAULT = 44;
+const CLAVE_ESTIMACION_LIMITE_AVISADO = 'estimacion_limite_avisado';
 
 // "Cajas de 20kg" es el nombre convencional de la unidad, pero el peso neto
 // real de referencia es otro (ej. 18.6) — configurable en vez de fijo por
@@ -417,6 +418,15 @@ export const configuracionService = {
     };
     await configuracionRepository.upsert(CLAVE_ESTIMACION_REESTIMACION_DESTINATARIOS, JSON.stringify(valor), actorId);
     return valor;
+  },
+
+  // Última semana (y límite) para la que ya se envió el aviso de «venció el límite de estimaciones»: evita repetirlo.
+  async getEstimacionLimiteAvisado() {
+    return (await configuracionRepository.findByClave(CLAVE_ESTIMACION_LIMITE_AVISADO))?.valor || null;
+  },
+
+  async setEstimacionLimiteAvisado(marca) {
+    await configuracionRepository.upsert(CLAVE_ESTIMACION_LIMITE_AVISADO, marca, null);
   },
 
   // Meta de horas trabajadas por semana (sitio + tránsito) para el informe «Horas por semana».
