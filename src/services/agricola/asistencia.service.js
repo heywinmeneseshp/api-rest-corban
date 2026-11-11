@@ -184,9 +184,9 @@ const whereAlcance = (user) => {
   if (!fincaIds && !lugarIds) return {};
   const ids = (l) => (l && l.length ? l.map(Number).join(',') : 'NULL');
   const partes = [];
-  if (fincaIds) partes.push(`fincaId IN (${ids(fincaIds)})`);
-  if (lugarIds) partes.push(`lugarId IN (${ids(lugarIds)})`);
-  if (user?.id) partes.push(`userId = ${Number(user.id)}`);
+  if (fincaIds) partes.push(`finca_id IN (${ids(fincaIds)})`);
+  if (lugarIds) partes.push(`lugar_id IN (${ids(lugarIds)})`);
+  if (user?.id) partes.push(`user_id = ${Number(user.id)}`);
   return { [Op.and]: [{ colaboradorId: { [Op.in]: sequelize.literal(`(SELECT id FROM colaboradores WHERE ${partes.join(' OR ')})`) } }] };
 };
 
