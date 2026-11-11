@@ -212,7 +212,7 @@ async function findFincaOrFail(uuid) {
 // Una jornada es lo que hizo un colaborador en un día (Bogotá): estancias en cada finca (ENTRADA → SALIDA en la misma finca) y
 // el tránsito entre la salida de una y la entrada de la siguiente.
 const MAX_TURNO_MS = 16 * 3600 * 1000; // una SALIDA cierra la ENTRADA abierta si está a 16 h o menos (turnos que cruzan medianoche)
-const DIAS_MAX_JORNADAS = 62;
+const DIAS_MAX_JORNADAS = 126;
 const MS_DIA = 86400000;
 const diaBogota = (ms) => new Date(ms - 5 * 3600 * 1000).toISOString().slice(0, 10);
 const minutosEntre = (a, b) => Math.round((b - a) / 60000);
@@ -869,6 +869,13 @@ export const asistenciaService = {
   // Informe de horas trabajadas por semana y colaborador (semanas del calendario de la empresa). Suma el tiempo en lugares de
   // cada jornada; una jornada incompleta no suma horas y se cuenta aparte.
   async horasSemanales(query, user) {
+    // El rango se ensancha a semanas completas (de la semana de «Desde» a la de «Hasta») para que los promedios no salgan de semanas cortadas.
+    if (query.desde && query.hasta) {
+      const dia = (f) => String(f).slice(0, 10);
+      const primera = await Semana.findOne({ where: { fechaInicio: { [Op.lte]: query.desde }, fechaFin: { [Op.gte]: query.desde } }, attributes: ['fechaInicio'], raw: true });
+      const ultima = await Semana.findOne({ where: { fechaInicio: { [Op.lte]: query.hasta }, fechaFin: { [Op.gte]: query.hasta } }, attributes: ['fechaFin'], raw: true });
+      query = { ...query, desde: primera ? dia(primera.fechaInicio) : query.desde, hasta: ultima ? dia(ultima.fechaFin) : query.hasta };
+    }
     const jornadas = [];
     let rango = null;
     for (let page = 1; ; page += 1) {
@@ -886,7 +893,7 @@ export const asistenciaService = {
     const semanaDe = (fecha) => semanas.find((s) => fecha >= String(s.fechaInicio).slice(0, 10) && fecha <= String(s.fechaFin).slice(0, 10))?.codigo || 'Sin semana';
     const porColaborador = new Map();
     for (const j of jornadas) {
-      const x = porColaborador.get(j.colaborador.uuid) || { colaborador: j.colaborador, semanas: {}, transitoSemanas: {}, minutos: 0, transito: 0, dias: 0, incompletas: 0, novedades: 0 };
+      const x = porColaborador.get(j.colaborador.uuid) || { colaborador: j.colaborador, semanas: {}, transitoSemanas: {}, novedadesSemanas: {}, novedadTipos: {}, minutos: 0, transito: 0, dias: 0, incompletas: 0, novedades: 0 };
       const codigo = semanaDe(j.fecha);
       x.semanas[codigo] = (x.semanas[codigo] || 0) + (j.minutosEnFincas || 0);
       x.minutos += j.minutosEnFincas || 0;
@@ -894,13 +901,18 @@ export const asistenciaService = {
       x.transito += j.minutosTransito || 0;
       if (j.tramos.length) x.dias += 1;
       if (j.incompleta && !j.novedad) x.incompletas += 1;
-      if (j.novedad) x.novedades += 1;
+      if (j.novedad) {
+        x.novedades += 1;
+        x.novedadesSemanas[codigo] = (x.novedadesSemanas[codigo] || 0) + 1;
+        x.novedadTipos[j.novedad] = (x.novedadTipos[j.novedad] || 0) + 1;
+      }
       porColaborador.set(j.colaborador.uuid, x);
     }
     const columnas = semanas.map((s) => ({ codigo: s.codigo, desde: String(s.fechaInicio).slice(0, 10), hasta: String(s.fechaFin).slice(0, 10) }));
     if ([...porColaborador.values()].some((x) => x.semanas['Sin semana'])) columnas.push({ codigo: 'Sin semana', desde: null, hasta: null });
     return {
       ...rango,
+      metaHoras: await configuracionService.getAsistenciaMetaHoras(),
       semanas: columnas,
       items: [...porColaborador.values()].sort((a, b) => a.colaborador.nombre.localeCompare(b.colaborador.nombre, 'es')),
     };

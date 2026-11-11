@@ -20,6 +20,8 @@ export const CLAVE_ASPERSION_RESUMEN_SEMANAL_DESTINATARIOS = 'aspersion_resumen_
 // Quién recibe el Informe semanal de producción (Reportes → Resumen semanal) al pulsar «Enviar».
 export const CLAVE_INFORME_SEMANAL_DESTINATARIOS = 'informe_semanal_destinatarios';
 export const CLAVE_ASISTENCIA_ALERTAS_DESTINATARIOS = 'asistencia_alertas_destinatarios';
+export const CLAVE_ASISTENCIA_META_HORAS = 'asistencia_meta_horas_semana';
+const META_HORAS_DEFAULT = 44;
 
 // "Cajas de 20kg" es el nombre convencional de la unidad, pero el peso neto
 // real de referencia es otro (ej. 18.6) — configurable en vez de fijo por
@@ -381,6 +383,21 @@ export const configuracionService = {
       jornadaIncompleta: { rolesUuids: limpiar(datos?.jornadaIncompleta?.rolesUuids), usuariosUuids: limpiar(datos?.jornadaIncompleta?.usuariosUuids) },
     };
     await configuracionRepository.upsert(CLAVE_ASISTENCIA_ALERTAS_DESTINATARIOS, JSON.stringify(valor), actorId);
+    return valor;
+  },
+
+  // Meta de horas trabajadas por semana (sitio + tránsito) para el informe «Horas por semana».
+  async getAsistenciaMetaHoras() {
+    const config = await configuracionRepository.findByClave(CLAVE_ASISTENCIA_META_HORAS);
+    const n = Number(config?.valor);
+    return Number.isFinite(n) && n > 0 ? n : META_HORAS_DEFAULT;
+  },
+
+  async setAsistenciaMetaHoras(horas, actorId) {
+    const n = Number(horas);
+    if (!Number.isFinite(n) || n <= 0 || n > 168) throw ApiError.badRequest('La meta debe estar entre 1 y 168 horas por semana');
+    const valor = Math.round(n * 100) / 100;
+    await configuracionRepository.upsert(CLAVE_ASISTENCIA_META_HORAS, String(valor), actorId);
     return valor;
   },
 

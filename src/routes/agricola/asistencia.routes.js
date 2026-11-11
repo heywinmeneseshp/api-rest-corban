@@ -62,6 +62,16 @@ router.delete('/novedades/:uuid', auth, GESTIONAR_NOVEDADES, validate(novedadUui
   ApiResponse.send(res, { message: 'Novedad eliminada', data: null });
 }));
 
+// Meta de horas por semana del informe «Horas por semana».
+router.put(
+  '/horas-semanales/meta',
+  auth,
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { message: 'Meta guardada correctamente', data: { metaHoras: await configuracionService.setAsistenciaMetaHoras(req.body?.horas, req.user?.id) } });
+  }),
+);
+
 // Roles en copia de las alertas por correo.
 router.get(
   '/alertas/destinatarios',
