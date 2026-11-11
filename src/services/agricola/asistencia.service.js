@@ -8,7 +8,7 @@ import { logger } from '../../utils/logger.js';
 import { alcanceColaboradores, enAlcance, MODULO_SANIDAD, MODULOS_COLABORADOR, puedeColaboradoresSanidad } from './colaborador.service.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
-import { assertFincaPermitida, getFincaIdsPermitidas, getLugarIdsPermitidas, condicionUbicaciones } from '../../utils/fincaScope.js';
+import { assertFincaPermitida, getFincaIdsPermitidas, getLugarIdsPermitidas } from '../../utils/fincaScope.js';
 import { ROLES } from '../../constants/roles.constants.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
 
@@ -176,7 +176,19 @@ async function evaluadorFueraDelArea(rows) {
 
 // Alcance por fincas asignadas: el usuario ve las marcaciones de sus fincas y todas las de lugares (oficinas, etc.).
 // Marcaciones que ve el usuario según sus fincas y lugares asignados (ver utils/fincaScope.js#condicionUbicaciones).
-const whereAlcance = (user) => condicionUbicaciones(user, { lugaresLibres: true }) || {};
+// Regla: quien tiene asignadas fincas o lugares solo ve a los colaboradores cuyo lugar predeterminado (finca u oficina) está entre ellos
+// (más su propia ficha), sin importar dónde marcaron. Sin asignaciones ve todo.
+const whereAlcance = (user) => {
+  const fincaIds = getFincaIdsPermitidas(user);
+  const lugarIds = getLugarIdsPermitidas(user);
+  if (!fincaIds && !lugarIds) return {};
+  const ids = (l) => (l && l.length ? l.map(Number).join(',') : 'NULL');
+  const partes = [];
+  if (fincaIds) partes.push(`fincaId IN (${ids(fincaIds)})`);
+  if (lugarIds) partes.push(`lugarId IN (${ids(lugarIds)})`);
+  if (user?.id) partes.push(`userId = ${Number(user.id)}`);
+  return { [Op.and]: [{ colaboradorId: { [Op.in]: sequelize.literal(`(SELECT id FROM colaboradores WHERE ${partes.join(' OR ')})`) } }] };
+};
 
 const LUGAR_ATTRS = ['id', 'uuid', 'nombre', 'tipo'];
 const mapLugar = (l) => ({
@@ -786,16 +798,14 @@ export const asistenciaService = {
   async listar(query, user) {
     const { page, limit, offset } = getPagination(query);
     const where = {};
-    const fincaIds = getFincaIdsPermitidas(user);
     if (query.fincaUuid) {
       const finca = await findFincaOrFail(query.fincaUuid);
       assertFincaPermitida(user, finca.id);
       where.fincaId = finca.id;
     } else if (query.lugarUuid) {
       where.lugarId = (await findLugarOrFail(query.lugarUuid)).id;
-    } else {
-      Object.assign(where, whereAlcance(user));
     }
+    Object.assign(where, whereAlcance(user));
     if (query.colaboradorUuid) {
       const c = await findColaboradorOrFail(query.colaboradorUuid);
       where.colaboradorId = c.id;

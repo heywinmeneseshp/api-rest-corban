@@ -62,7 +62,7 @@ async function resolverLugarPredeterminado({ fincaUuid, lugarUuid }, user, { sol
   }
   const fincaId = fincaUuid ? (await findFincaOrFail(fincaUuid)).id : null;
   if (fincaId && user) assertFincaPermitida(user, fincaId);
-  if (!fincaId && soloFincasPropias && restringido) throw ApiError.badRequest('Elige la finca del colaborador (una de tus fincas asignadas)');
+  if (!fincaId) throw ApiError.badRequest(soloFincasPropias && restringido ? 'Elige la finca del colaborador (una de tus fincas asignadas)' : 'El lugar predeterminado (finca u oficina) es obligatorio');
   return { fincaId, lugarId: null };
 }
 
