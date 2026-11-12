@@ -629,7 +629,7 @@ export const asistenciaService = {
     });
     const porId = new Map(conteos.map((c) => [c.colaboradorId, Number(c.n)]));
     const fincas = await Finca.findAll({
-      where: query.fincaUuid ? { uuid: query.fincaUuid } : fincaIds && !user?.esApp ? { id: { [Op.in]: fincaIds } } : {},
+      where: { permiteAsistencia: true, ...(query.fincaUuid ? { uuid: query.fincaUuid } : fincaIds && !user?.esApp ? { id: { [Op.in]: fincaIds } } : {}) },
       attributes: ['uuid', 'nombre'],
       order: [['nombre', 'ASC']],
     });
@@ -671,7 +671,7 @@ export const asistenciaService = {
 
     const fincaUuids = [...new Set(items.map((i) => i.fincaUuid).filter(Boolean))];
     const lugarUuids = [...new Set(items.map((i) => i.lugarUuid).filter(Boolean))];
-    const fincas = fincaUuids.length ? await Finca.findAll({ where: { uuid: { [Op.in]: fincaUuids } }, attributes: ['id', 'uuid'] }) : [];
+    const fincas = fincaUuids.length ? await Finca.findAll({ where: { uuid: { [Op.in]: fincaUuids } }, attributes: ['id', 'uuid', 'permiteAsistencia'] }) : [];
     const lugares = lugarUuids.length ? await AsistenciaLugar.findAll({ where: { uuid: { [Op.in]: lugarUuids } }, attributes: ['id', 'uuid', 'estado'] }) : [];
     const fincaPorUuid = new Map(fincas.map((f) => [f.uuid, f]));
     const lugarPorUuid = new Map(lugares.map((l) => [l.uuid, l]));
@@ -692,6 +692,10 @@ export const asistenciaService = {
       const lugar = item.lugarUuid ? lugarPorUuid.get(item.lugarUuid) : null;
       if (item.fincaUuid && !finca) {
         res('ERROR', { mensaje: 'Finca no encontrada' });
+        continue;
+      }
+      if (finca && !finca.permiteAsistencia) {
+        res('ERROR', { mensaje: 'En esta finca no se toma asistencia' });
         continue;
       }
       if (item.lugarUuid && (!lugar || !lugar.estado)) {

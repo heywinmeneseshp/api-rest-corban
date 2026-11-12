@@ -19,6 +19,8 @@ Finca.init(
     // seguimiento de labores, racimos, precipitación, etc. Se excluyen de
     // esos selectores vía fincaRepository/finca.service `soloOperativas`.
     esExterna: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: 'es_externa' },
+    // false = no se puede tomar asistencia en esta finca (no sale en la app de marcación).
+    permiteAsistencia: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true, field: 'permite_asistencia' },
     // Overrides de % aplicado por edad (8-12) en el estimado de corte de
     // racimos, guardados desde el panel de Estimaciones. Formato:
     // { "8": 0.06, "9": 12.05, "10": 45.91, "11": 30.87, "12": 11.1 }.

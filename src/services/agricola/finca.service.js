@@ -102,6 +102,7 @@ export const fincaService = {
       nombre: payload.nombre,
       estado: payload.estado ?? true,
       esExterna: payload.esExterna ?? false,
+      permiteAsistencia: payload.permiteAsistencia ?? true,
       grupoFincaId: await resolverGrupoFincaId(payload.grupoFincaUuid),
       latitud: payload.latitud ?? null,
       longitud: payload.longitud ?? null,
