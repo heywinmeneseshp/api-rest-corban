@@ -90,6 +90,7 @@ export const listObjetivosSchema = Joi.object({
     fincaUuid: uuidRef,
     loteUuid: uuidRef,
     tipoEvaluacionUuid: uuidRef,
+    estado: Joi.boolean(),
   }),
 });
 
@@ -124,6 +125,29 @@ export const updateObjetivoSchema = Joi.object({
     estado: Joi.boolean(),
   }).min(1),
   params: Joi.object({ uuid: uuidParam }),
+  query: Joi.object({}),
+});
+
+export const matrizObjetivosSchema = Joi.object({ body: Joi.object({}), params: Joi.object({}), query: Joi.object({}) });
+
+export const guardarMatrizObjetivosSchema = Joi.object({
+  body: Joi.object({
+    celdas: Joi.array()
+      .items(
+        Joi.object({
+          tipoEvaluacionUuid: uuidRef.required(),
+          fincaUuid: uuidRef.allow(null),
+          loteUuid: uuidRef.allow(null),
+          cantidad: Joi.number().integer().min(1).allow(null).required(),
+          edadMinima: Joi.number().integer().min(1).allow(null),
+          edadMaxima: Joi.number().integer().min(1).allow(null),
+        }),
+      )
+      .min(1)
+      .max(2000)
+      .required(),
+  }),
+  params: Joi.object({}),
   query: Joi.object({}),
 });
 

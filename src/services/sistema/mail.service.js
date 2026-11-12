@@ -584,6 +584,50 @@ export const mailService = {
     await transporter.sendMail({ from, to: para, cc: copias.length ? copias : undefined, subject: `${marca} — Venció el límite de estimaciones ${semana} (${fechaHoraTexto})`, html });
   },
 
+  // Domingo en la noche: fincas que no cumplieron los objetivos de evaluación de la semana. `fincas`: [{ finca, faltantes: [{ tipo, ambito, meta, realizadas, faltan }] }].
+  async sendObjetivosIncumplidos({ destinatarios, semana, fincas, cumplieron, total }) {
+    const { nombre: marca, nombreHtml: marcaHtml, from } = await obtenerMarca();
+    const fechaHoraTexto = new Date().toLocaleString('es-CO', { timeZone: 'America/Bogota', dateStyle: 'long', timeStyle: 'short' });
+    const celda = 'padding: 6px 8px; border-bottom: 1px solid #e5e7eb; text-align: left;';
+    const bloques = fincas
+      .map(
+        (f) => `
+          <p style="margin: 16px 0 6px; font-weight: 700;">${escaparHtml(f.finca)}</p>
+          <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+            <thead><tr><th style="${celda}">Evaluación</th><th style="${celda}">Ámbito</th><th style="${celda}">Meta</th><th style="${celda}">Hechas</th><th style="${celda}">Faltan</th></tr></thead>
+            <tbody>${f.faltantes
+              .map((x) => `<tr><td style="${celda}">${escaparHtml(x.tipo)}</td><td style="${celda}">${escaparHtml(x.ambito)}</td><td style="${celda}">${x.meta}</td><td style="${celda}">${x.realizadas}</td><td style="${celda}"><strong>${x.faltan}</strong></td></tr>`)
+              .join('')}</tbody>
+          </table>`,
+      )
+      .join('');
+    const html = `
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 680px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb;">
+        <div style="background: linear-gradient(135deg, #166534 0%, #22a35e 100%); padding: 28px 32px; text-align: center;">
+          <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">${marcaHtml}</h1>
+          <p style="color: rgba(255,255,255,.85); margin: 4px 0 0; font-size: 13px;">Sanidad Vegetal — Objetivos de evaluación de la semana ${escaparHtml(semana)}</p>
+        </div>
+        <div style="padding: 32px; color: #374151; font-size: 14px; line-height: 1.5;">
+          <p style="margin: 0 0 8px;">Fecha y hora: <strong>${escaparHtml(fechaHoraTexto)}</strong> (hora de Bogotá)</p>
+          ${
+            fincas.length
+              ? `<p style="margin: 0 0 4px;"><strong>${fincas.length}</strong> de ${total} fincas con objetivos <strong>no cumplieron</strong> las metas de evaluaciones de la semana (${cumplieron} sí cumplieron).</p>${bloques}`
+              : `<p style="margin: 0;">Las ${total} fincas con objetivos cumplieron las metas de evaluaciones de la semana.</p>`
+          }
+        </div>
+        <div style="background: #f9fafb; padding: 16px 32px; text-align: center; border-top: 1px solid #e5e7eb;">
+          <p style="margin: 0; color: #9ca3af; font-size: 11px;">Este mensaje se generó automáticamente, por favor no respondas a este correo.</p>
+        </div>
+      </div>
+    `;
+    if (!isConfigured || !transporter) {
+      console.log(`MAIL SERVICE (no configurado) — objetivos ${semana}: ${destinatarios.join(', ')} incumplieron ${fincas.length}/${total}`);
+      return;
+    }
+    const [para, ...copias] = destinatarios;
+    await transporter.sendMail({ from, to: para, cc: copias.length ? copias : undefined, subject: `${marca} — Objetivos de evaluación sin cumplir, semana ${semana}: ${fincas.length} finca(s)`, html });
+  },
+
   // Aviso al colaborador: su jornada del día quedó incompleta. `tramos`: [{ lugar, detalle }].
   async sendJornadaIncompleta({ destinatario, cc = [], nombre, fecha, tramos }) {
     const { nombre: marca, nombreHtml: marcaHtml, from } = await obtenerMarca();

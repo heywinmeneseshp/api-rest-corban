@@ -34,6 +34,7 @@ import categoriaPlantaRoutes from './routes/agricola/categoriaPlanta.routes.js';
 import tipoEvaluacionRoutes from './routes/agricola/tipoEvaluacion.routes.js';
 import semanaRoutes from './routes/agricola/semana.routes.js';
 import evaluacionRoutes from './routes/agricola/evaluacion.routes.js';
+import evaluacionRecorridoRoutes from './routes/agricola/evaluacionRecorrido.routes.js';
 import infeccionRoutes from './routes/agricola/infeccion.routes.js';
 import conteoHojasRoutes from './routes/agricola/conteoHojas.routes.js';
 import emisionFoliarRoutes from './routes/agricola/emisionFoliar.routes.js';
@@ -141,6 +142,8 @@ router.use('/semanas', semanaRoutes);
 // Los tres routers siguientes comparten el prefijo '/evaluaciones':
 // evaluacionRoutes maneja '/', '/:uuid'; los otros anidan '/:uuid/infeccion',
 // '/:uuid/conteo-hojas' y '/:uuid/suma-bruta' respectivamente.
+// Recorridos del evaluador: antes que evaluacionRoutes para que '/recorridos' no caiga en '/:uuid'.
+router.use('/evaluaciones/recorridos', evaluacionRecorridoRoutes);
 router.use('/evaluaciones', evaluacionRoutes);
 router.use('/evaluaciones', infeccionRoutes);
 router.use('/evaluaciones', conteoHojasRoutes);

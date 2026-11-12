@@ -8,6 +8,7 @@ import { iniciarJobEstacionSinDatos } from './jobs/estacionSinDatos.job.js';
 import { iniciarJobOpenMeteo } from './jobs/openMeteo.job.js';
 import { iniciarJobJornadaIncompleta } from './jobs/jornadaIncompleta.job.js';
 import { iniciarJobEstimacionLimite } from './jobs/estimacionLimite.job.js';
+import { iniciarJobObjetivosSemana } from './jobs/objetivosSemana.job.js';
 import { iniciarJobRespaldoBaseDatos } from './jobs/respaldoBaseDatos.job.js';
 import { logger } from './utils/logger.js';
 import { verificarCatalogo, describirProblemas } from './constants/permisosCatalogo.check.js';
@@ -46,6 +47,7 @@ const start = async () => {
     iniciarJobOpenMeteo();
     iniciarJobJornadaIncompleta();
     iniciarJobEstimacionLimite();
+    iniciarJobObjetivosSemana();
     iniciarJobRespaldoBaseDatos();
 
     const shutdown = (signal) => {

@@ -2,6 +2,7 @@ import { Op } from 'sequelize';
 import { sequelize } from '../../database/connection.js';
 import { Planta, User, TipoEvaluacion, Semana, Finca, Lote } from '../../database/associations.js';
 import { evaluacionRepository } from '../../repositories/agricola/evaluacion.repository.js';
+import { objetivoEvaluacionRepository } from '../../repositories/agricola/objetivoEvaluacion.repository.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { getFincaIdsPermitidas, assertFincaPermitida, expandirFincaIds } from '../../utils/fincaScope.js';
@@ -541,12 +542,22 @@ export const evaluacionService = {
     const lote = query.loteUuid ? await findLoteByUuidOrFail(query.loteUuid) : undefined;
     if (lote) assertFincaPermitida(user, lote.fincaId);
 
-    const evaluaciones = await evaluacionRepository.findAllPorSemana({
+    // Solo cuentan las fincas que tienen objetivos de evaluación (de la finca o de alguno de sus lotes).
+    const objetivos = await objetivoEvaluacionRepository.findActivosConDetalle();
+    const fincasConObjetivos = new Map(); // uuid -> id
+    for (const o of objetivos) {
+      const f = o.finca || o.lote?.finca;
+      if (f?.uuid) fincasConObjetivos.set(f.uuid, f.id);
+    }
+    const idsConObjetivos = new Set(fincasConObjetivos.values());
+
+    const todasEvaluaciones = await evaluacionRepository.findAllPorSemana({
       fincaIds,
       anio,
       semanaId: semana?.id,
       loteId: lote?.id,
     });
+    const evaluaciones = todasEvaluaciones.filter((ev) => idsConObjetivos.has(ev.planta?.lote?.finca?.id));
 
     // Evaluadores con registros en el período (semana o año) ya limitado por
     // finca — alimentan el selector de usuario del panel; no depende del
@@ -701,6 +712,7 @@ export const evaluacionService = {
         ? { uuid: semana.uuid, codigo: semana.codigo, numeroSemana: semana.numeroSemana, anio: semana.anio }
         : null,
       totalEvaluaciones: filtradas.length,
+      fincasConObjetivos: [...fincasConObjetivos.keys()],
       evaluadores,
       porFinca,
       precipitacion,

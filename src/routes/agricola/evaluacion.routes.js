@@ -17,6 +17,8 @@ import {
   createObjetivoSchema,
   updateObjetivoSchema,
   progresoObjetivosSchema,
+  matrizObjetivosSchema,
+  guardarMatrizObjetivosSchema,
   setSbHojaUmbralesSchema,
 } from '../../validators/agricola/evaluacion.validator.js';
 
@@ -257,6 +259,22 @@ router.put(
  *     responses:
  *       200: { description: OK }
  */
+router.get('/objetivos/destinatarios', auth, requireAdmin, evaluacionController.getObjetivosDestinatarios);
+router.put('/objetivos/destinatarios', auth, requireAdmin, evaluacionController.setObjetivosDestinatarios);
+router.get(
+  '/objetivos/matriz',
+  auth,
+  permission(PERMISSIONS.OBJETIVO_EVALUACION_VER),
+  validate(matrizObjetivosSchema),
+  evaluacionController.matrizObjetivos,
+);
+router.put(
+  '/objetivos/matriz',
+  auth,
+  permission(PERMISSIONS.OBJETIVO_EVALUACION_CREAR, PERMISSIONS.OBJETIVO_EVALUACION_EDITAR),
+  validate(guardarMatrizObjetivosSchema),
+  evaluacionController.guardarMatrizObjetivos,
+);
 router.get(
   '/objetivos/progreso',
   auth,

@@ -1,5 +1,6 @@
 import { Op } from 'sequelize';
 import { ObjetivoEvaluacion, TipoEvaluacion, Finca, Lote } from '../../database/associations.js';
+import { sequelize } from '../../database/connection.js';
 
 const includeDefault = [
   { model: TipoEvaluacion, as: 'tipoEvaluacion', attributes: ['id', 'uuid', 'nombre'] },
@@ -13,11 +14,21 @@ const includeDefault = [
 ];
 
 export const objetivoEvaluacionRepository = {
-  findAndCountAll({ limit, offset, fincaId, loteId, tipoEvaluacionId }) {
+  // Condición de alcance: objetivos de las fincas permitidas y de los lotes de esas fincas. `fincaIds` null = sin restricción.
+  condicionAlcance(fincaIds) {
+    if (!fincaIds) return null;
+    const ids = fincaIds.length ? fincaIds.map(Number).join(',') : 'NULL';
+    return { [Op.or]: [{ fincaId: { [Op.in]: fincaIds } }, { loteId: { [Op.in]: sequelize.literal(`(SELECT id FROM lotes WHERE finca_id IN (${ids}))`) } }] };
+  },
+
+  findAndCountAll({ limit, offset, fincaId, loteId, tipoEvaluacionId, estado, fincaIds }) {
     const where = {};
     if (fincaId) where.fincaId = fincaId;
     if (loteId) where.loteId = loteId;
     if (tipoEvaluacionId) where.tipoEvaluacionId = tipoEvaluacionId;
+    if (estado !== undefined) where.estado = estado;
+    const alcance = this.condicionAlcance(fincaIds);
+    if (alcance) where[Op.and] = [alcance];
     return ObjetivoEvaluacion.findAndCountAll({
       where,
       limit,
@@ -48,6 +59,29 @@ export const objetivoEvaluacionRepository = {
       where: { estado: true, [Op.or]: or },
       include: includeDefault,
     });
+  },
+
+  // Objetivos de un mismo tipo y ámbito (finca o lote). `soloActivos`: solo estado = true.
+  findPorTipoYAmbito({ tipoEvaluacionId, fincaId, loteId, soloActivos = false }, { transaction } = {}) {
+    return ObjetivoEvaluacion.findAll({
+      where: { tipoEvaluacionId, fincaId: fincaId ?? null, loteId: loteId ?? null, ...(soloActivos ? { estado: true } : {}) },
+      order: [['id', 'ASC']],
+      transaction,
+    });
+  },
+
+  // Todos los objetivos activos (para la matriz), restringidos por alcance.
+  findActivos({ fincaIds } = {}) {
+    const alcance = this.condicionAlcance(fincaIds);
+    return ObjetivoEvaluacion.findAll({
+      where: { estado: true, ...(alcance ? { [Op.and]: [alcance] } : {}) },
+      order: [['id', 'ASC']],
+    });
+  },
+
+  // Todos los objetivos activos con tipo, finca y lote (para el aviso semanal de incumplimiento).
+  findActivosConDetalle() {
+    return ObjetivoEvaluacion.findAll({ where: { estado: true }, include: includeDefault, order: [['id', 'ASC']] });
   },
 
   create(data, { transaction } = {}) {

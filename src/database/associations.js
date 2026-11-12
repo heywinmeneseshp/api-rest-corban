@@ -34,6 +34,8 @@ import { RacimoMovimiento } from './models/racimoMovimiento.model.js';
 import { PrecalibracionRegistro } from './models/precalibracionRegistro.model.js';
 import { PrecalibracionSesion } from './models/precalibracionSesion.model.js';
 import { PrecalibracionTraza } from './models/precalibracionTraza.model.js';
+import { EvaluacionRecorrido } from './models/evaluacionRecorrido.model.js';
+import { EvaluacionRecorridoPunto } from './models/evaluacionRecorridoPunto.model.js';
 import { PrecalibracionEstimacion } from './models/precalibracionEstimacion.model.js';
 import { ProyeccionEscenario } from './models/proyeccionEscenario.model.js';
 import { ProyeccionArea } from './models/proyeccionArea.model.js';
@@ -399,6 +401,10 @@ export const setupAssociations = () => {
   ProyeccionProducto.belongsTo(Producto, { foreignKey: 'productoId', as: 'producto' });
   withAuditAssociations(ProduccionSemanal);
   withAuditAssociations(EstimacionFinca);
+  EvaluacionRecorrido.belongsTo(User, { foreignKey: 'usuarioId', as: 'usuario' });
+  EvaluacionRecorrido.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+  EvaluacionRecorrido.hasMany(EvaluacionRecorridoPunto, { foreignKey: 'recorridoId', as: 'puntos' });
+  EvaluacionRecorridoPunto.belongsTo(EvaluacionRecorrido, { foreignKey: 'recorridoId', as: 'recorrido' });
   EstimacionFincaCambio.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
   EstimacionFincaCambio.belongsTo(Semana, { foreignKey: 'semanaId', as: 'semana' });
   EstimacionFincaCambio.belongsTo(User, { foreignKey: 'solicitadoBy', as: 'solicitadoPor' });
@@ -875,6 +881,8 @@ export {
   ProduccionSemanal,
   EstimacionFinca,
   EstimacionFincaCambio,
+  EvaluacionRecorrido,
+  EvaluacionRecorridoPunto,
   CategoriaLabor,
   Labor,
   LaborSerie,

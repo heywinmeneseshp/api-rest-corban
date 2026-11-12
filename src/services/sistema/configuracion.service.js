@@ -24,6 +24,8 @@ export const CLAVE_ASISTENCIA_META_HORAS = 'asistencia_meta_horas_semana';
 export const CLAVE_ESTIMACION_REESTIMACION_DESTINATARIOS = 'estimacion_reestimacion_destinatarios';
 const META_HORAS_DEFAULT = 44;
 const CLAVE_ESTIMACION_LIMITE_AVISADO = 'estimacion_limite_avisado';
+const CLAVE_OBJETIVOS_AVISADO = 'objetivos_incumplidos_avisado';
+const CLAVE_OBJETIVOS_DESTINATARIOS = 'objetivos_destinatarios';
 
 // "Cajas de 20kg" es el nombre convencional de la unidad, pero el peso neto
 // real de referencia es otro (ej. 18.6) — configurable en vez de fijo por
@@ -427,6 +429,32 @@ export const configuracionService = {
 
   async setEstimacionLimiteAvisado(marca) {
     await configuracionRepository.upsert(CLAVE_ESTIMACION_LIMITE_AVISADO, marca, null);
+  },
+
+  // Quién recibe el correo semanal de objetivos de evaluación sin cumplir: correos sueltos, roles y usuarios (tuerca del módulo Objetivos).
+  async getObjetivosDestinatarios() {
+    const config = await configuracionRepository.findByClave(CLAVE_OBJETIVOS_DESTINATARIOS);
+    const vacio = { correos: [], rolesUuids: [], usuariosUuids: [] };
+    if (!config?.valor) return vacio;
+    try {
+      return normalizarDestinatarios({ ...vacio, ...JSON.parse(config.valor) });
+    } catch {
+      return vacio;
+    }
+  },
+
+  async setObjetivosDestinatarios(destinatarios, actorId) {
+    const config = await configuracionRepository.upsert(CLAVE_OBJETIVOS_DESTINATARIOS, JSON.stringify(normalizarDestinatarios(destinatarios)), actorId);
+    return JSON.parse(config.valor);
+  },
+
+  // Última semana para la que ya se envió el correo de objetivos de evaluación sin cumplir: evita repetirlo.
+  async getObjetivosIncumplidosAvisado() {
+    return (await configuracionRepository.findByClave(CLAVE_OBJETIVOS_AVISADO))?.valor || null;
+  },
+
+  async setObjetivosIncumplidosAvisado(marca) {
+    await configuracionRepository.upsert(CLAVE_OBJETIVOS_AVISADO, marca, null);
   },
 
   // Meta de horas trabajadas por semana (sitio + tránsito) para el informe «Horas por semana».

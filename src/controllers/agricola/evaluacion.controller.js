@@ -116,7 +116,7 @@ export const evaluacionController = {
   }),
 
   listObjetivos: asyncHandler(async (req, res) => {
-    const { items, meta } = await objetivoEvaluacionService.listObjetivos(req.query);
+    const { items, meta } = await objetivoEvaluacionService.listObjetivos(req.query, req.user);
     ApiResponse.send(res, { message: 'Objetivos de evaluación obtenidos correctamente', data: { items, meta } });
   }),
 
@@ -126,7 +126,7 @@ export const evaluacionController = {
   }),
 
   createObjetivo: asyncHandler(async (req, res) => {
-    const objetivo = await objetivoEvaluacionService.createObjetivo(req.body, req.user?.id);
+    const objetivo = await objetivoEvaluacionService.createObjetivo(req.body, req.user?.id, req.user);
     ApiResponse.send(res, {
       statusCode: HTTP_STATUS.CREATED,
       message: 'Objetivo de evaluación creado correctamente',
@@ -135,13 +135,31 @@ export const evaluacionController = {
   }),
 
   updateObjetivo: asyncHandler(async (req, res) => {
-    const objetivo = await objetivoEvaluacionService.updateObjetivo(req.params.uuid, req.body, req.user?.id);
+    const objetivo = await objetivoEvaluacionService.updateObjetivo(req.params.uuid, req.body, req.user?.id, req.user);
     ApiResponse.send(res, { message: 'Objetivo de evaluación actualizado correctamente', data: objetivo });
   }),
 
   removeObjetivo: asyncHandler(async (req, res) => {
-    await objetivoEvaluacionService.deleteObjetivo(req.params.uuid, req.user?.id);
+    await objetivoEvaluacionService.deleteObjetivo(req.params.uuid, req.user?.id, req.user);
     ApiResponse.send(res, { message: 'Objetivo de evaluación eliminado correctamente' });
+  }),
+
+  matrizObjetivos: asyncHandler(async (req, res) => {
+    const data = await objetivoEvaluacionService.matriz(req.query, req.user);
+    ApiResponse.send(res, { message: 'Matriz de objetivos obtenida correctamente', data });
+  }),
+
+  guardarMatrizObjetivos: asyncHandler(async (req, res) => {
+    const data = await objetivoEvaluacionService.guardarMatriz(req.body, req.user?.id, req.user);
+    ApiResponse.send(res, { message: 'Objetivos guardados correctamente', data });
+  }),
+
+  getObjetivosDestinatarios: asyncHandler(async (_req, res) => {
+    ApiResponse.send(res, { message: 'Destinatarios obtenidos correctamente', data: await configuracionService.getObjetivosDestinatarios() });
+  }),
+
+  setObjetivosDestinatarios: asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { message: 'Destinatarios guardados correctamente', data: await configuracionService.setObjetivosDestinatarios(req.body, req.user?.id) });
   }),
 
   progresoObjetivos: asyncHandler(async (req, res) => {
