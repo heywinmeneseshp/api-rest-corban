@@ -23,6 +23,8 @@ export const CLAVE_ASISTENCIA_ALERTAS_DESTINATARIOS = 'asistencia_alertas_destin
 export const CLAVE_ASISTENCIA_META_HORAS = 'asistencia_meta_horas_semana';
 export const CLAVE_ESTIMACION_REESTIMACION_DESTINATARIOS = 'estimacion_reestimacion_destinatarios';
 const META_HORAS_DEFAULT = 44;
+export const CLAVE_ASISTENCIA_RADIO_FINCA = 'asistencia_radio_finca_metros';
+export const RADIO_FINCA_DEFAULT_M = 500;
 const CLAVE_ESTIMACION_LIMITE_AVISADO = 'estimacion_limite_avisado';
 const CLAVE_OBJETIVOS_AVISADO = 'objetivos_incumplidos_avisado';
 const CLAVE_OBJETIVOS_DESTINATARIOS = 'objetivos_destinatarios';
@@ -469,6 +471,21 @@ export const configuracionService = {
     if (!Number.isFinite(n) || n <= 0 || n > 168) throw ApiError.badRequest('La meta debe estar entre 1 y 168 horas por semana');
     const valor = Math.round(n * 100) / 100;
     await configuracionRepository.upsert(CLAVE_ASISTENCIA_META_HORAS, String(valor), actorId);
+    return valor;
+  },
+
+  // Radio (metros) alrededor de la latitud/longitud de una finca sin perímetro (KML): fuera de ese radio la marcación cuenta como fuera del área.
+  async getAsistenciaRadioFinca() {
+    const config = await configuracionRepository.findByClave(CLAVE_ASISTENCIA_RADIO_FINCA);
+    const n = Number(config?.valor);
+    return Number.isFinite(n) && n > 0 ? n : RADIO_FINCA_DEFAULT_M;
+  },
+
+  async setAsistenciaRadioFinca(metros, actorId) {
+    const n = Number(metros);
+    if (!Number.isFinite(n) || n < 10 || n > 50000) throw ApiError.badRequest('El radio debe estar entre 10 y 50000 metros');
+    const valor = Math.round(n);
+    await configuracionRepository.upsert(CLAVE_ASISTENCIA_RADIO_FINCA, String(valor), actorId);
     return valor;
   },
 

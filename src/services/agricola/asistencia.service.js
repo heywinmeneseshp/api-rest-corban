@@ -151,12 +151,14 @@ function metrosEntre(lat1, lng1, lat2, lng2) {
   return 2 * 6371000 * Math.asin(Math.sqrt(a));
 }
 
-// Devuelve una función que dice si una marcación quedó fuera de su finca o lugar. Sin GPS, sin perímetro o sin punto guardado no se
-// puede saber y da false. Los perímetros se consultan una vez, no por cada marcación.
+// Devuelve una función que dice si una marcación quedó fuera de su finca o lugar. Una finca sin perímetro (KML) usa su latitud/longitud y el
+// radio configurado en Asistencia. Sin GPS o sin perímetro ni coordenadas no se puede saber y da false. Los perímetros se consultan una vez, no por cada marcación.
 async function evaluadorFueraDelArea(rows) {
   const fincaIds = [...new Set(rows.map((r) => r.fincaId).filter(Boolean))];
   const lugarIds = [...new Set(rows.map((r) => r.lugarId).filter(Boolean))];
-  const fincas = fincaIds.length ? await Finca.findAll({ where: { id: fincaIds }, attributes: ['id', 'perimetro'], paranoid: false }) : [];
+  const fincas = fincaIds.length ? await Finca.findAll({ where: { id: fincaIds }, attributes: ['id', 'perimetro', 'latitud', 'longitud'], paranoid: false }) : [];
+  const radioFinca = fincas.length ? await configuracionService.getAsistenciaRadioFinca() : 0;
+  const centros = new Map(fincas.map((f) => [f.id, f.latitud !== null && f.longitud !== null ? { lat: Number(f.latitud), lng: Number(f.longitud) } : null]));
   const lugares = lugarIds.length ? await AsistenciaLugar.findAll({ where: { id: lugarIds }, attributes: ['id', 'lat', 'lng', 'radioMetros'], paranoid: false }) : [];
   const perimetros = new Map(fincas.map((f) => [f.id, perimetroDe(f.perimetro)]));
   const puntos = new Map(lugares.map((l) => [l.id, l]));
@@ -166,7 +168,9 @@ async function evaluadorFueraDelArea(rows) {
     const lng = Number(m.lng);
     if (m.fincaId) {
       const poligono = perimetros.get(m.fincaId);
-      return poligono ? !puntoEnPoligono(lat, lng, poligono) : false;
+      if (poligono) return !puntoEnPoligono(lat, lng, poligono);
+      const centro = centros.get(m.fincaId);
+      return centro ? metrosEntre(lat, lng, centro.lat, centro.lng) > radioFinca : false;
     }
     const lugar = puntos.get(m.lugarId);
     if (!lugar || lugar.lat === null || lugar.lng === null) return false;

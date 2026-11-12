@@ -72,6 +72,23 @@ router.put(
   }),
 );
 
+// Radio (m) alrededor de las coordenadas de las fincas sin perímetro. Lo lee cualquiera con acceso (lo usa el mapa); lo cambia el administrador.
+router.get(
+  '/radio-finca',
+  auth,
+  asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { message: 'Radio obtenido correctamente', data: { radioMetros: await configuracionService.getAsistenciaRadioFinca() } });
+  }),
+);
+router.put(
+  '/radio-finca',
+  auth,
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { message: 'Radio guardado correctamente', data: { radioMetros: await configuracionService.setAsistenciaRadioFinca(req.body?.radioMetros, req.user?.id) } });
+  }),
+);
+
 // Roles en copia de las alertas por correo.
 router.get(
   '/alertas/destinatarios',
