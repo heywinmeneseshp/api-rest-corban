@@ -240,6 +240,32 @@ export const racimoMovimientoRepository = {
   // exacta (semanaRegistro − semanaEmbolse) en vez de repartir el total
   // cortado de una semana entre varias edades candidatas. Usado para medir
   // la tasa histórica de cosecha por edad sin sobre-contar.
+  // Aprovechamiento real por cinta (finca + semana de embolse), como en Estimaciones: procesado = PROCESADO y decidido = PROCESADO +
+  // REPIQUE + RECUSE de toda la historia de la cinta. Aprovechamiento = procesado / decidido.
+  async getAprovechamientoPorFincaCohorte({ fincaIds, semanaEmbolseIds }) {
+    if (semanaEmbolseIds.length === 0) return [];
+    const results = await RacimoMovimiento.findAll({
+      where: {
+        tipo: { [Op.in]: ['PROCESADO', 'REPIQUE', 'RECUSE'] },
+        semanaEmbolseId: { [Op.in]: semanaEmbolseIds },
+        ...(fincaIds ? { fincaId: { [Op.in]: fincaIds } } : {}),
+      },
+      attributes: ['fincaId', 'semanaEmbolseId', 'tipo', [fn('SUM', col('cantidad')), 'total']],
+      group: ['fincaId', 'semanaEmbolseId', 'tipo'],
+      raw: true,
+    });
+    const porCinta = new Map();
+    for (const r of results) {
+      const k = `${r.fincaId}-${r.semanaEmbolseId}`;
+      const acc = porCinta.get(k) || { fincaId: r.fincaId, semanaEmbolseId: r.semanaEmbolseId, procesado: 0, decidido: 0 };
+      const n = Number(r.total);
+      acc.decidido += n;
+      if (r.tipo === 'PROCESADO') acc.procesado += n;
+      porCinta.set(k, acc);
+    }
+    return [...porCinta.values()];
+  },
+
   async getCosechadoPorFincaCohorte({ fincaIds, semanaEmbolseIds }) {
     if (semanaEmbolseIds.length === 0) return [];
 

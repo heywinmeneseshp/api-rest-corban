@@ -182,13 +182,16 @@ export async function calcularProyeccion({ anio, params, areas }, user, { fincaU
   const idxPorId = new Map(semanas.map((s, i) => [s.id, i]));
   const semanaIds = semanas.map((s) => s.id);
 
-  const [embolseMap, cosechadoMap, cajasMap, cohorteRows, haPorFinca] = await Promise.all([
+  const [embolseMap, cosechadoMap, cajasMap, cohorteRows, haPorFinca, cintaRows] = await Promise.all([
     racimoMovimientoRepository.getEmbolsePorFincaYSemana({ fincaIds, semanaEmbolseIds: semanaIds }),
     racimoMovimientoRepository.getCosechadoPorFincaYSemana({ fincaIds, semanaRegistroIds: semanaIds }),
     produccionSemanalRepository.getCajasPorFincaYSemana({ fincaIds, semanaIds }),
     racimoMovimientoRepository.getCosechadoPorFincaCohorte({ fincaIds, semanaEmbolseIds: semanaIds }),
     hectareasPorFinca(fincaIds, semanas),
+    racimoMovimientoRepository.getAprovechamientoPorFincaCohorte({ fincaIds, semanaEmbolseIds: semanaIds }),
   ]);
+  // Aprovechamiento real de cada cinta (finca + semana de embolse): `${fincaId}-${semanaEmbolseId}` -> { procesado, decidido }.
+  const cintaPorClave = new Map(cintaRows.map((c) => [`${c.fincaId}-${c.semanaEmbolseId}`, c]));
 
   const serie = (map, id) => semanas.map((s) => map.get(`${id}-${s.id}`) || 0);
   const emb = new Map(fincaIds.map((id) => [id, serie(embolseMap, id)]));
@@ -448,7 +451,20 @@ export async function calcularProyeccion({ anio, params, areas }, user, { fincaU
           descartado: !aporta(src, i), // embolsado antes de un cierre: no se cosecha
         };
       });
+      // Aprovechamiento como en Estimaciones: el real de la cinta que cumple 12 semanas en esta (embolsada en i - 11), procesado / decidido.
+      // Sin movimientos (cinta futura o sin cosecha) se usa el % aplicado de la finca. `Num`/`Den` permiten agregar por mes y total sumando.
+      const cintaIdx = i - (EDAD_MAX - 1);
+      const cinta = cintaIdx >= 0 ? semanas[cintaIdx] : null;
+      const real_ = cinta ? cintaPorClave.get(`${id}-${cinta.id}`) : null;
+      const cintaReal = Boolean(real_ && real_.decidido > 0);
+      const pesoCinta = cintaReal ? real_.decidido : cinta ? Math.max(0, embBase[cintaIdx]) : 0;
+      const numCinta = cintaReal ? real_.procesado : pesoCinta * aprovechamientoAplicado;
       filas.push({
+        cintaCodigo: cinta?.codigo ?? null,
+        aprovechamientoCinta: pesoCinta > 0 ? r4(numCinta / pesoCinta) : r4(aprovechamientoAplicado),
+        aprovechamientoCintaReal: cintaReal,
+        aprovechamientoNum: Math.round(numCinta * 100) / 100,
+        aprovechamientoDen: Math.round(pesoCinta * 100) / 100,
         fincaUuid: f.uuid,
         fincaCodigo: f.codigo,
         fincaNombre: f.nombre,
