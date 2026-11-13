@@ -14,6 +14,11 @@ import {
   registrarLecturaSchema,
   registrarLecturasLoteSchema,
   historialLecturasSchema,
+  listarPartesSchema,
+  crearParteSchema,
+  actualizarParteSchema,
+  parteUuidSchema,
+  registrarParteSchema,
 } from '../../validators/inventario/equipo.validator.js';
 import { hallazgosEquipoSchema } from '../../validators/inventario/checklist.validator.js';
 
@@ -28,6 +33,13 @@ const PUEDE_REGISTRAR_LECTURAS = [PERMISSIONS.INVENTARIO_EQUIPOS_LECTURAS, PERMI
 router.get('/para-lecturas', auth, permission(...PUEDE_REGISTRAR_LECTURAS), equipoController.paraLecturas);
 router.post('/lecturas/lote', auth, permission(...PUEDE_REGISTRAR_LECTURAS), validate(registrarLecturasLoteSchema), equipoController.registrarLecturasLote);
 router.post('/:uuid/lecturas', auth, permission(...PUEDE_REGISTRAR_LECTURAS), validate(registrarLecturaSchema), equipoController.registrarLectura);
+// Partes y accesorios con serie (baterías, control remoto...): ver con Equipos; crear/editar con editar equipos; los ciclos también los registra quien opera.
+router.get('/:uuid/partes', auth, permission(PERMISSIONS.INVENTARIO_EQUIPOS_VER, PERMISSIONS.INVENTARIO_EQUIPOS_LECTURAS), validate(listarPartesSchema), equipoController.partesListar);
+router.post('/:uuid/partes', auth, permission(PERMISSIONS.INVENTARIO_EQUIPOS_EDITAR), validate(crearParteSchema), equipoController.partesCrear);
+router.put('/partes/:parteUuid', auth, permission(PERMISSIONS.INVENTARIO_EQUIPOS_EDITAR), validate(actualizarParteSchema), equipoController.partesActualizar);
+router.delete('/partes/:parteUuid', auth, permission(PERMISSIONS.INVENTARIO_EQUIPOS_EDITAR), validate(parteUuidSchema), equipoController.partesEliminar);
+router.post('/partes/:parteUuid/registros', auth, permission(...PUEDE_REGISTRAR_LECTURAS), validate(registrarParteSchema), equipoController.partesRegistrar);
+router.get('/partes/:parteUuid/registros', auth, permission(PERMISSIONS.INVENTARIO_EQUIPOS_VER, PERMISSIONS.INVENTARIO_EQUIPOS_LECTURAS), validate(parteUuidSchema), equipoController.partesHistorial);
 router.get('/:uuid/hallazgos', auth, permission(PERMISSIONS.INVENTARIO_EQUIPOS_VER, PERMISSIONS.INVENTARIO_ORDENES_VER), validate(hallazgosEquipoSchema), equipoController.hallazgosPendientes);
 router.get('/:uuid/lecturas', auth, permission(...PUEDE_LEER_LECTURAS), validate(historialLecturasSchema), equipoController.historialLecturas);
 

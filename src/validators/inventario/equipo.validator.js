@@ -11,6 +11,7 @@ export const createEquipoSchema = Joi.object({
     marca: Joi.string().trim().max(100).allow(null, ''),
     modelo: Joi.string().trim().max(100).allow(null, ''),
     serie: Joi.string().trim().max(100).allow(null, ''),
+    configuracion: Joi.string().trim().max(300).allow(null, ''),
     fechaAdquisicion: Joi.date().iso().allow(null, ''),
     ubicacionUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
     centroCostoUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
@@ -34,6 +35,7 @@ export const updateEquipoSchema = Joi.object({
     marca: Joi.string().trim().max(100).allow(null, ''),
     modelo: Joi.string().trim().max(100).allow(null, ''),
     serie: Joi.string().trim().max(100).allow(null, ''),
+    configuracion: Joi.string().trim().max(300).allow(null, ''),
     fechaAdquisicion: Joi.date().iso().allow(null, ''),
     ubicacionUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
     centroCostoUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
@@ -112,4 +114,34 @@ export const historialLecturasSchema = Joi.object({
   body: Joi.object({}),
   params: Joi.object({ uuid: Joi.string().guid({ version: 'uuidv4' }).required() }),
   query: Joi.object({ limite: Joi.number().integer().min(1).max(500) }),
+});
+
+// ─── Partes y accesorios con serie (baterías, control remoto...) ───
+const uuidReq = Joi.string().guid({ version: 'uuidv4' }).required();
+const parte = {
+  tipo: Joi.string().valid('BATERIA', 'CONTROL_REMOTO', 'CARGADOR', 'ANTENA', 'OTRO'),
+  codigo: Joi.string().trim().max(60),
+  serie: Joi.string().trim().max(100).allow('', null),
+  descripcion: Joi.string().trim().max(200).allow('', null),
+  estado: Joi.string().valid('ACTIVA', 'EN_REVISION', 'RETIRADA'),
+  observaciones: Joi.string().trim().max(2000).allow('', null),
+};
+export const listarPartesSchema = Joi.object({ body: Joi.object({}), params: Joi.object({ uuid: uuidReq }), query: Joi.object({}) });
+export const crearParteSchema = Joi.object({
+  body: Joi.object({ ...parte, codigo: parte.codigo.required(), ciclos: Joi.number().min(0).max(100000) }),
+  params: Joi.object({ uuid: uuidReq }),
+  query: Joi.object({}),
+});
+export const actualizarParteSchema = Joi.object({ body: Joi.object(parte).min(1), params: Joi.object({ parteUuid: uuidReq }), query: Joi.object({}) });
+export const parteUuidSchema = Joi.object({ body: Joi.object({}), params: Joi.object({ parteUuid: uuidReq }), query: Joi.object({}) });
+export const registrarParteSchema = Joi.object({
+  body: Joi.object({
+    tipo: Joi.string().valid('CICLOS', 'NOVEDAD', 'MANTENIMIENTO', 'ASIGNACION').required(),
+    ciclos: Joi.number().min(0).max(100000),
+    descripcion: Joi.string().trim().max(2000).allow('', null),
+    equipoUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
+    fechaHora: Joi.date().iso(),
+  }),
+  params: Joi.object({ parteUuid: uuidReq }),
+  query: Joi.object({}),
 });

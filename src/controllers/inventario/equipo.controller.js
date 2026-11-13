@@ -1,5 +1,6 @@
 import { equipoService } from '../../services/inventario/equipo.service.js';
 import { lecturaEquipoService } from '../../services/inventario/lecturaEquipo.service.js';
+import { parteEquipoService } from '../../services/inventario/parteEquipo.service.js';
 import { ordenChecklistService } from '../../services/inventario/ordenChecklist.service.js';
 import { ApiResponse } from '../../utils/ApiResponse.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
@@ -8,6 +9,17 @@ import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import { ROLES } from '../../constants/roles.constants.js';
 
 export const equipoController = {
+  // ─── Partes y accesorios con serie ───
+  partesListar: asyncHandler(async (req, res) => ApiResponse.send(res, { message: 'Partes obtenidas correctamente', data: await parteEquipoService.listar(req.params.uuid) })),
+  partesCrear: asyncHandler(async (req, res) =>
+    ApiResponse.send(res, { statusCode: HTTP_STATUS.CREATED, message: 'Parte creada correctamente', data: await parteEquipoService.crear(req.params.uuid, req.body, req.user) })),
+  partesActualizar: asyncHandler(async (req, res) => ApiResponse.send(res, { message: 'Parte actualizada correctamente', data: await parteEquipoService.actualizar(req.params.parteUuid, req.body, req.user) })),
+  partesEliminar: asyncHandler(async (req, res) => {
+    await parteEquipoService.eliminar(req.params.parteUuid);
+    ApiResponse.send(res, { message: 'Parte eliminada correctamente' });
+  }),
+  partesRegistrar: asyncHandler(async (req, res) => ApiResponse.send(res, { message: 'Registro guardado correctamente', data: await parteEquipoService.registrar(req.params.parteUuid, req.body, req.user) })),
+  partesHistorial: asyncHandler(async (req, res) => ApiResponse.send(res, { message: 'Historial obtenido correctamente', data: await parteEquipoService.historial(req.params.parteUuid) })),
   hallazgosPendientes: asyncHandler(async (req, res) => {
     ApiResponse.send(res, { message: 'Hallazgos obtenidos correctamente', data: await ordenChecklistService.hallazgosDeEquipo(req.params.uuid, req.query) });
   }),
