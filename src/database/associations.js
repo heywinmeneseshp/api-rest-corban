@@ -856,6 +856,7 @@ export const setupAssociations = () => {
   ComprobanteAspersion.belongsTo(User, { foreignKey: 'anuladoPorId', as: 'anuladoPor' });
   // Piloto de dron y asistentes (colaboradores): cada uno suma las hectáreas aplicadas del comprobante.
   ComprobanteAspersion.belongsTo(Colaborador, { foreignKey: 'pilotoColaboradorId', as: 'pilotoColaborador' });
+  ComprobanteAspersion.belongsTo(Colaborador, { foreignKey: 'pilotoVisibleColaboradorId', as: 'pilotoVisible' });
   ComprobanteAspersion.hasMany(ComprobanteAspersionParticipante, { foreignKey: 'comprobanteId', as: 'participantes' });
   ComprobanteAspersion.hasMany(ComprobanteAspersionParte, { foreignKey: 'comprobanteId', as: 'partes' });
   ComprobanteAspersionParte.belongsTo(AspersionProgramacion, { foreignKey: 'aspersionProgramacionId', as: 'aspersion' });

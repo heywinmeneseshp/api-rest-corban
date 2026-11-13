@@ -35,6 +35,8 @@ ComprobanteAspersion.init(
     emitidoEn: { type: DataTypes.DATE, allowNull: true, field: 'emitido_en' },
     // Con dron: el piloto es un colaborador (cargo «Piloto de Dron»); `piloto` guarda la copia de su nombre.
     pilotoColaboradorId: { type: DataTypes.INTEGER, allowNull: true, field: 'piloto_colaborador_id' },
+    // Piloto que se muestra en el PDF: siempre certificado (el original si lo está; si no, otro piloto certificado).
+    pilotoVisibleColaboradorId: { type: DataTypes.INTEGER, allowNull: true, field: 'piloto_visible_colaborador_id' },
     // Recorrido de la aplicación (KML): el archivo original y su geometría simplificada para el mapa del PDF.
     kml: { type: DataTypes.TEXT('medium'), allowNull: true },
     kmlNombre: { type: DataTypes.STRING(200), allowNull: true, field: 'kml_nombre' },

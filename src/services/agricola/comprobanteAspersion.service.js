@@ -38,13 +38,26 @@ async function colaboradorActivoOFallar(uuid, { transaction } = {}) {
   return c;
 }
 
+// Piloto que se muestra en el comprobante (PDF): siempre certificado. Si el original lo está, es él; si no, otro piloto certificado (el que
+// menos comprobantes lleva como piloto visible, para repartir) y el original queda solo en los datos de pago. Sin ningún certificado, se deja el original.
+export async function resolverPilotoVisible(piloto, { transaction } = {}) {
+  if (!piloto) return null;
+  if (piloto.pilotoCertificado) return piloto.id;
+  const candidatos = (await Colaborador.findAll({ where: { estado: true, pilotoCertificado: true, id: { [Op.ne]: piloto.id } }, transaction })).filter(esPilotoDeDron);
+  if (candidatos.length === 0) return piloto.id;
+  const carga = new Map();
+  for (const c of candidatos) carga.set(c.id, await ComprobanteAspersion.count({ where: { pilotoVisibleColaboradorId: c.id }, transaction }));
+  candidatos.sort((a, b) => carga.get(a.id) - carga.get(b.id) || nombreColaborador(a).localeCompare(nombreColaborador(b), 'es'));
+  return candidatos[0].id;
+}
+
 // Guarda el piloto y los asistentes del comprobante según el medio. Devuelve los campos del comprobante a actualizar.
 // `datos`: { pilotoColaboradorUuid, asistentesUuids } (con `undefined` no se tocan).
 async function aplicarParticipantes(comprobante, medio, datos, actorId, { transaction } = {}) {
   if (medio !== 'DRON') {
     // Avión (o sin medio): piloto escrito, sin participantes.
     await ComprobanteAspersionParticipante.destroy({ where: { comprobanteId: comprobante.id }, transaction });
-    return { pilotoColaboradorId: null };
+    return { pilotoColaboradorId: null, pilotoVisibleColaboradorId: null };
   }
   if (datos.pilotoColaboradorUuid === undefined && datos.asistentesUuids === undefined) return {};
   const actuales = await ComprobanteAspersionParticipante.findAll({ where: { comprobanteId: comprobante.id }, transaction });
@@ -75,7 +88,11 @@ async function aplicarParticipantes(comprobante, medio, datos, actorId, { transa
     ...asistentesIds.map((id) => ({ comprobanteId: comprobante.id, colaboradorId: id, rol: 'ASISTENTE', createdBy: actorId })),
   ];
   if (filas.length) await ComprobanteAspersionParticipante.bulkCreate(filas, { transaction });
-  return { pilotoColaboradorId: piloto?.id ?? null, ...(piloto ? { piloto: nombreColaborador(piloto) } : {}) };
+  return {
+    pilotoColaboradorId: piloto?.id ?? null,
+    pilotoVisibleColaboradorId: await resolverPilotoVisible(piloto, { transaction }),
+    ...(piloto ? { piloto: nombreColaborador(piloto) } : {}),
+  };
 }
 
 // articuloId del insumo principal de la receta ACTIVA de cada mezcla — el
@@ -128,6 +145,7 @@ function aDto(comprobante, principalArticuloId, { puedeRegenerar = false } = {})
   if (json.aspersion) delete json.aspersion.componentes;
   json.puedeRegenerar = Boolean(puedeRegenerar);
   json.pilotoColaborador = json.pilotoColaborador ? { uuid: json.pilotoColaborador.uuid, nombre: nombreColaborador(json.pilotoColaborador) } : null;
+  json.pilotoVisible = json.pilotoVisible ? { uuid: json.pilotoVisible.uuid, nombre: nombreColaborador(json.pilotoVisible) } : null;
   if (Array.isArray(json.participantes)) {
     json.participantes = json.participantes
       .filter((p) => p.colaborador)
@@ -394,7 +412,10 @@ export const comprobanteAspersionService = {
     if (comprobante.medio === 'DRON' && !comprobante.pilotoColaboradorId) {
       throw ApiError.badRequest('Con dron, elige el piloto del listado de colaboradores antes de emitir el comprobante');
     }
+    // Al aprobar se confirma el piloto del PDF con la certificación vigente.
+    const pilotoOriginal = comprobante.pilotoColaboradorId ? await Colaborador.findByPk(comprobante.pilotoColaboradorId) : null;
     await comprobanteAspersionRepository.update(comprobante, {
+      ...(pilotoOriginal ? { pilotoVisibleColaboradorId: await resolverPilotoVisible(pilotoOriginal) } : {}),
       estado: 'EMITIDO',
       emitidoPorId: actorId,
       emitidoEn: new Date(),
@@ -613,6 +634,7 @@ export const comprobanteAspersionService = {
       for (const campo of CAMPOS_APLICACION) datos[campo] = anulado[campo];
 
       datos.pilotoColaboradorId = anulado.pilotoColaboradorId;
+      datos.pilotoVisibleColaboradorId = anulado.pilotoVisibleColaboradorId;
       // El recorrido (KML) también pasa al borrador nuevo.
       const conKml = await ComprobanteAspersion.findByPk(anulado.id, { attributes: ['kml', 'kmlNombre', 'kmlGeometria', 'kmlSubidoEn'], transaction });
       Object.assign(datos, { kml: conKml.kml, kmlNombre: conKml.kmlNombre, kmlGeometria: conKml.kmlGeometria, kmlSubidoEn: conKml.kmlSubidoEn });

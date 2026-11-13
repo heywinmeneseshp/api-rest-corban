@@ -63,6 +63,7 @@ const USUARIOS_INCLUDE = [
   { model: User, as: 'emitidoPor', attributes: USUARIO_ATTRS },
   { model: User, as: 'anuladoPor', attributes: USUARIO_ATTRS },
   { model: Colaborador, as: 'pilotoColaborador', attributes: COLABORADOR_ATTRS, paranoid: false },
+  { model: Colaborador, as: 'pilotoVisible', attributes: COLABORADOR_ATTRS, paranoid: false },
 ];
 // Solo en el detalle (un hasMany con limit en el listado obligaría a un subquery).
 const PARTICIPANTES_INCLUDE = {
