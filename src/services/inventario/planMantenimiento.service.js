@@ -1,5 +1,7 @@
 import { planMantenimientoRepository } from '../../repositories/inventario/planMantenimiento.repository.js';
+import { Op } from 'sequelize';
 import { Equipo, ChecklistPlantilla, ProgramacionMantenimiento } from '../../database/associations.js';
+import { configuracionService } from '../sistema/configuracion.service.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { campoDeUnidad, planConEstado } from './lecturaEquipo.service.js';
@@ -17,6 +19,43 @@ async function resolvePlantillaId(uuid) {
   const p = await ChecklistPlantilla.findOne({ where: { uuid } });
   if (!p) throw ApiError.notFound('Plantilla de checklist no encontrada');
   return p.id;
+}
+
+const hoyBogota = () => new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10);
+const diasEntre = (a, b) => Math.round((new Date(`${b}T12:00:00Z`) - new Date(`${a}T12:00:00Z`)) / 86400000);
+
+// Planes por días / meses: cuándo toca el próximo mantenimiento y cuánto falta. Toma la programación abierta más cercana; si no hay, cuenta desde la
+// fecha del último mantenimiento (último + periodicidad); sin ninguna de las dos no se puede calcular (SIN_BASE).
+async function conProximaFecha(planes) {
+  const lista = Array.isArray(planes) ? planes : [planes];
+  const porFecha = lista.filter((p) => ['DIAS', 'MESES'].includes(p.periodicidadUnidad));
+  if (porFecha.length === 0) return planes;
+  const { diasAnticipacion } = await configuracionService.getMantenimientoDestinatarios();
+  const abiertas = await ProgramacionMantenimiento.findAll({
+    where: { planId: { [Op.in]: porFecha.map((p) => p.id) }, estado: { [Op.in]: ['PENDIENTE', 'PROGRAMADA'] } },
+    attributes: ['planId', 'fechaProgramada'],
+    raw: true,
+  });
+  const hoy = hoyBogota();
+  for (const p of porFecha) {
+    const programada = abiertas.filter((x) => x.planId === p.id).map((x) => String(x.fechaProgramada).slice(0, 10)).sort()[0] || null;
+    let proxima = programada;
+    if (!proxima && p.fechaUltimo) {
+      const f = new Date(`${String(p.fechaUltimo).slice(0, 10)}T12:00:00Z`);
+      if (p.periodicidadUnidad === 'DIAS') f.setUTCDate(f.getUTCDate() + Number(p.periodicidadValor));
+      else f.setUTCMonth(f.getUTCMonth() + Number(p.periodicidadValor));
+      proxima = f.toISOString().slice(0, 10);
+    }
+    if (!proxima) {
+      p.setDataValue('estadoFecha', 'SIN_BASE');
+      continue;
+    }
+    const dias = diasEntre(hoy, proxima);
+    p.setDataValue('proximaFecha', proxima);
+    p.setDataValue('diasFaltan', dias);
+    p.setDataValue('estadoFecha', dias < 0 ? 'VENCIDO' : dias <= diasAnticipacion ? 'PROXIMO' : 'AL_DIA');
+  }
+  return planes;
 }
 
 const MARCA_CALCULADA = 'Calculada desde el último mantenimiento';
@@ -48,6 +87,7 @@ export const planMantenimientoService = {
       estado: query.estado,
       search: query.search,
     });
+    await conProximaFecha(rows);
     return { items: rows.map(planConEstado), meta: buildPaginationMeta({ page, limit, total: count }) };
   },
 
@@ -59,7 +99,7 @@ export const planMantenimientoService = {
 
   // Igual que getByUuid pero con el estado de lectura (km / horas) para responder a la web.
   async getConEstado(uuid) {
-    return planConEstado(await this.getByUuid(uuid));
+    return planConEstado(await conProximaFecha(await this.getByUuid(uuid)));
   },
 
   async create(payload, actorId) {
@@ -79,7 +119,7 @@ export const planMantenimientoService = {
       createdBy: actorId,
     });
     await agendarDesdeUltimo(plan, actorId);
-    return planConEstado(await planMantenimientoRepository.findByUuid(plan.uuid));
+    return planConEstado(await conProximaFecha(await planMantenimientoRepository.findByUuid(plan.uuid)));
   },
 
   async update(uuid, payload, actorId) {
@@ -110,7 +150,7 @@ export const planMantenimientoService = {
     }
     await planMantenimientoRepository.update(plan, data);
     if (payload.fechaUltimo !== undefined || payload.periodicidadValor !== undefined || payload.periodicidadUnidad) await agendarDesdeUltimo(await this.getByUuid(uuid), actorId);
-    return planConEstado(await planMantenimientoRepository.findByUuid(uuid));
+    return planConEstado(await conProximaFecha(await planMantenimientoRepository.findByUuid(uuid)));
   },
 
   async delete(uuid, actorId) {
