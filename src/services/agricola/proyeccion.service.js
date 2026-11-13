@@ -283,8 +283,9 @@ export async function calcularProyeccion({ anio, params, areas }, user, { fincaU
     const eIdx = idxPorId.get(a.semanaId);
     if (eIdx === undefined) continue;
     if (eIdx <= hoyIdx) {
-      advertencias.push('Hay entradas de hectáreas en semanas ya transcurridas: se ignoran (ya están en las áreas reales).');
-      continue;
+      // Entrada en una semana ya transcurrida (p. ej. un lote recién sembrado que aún no está en las áreas reales): cuenta desde la próxima semana
+      // proyectada, con su rampa contada desde la semana de la entrada. Si ya estuviera en las áreas reales de hoy se contaría dos veces.
+      advertencias.push('Hay entradas de hectáreas en semanas ya transcurridas: se suman a las hectáreas reales de hoy. Si ya están registradas en las áreas reales, se estarían contando dos veces.');
     }
     // Una entrada con 0 hectáreas es un CIERRE: desde esa semana la finca no embolsa ni cosecha (racimos y cajas en 0; lo ya
     // embolsado tampoco se cosecha). Lo que se sume después parte de cero. Las demás son altas (positivas, con rampa) o bajas.
