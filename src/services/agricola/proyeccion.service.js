@@ -32,6 +32,7 @@ export const PARAMS_POR_DEFECTO = {
   pctNoCosechado: null, // % no cosechado global (null = histórico de cada finca)
   pctNoCosechadoPorFinca: {}, // { fincaUuid: pct } (tiene prioridad sobre el global)
   ratioManual: {}, // { fincaUuid: { codigoSemana: ratio } } ratio (cajas por racimo) fijado a mano en semanas proyectadas
+  embPorHaManual: {}, // { fincaUuid: { codigoSemana: embolses por ha } } fijado a mano en semanas proyectadas o con el embolse incompleto
 };
 
 const r2 = (n) => Math.round(n * 100) / 100;
@@ -76,6 +77,15 @@ export function normalizarParams(params = {}) {
     }
     if (Object.keys(limpio).length) ratioManual[fincaUuid] = limpio;
   }
+  const embPorHaManual = {};
+  for (const [fincaUuid, semanasEmb] of Object.entries(params.embPorHaManual || {})) {
+    const limpio = {};
+    for (const [codigo, v] of Object.entries(semanasEmb || {})) {
+      const n = Number(v);
+      if (v !== null && v !== '' && Number.isFinite(n) && n >= 0.1 && n <= 5000) limpio[codigo] = r2(n);
+    }
+    if (Object.keys(limpio).length) embPorHaManual[fincaUuid] = limpio;
+  }
   const anios = [...new Set((Array.isArray(params.anios) ? params.anios : []).map(Number).filter((a) => Number.isInteger(a) && a >= 2000 && a <= 2100))].sort().slice(0, 6);
   const haBase = {};
   for (const [k, v] of Object.entries(params.hectareasBasePorFinca || {})) {
@@ -92,6 +102,7 @@ export function normalizarParams(params = {}) {
     pctNoCosechado: pct(params.pctNoCosechado),
     pctNoCosechadoPorFinca: porFinca,
     ratioManual,
+    embPorHaManual,
   };
 }
 
@@ -394,11 +405,21 @@ export async function calcularProyeccion({ anio, params, areas }, user, { fincaU
     // registrado es menos de lo esperado por hectárea, se usa lo esperado. Sin esto, las cintas de esas semanas (que se cortan a
     // edad 11-12, la mayor parte del corte) entraban casi en 0 y las primeras semanas del año siguiente caían a la mitad.
     const embolseIncompleto = (i) => i >= hoyIdx - 1 && i <= hoyIdx;
+    // Embolse por hectárea fijado a mano para esta finca y semana: solo en semanas proyectadas o con el embolse aún incompleto (las demás son reales).
+    const embHaManual = (i) => {
+      const v = p.embPorHaManual?.[f.uuid]?.[semanas[i].codigo];
+      return v !== undefined && (i > hoyIdx || embolseIncompleto(i)) ? v : undefined;
+    };
     const embolseVariante = (clave) =>
       semanas.map((s, i) => {
-        const esperado = haEfectiva[i] * (statSemana(s.numeroSemana)?.[clave] ?? 0);
+        const st = statSemana(s.numeroSemana);
+        const manual = embHaManual(i);
+        // Con valor manual, las variantes baja y alta conservan su proporción respecto al promedio histórico de esa semana.
+        const porHa = manual === undefined ? st?.[clave] ?? 0 : clave === 'mean' || !(st?.mean > 0) ? manual : manual * ((st[clave] ?? st.mean) / st.mean);
+        const esperado = haEfectiva[i] * porHa;
         if (i > hoyIdx) return esperado;
-        return embolseIncompleto(i) ? Math.max(E[i], esperado) : E[i];
+        if (embolseIncompleto(i)) return manual !== undefined ? esperado : Math.max(E[i], esperado);
+        return E[i];
       });
     const embBase = embolseVariante('mean');
     const embLow = embolseVariante('p25');
@@ -463,6 +484,8 @@ export async function calcularProyeccion({ anio, params, areas }, user, { fincaU
           // Hectáreas en producción de la cinta (semana de embolse) y su embolse por hectárea: lo que explica el embolse de origen.
           hectareas: r2(haEfectiva[src]),
           embolsesPorHa: haEfectiva[src] > 0 ? r2(embBase[src] / haEfectiva[src]) : null,
+          embolsesPorHaAuto: r2(statSemana(semanas[src].numeroSemana)?.mean ?? 0), // el que se usaría sin valor manual
+          embolsesPorHaManual: embHaManual(src) !== undefined,
           embolseReal: src <= hoyIdx && !(embolseIncompleto(src) && embBase[src] > E[src]),
           tasa: r4(tasas[e]),
           racimos: aporta(src, i) ? Math.round(embBase[src] * tasas[e]) : 0,
@@ -501,7 +524,9 @@ export async function calcularProyeccion({ anio, params, areas }, user, { fincaU
         ratio: r4(realCompleta ? J[i] / C[i] : ratio),
         ratioHistorico: r4(ratioAuto),
         ratioManual: ratioFijado !== undefined,
-        embolsesPorHa: r4(real ? (HA[i] > 0 ? E[i] / HA[i] : 0) : statSemana(s.numeroSemana)?.mean ?? 0),
+        embolsesPorHa: r4(real ? (HA[i] > 0 ? E[i] / HA[i] : 0) : embHaManual(i) ?? statSemana(s.numeroSemana)?.mean ?? 0),
+        embolsesPorHaAuto: r4(statSemana(s.numeroSemana)?.mean ?? 0),
+        embolsesPorHaManual: embHaManual(i) !== undefined,
         fuente: realCompleta ? 'real' : 'proyeccion',
         racimosDelDesglose: Math.round(racimos(embBase, i)),
         detalleEdades,

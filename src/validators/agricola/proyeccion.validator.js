@@ -13,6 +13,8 @@ const paramsSchema = Joi.object({
   pctNoCosechadoPorFinca: Joi.object().pattern(uuid, Joi.number().min(0).max(90).allow(null, '')),
   // Ratio (cajas por racimo) fijado a mano: { fincaUuid: { 'S12-2027': 0.0295 } } para semanas proyectadas.
   ratioManual: Joi.object().pattern(uuid, Joi.object().pattern(Joi.string().max(20), Joi.number().min(0.0001).max(5).allow(null, ''))),
+  // Embolses por hectárea fijados a mano: { fincaUuid: { 'S46-2026': 150 } } para semanas proyectadas o con el embolse aún incompleto.
+  embPorHaManual: Joi.object().pattern(uuid, Joi.object().pattern(Joi.string().max(20), Joi.number().min(0.1).max(5000).allow(null, ''))),
 });
 
 const vacio = { body: Joi.object({}), params: Joi.object({}), query: Joi.object({}) };
