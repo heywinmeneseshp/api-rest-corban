@@ -1,5 +1,6 @@
 import { EstacionMeteorologica } from '../../database/associations.js';
 import { descifrar } from '../../utils/secretos.js';
+import { ApiError } from '../../utils/ApiError.js';
 
 // Acceso a las estaciones meteorológicas registradas en la base y a sus credenciales de WeatherLink (cifradas). Es lo que usa el cliente de WeatherLink
 // (weatherlink.client.js) y el servicio de la estación. Para las estaciones 1 y 2 (las de siempre), si en la base no hay credenciales completas se
@@ -56,7 +57,7 @@ export async function credenciales(estacion) {
   if (apiKey && apiSecret && fila.stationId) return { apiKey, apiSecret, stationId: fila.stationId, origen: 'base' };
   const entorno = desdeEntorno(id);
   if (entorno) return { ...entorno, origen: 'entorno' };
-  throw new Error(`La estación «${fila.nombre}» no tiene las credenciales completas (API key, API secret y Station ID)`);
+  throw ApiError.badRequest(`La estación «${fila.nombre}» no tiene las credenciales completas (API key, API secret y Station ID). Complétalas en la tuerca (⚙) de esta pantalla.`);
 }
 
 // ¿De dónde salen las credenciales de una estación? 'base' | 'entorno' | null (incompletas).
