@@ -43,6 +43,17 @@ export const repuestoService = {
     return articuloService.delete(uuid, actorId);
   },
 
+  // Cargue masivo (.csv/.xlsx): mismo formato que Artículos, pero todo cae en la categoría fija de repuestos.
+  async bulkUpload(file, actorId, opciones = {}) {
+    await resolveOrCrearCategoria(actorId);
+    return articuloService.bulkCreateArticulos(file, actorId, { ...opciones, categoriaForzada: CATEGORIA_REPUESTOS_NOMBRE });
+  },
+
+  // Excel con los repuestos, en el mismo formato del cargue masivo (sirve de plantilla para editar y volver a subir).
+  exportar() {
+    return articuloService.exportArticulosToExcel({ tipo: 'REPUESTO' });
+  },
+
   // Papelera: los eliminados de la categoría fija.
   async listDeleted(query) {
     const categoria = await ArticuloCategoria.findOne({ where: { nombre: CATEGORIA_REPUESTOS_NOMBRE } });

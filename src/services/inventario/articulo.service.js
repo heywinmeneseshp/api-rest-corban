@@ -233,8 +233,10 @@ export const articuloService = {
   // stockMaximo, estado (opcional: activo/inactivo). Clave natural: nombre
   // (es único). Mismo criterio que motivoRepique: siempre inserta/actualiza
   // lo válido y reporta errores para el resto, en un solo upsert.
-  async bulkCreateArticulos(file, actorId, { dryRun = false } = {}) {
+  async bulkCreateArticulos(file, actorId, { dryRun = false, categoriaForzada = null } = {}) {
     const rows = parseBulkFile(file);
+    // Piezas y repuestos: todas las filas caen en la categoría fija, sin importar lo que traiga el archivo.
+    if (categoriaForzada) rows.forEach((r) => { r.categoria = categoriaForzada; });
     if (rows.length === 0) throw ApiError.badRequest('El archivo no tiene filas para procesar');
 
     const nombresCategorias = [...new Set(rows.map((r) => String(r.categoria || '').trim()).filter(Boolean))];
@@ -334,9 +336,9 @@ export const articuloService = {
   // el cargue masivo — así el archivo exportado sirve directo como plantilla
   // para volver a subirlo con cambios (edita y lo vuelve a cargar, se
   // actualiza por nombre).
-  async exportArticulosToExcel() {
+  async exportArticulosToExcel({ tipo } = {}) {
     const { default: XLSX } = await import('xlsx');
-    const rows = await articuloRepository.findAndCountAll({ limit: 1000000, offset: 0 });
+    const rows = await articuloRepository.findAndCountAll({ limit: 1000000, offset: 0, ...(tipo ? { tipo } : {}) });
 
     const datos = rows.rows.map((a) => ({
       nombre: a.nombre,
@@ -354,7 +356,7 @@ export const articuloService = {
 
     const ws = XLSX.utils.json_to_sheet(datos);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Artículos');
+    XLSX.utils.book_append_sheet(wb, ws, tipo === 'REPUESTO' ? 'Repuestos' : 'Artículos');
     return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
   },
 };

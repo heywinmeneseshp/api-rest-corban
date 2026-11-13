@@ -3,6 +3,7 @@ import { repuestoController } from '../../controllers/inventario/repuesto.contro
 import { auth } from '../../middlewares/auth.middleware.js';
 import { permission } from '../../middlewares/permission.middleware.js';
 import { requireAdmin } from '../../middlewares/requireAdmin.middleware.js';
+import { uploadBulkFile } from '../../middlewares/upload.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import { createArticuloSchema, updateArticuloSchema, getArticuloSchema, listArticuloSchema } from '../../validators/inventario/articulo.validator.js';
@@ -15,6 +16,8 @@ const router = Router();
 router.get('/', auth, validate(listArticuloSchema), repuestoController.list);
 // Crear/editar repuestos: con el permiso de Artículos o con el de Equipos (la pantalla vive en Equipos).
 router.post('/', auth, permission(PERMISSIONS.INVENTARIO_ARTICULOS_CREAR, PERMISSIONS.INVENTARIO_EQUIPOS_CREAR), validate(createArticuloSchema), repuestoController.create);
+router.get('/exportar', auth, permission(PERMISSIONS.INVENTARIO_ARTICULOS_VER, PERMISSIONS.INVENTARIO_EQUIPOS_VER), repuestoController.exportar);
+router.post('/bulk-upload', auth, permission(PERMISSIONS.INVENTARIO_ARTICULOS_CREAR, PERMISSIONS.INVENTARIO_EQUIPOS_CREAR), uploadBulkFile, repuestoController.bulkUpload);
 router.get('/eliminados', auth, requireAdmin, repuestoController.listDeleted);
 router.get('/:uuid', auth, validate(getArticuloSchema), repuestoController.getByUuid);
 router.put('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_ARTICULOS_EDITAR, PERMISSIONS.INVENTARIO_EQUIPOS_EDITAR), validate(updateArticuloSchema), repuestoController.update);

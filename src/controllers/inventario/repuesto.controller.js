@@ -11,6 +11,17 @@ export const repuestoController = {
     const data = await repuestoService.getByUuid(req.params.uuid, req.user);
     ApiResponse.send(res, { message: 'Repuesto obtenido correctamente', data });
   }),
+  bulkUpload: asyncHandler(async (req, res) => {
+    const dryRun = req.body?.dryRun === 'true';
+    const data = await repuestoService.bulkUpload(req.file, req.user?.id, { dryRun });
+    ApiResponse.send(res, { message: 'Cargue masivo de repuestos procesado', data });
+  }),
+  exportar: asyncHandler(async (req, res) => {
+    const buffer = await repuestoService.exportar();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="repuestos-${Date.now()}.xlsx"`);
+    res.send(buffer);
+  }),
   listDeleted: asyncHandler(async (req, res) => {
     const { items, meta } = await repuestoService.listDeleted(req.query);
     ApiResponse.send(res, { message: 'Repuestos eliminados obtenidos correctamente', data: { items, meta } });
