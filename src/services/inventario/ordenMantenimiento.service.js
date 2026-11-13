@@ -457,6 +457,7 @@ export const ordenMantenimientoService = {
         const plan = await PlanMantenimiento.findByPk(orden.planId, { transaction: t });
         // Planes por km / horas: el ciclo vuelve a empezar desde la lectura actual del equipo.
         if (plan && plan.estado && esPlanPorLectura(plan.periodicidadUnidad)) await reiniciarCicloLectura(plan, orden.equipoId, t);
+        if (plan && ['DIAS', 'MESES'].includes(plan.periodicidadUnidad)) await plan.update({ fechaUltimo: hoyIso }, { transaction: t });
         if (plan && plan.estado && ['DIAS', 'MESES'].includes(plan.periodicidadUnidad)) {
           const siguiente = new Date(`${hoyIso}T12:00:00`);
           if (plan.periodicidadUnidad === 'DIAS') siguiente.setDate(siguiente.getDate() + Number(plan.periodicidadValor));

@@ -1,5 +1,5 @@
 import { planMantenimientoRepository } from '../../repositories/inventario/planMantenimiento.repository.js';
-import { Equipo, ChecklistPlantilla } from '../../database/associations.js';
+import { Equipo, ChecklistPlantilla, ProgramacionMantenimiento } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { campoDeUnidad, planConEstado } from './lecturaEquipo.service.js';
@@ -17,6 +17,24 @@ async function resolvePlantillaId(uuid) {
   const p = await ChecklistPlantilla.findOne({ where: { uuid } });
   if (!p) throw ApiError.notFound('Plantilla de checklist no encontrada');
   return p.id;
+}
+
+const MARCA_CALCULADA = 'Calculada desde el último mantenimiento';
+const fechaIso = (v) => (v ? String(v).slice(0, 10) : null);
+
+// Planes por días / meses con fecha del último mantenimiento: agenda (o corrige) la próxima programación = último + periodicidad.
+async function agendarDesdeUltimo(plan, actorId) {
+  if (!plan.estado || !['DIAS', 'MESES'].includes(plan.periodicidadUnidad) || !plan.fechaUltimo) return;
+  const siguiente = new Date(`${fechaIso(plan.fechaUltimo)}T12:00:00`);
+  if (plan.periodicidadUnidad === 'DIAS') siguiente.setDate(siguiente.getDate() + Number(plan.periodicidadValor));
+  else siguiente.setMonth(siguiente.getMonth() + Number(plan.periodicidadValor));
+  const fecha = siguiente.toISOString().slice(0, 10);
+  const abierta = await ProgramacionMantenimiento.findOne({ where: { planId: plan.id, estado: ['PENDIENTE', 'PROGRAMADA'] } });
+  if (!abierta) {
+    await ProgramacionMantenimiento.create({ planId: plan.id, equipoId: plan.equipoId, fechaProgramada: fecha, estado: 'PROGRAMADA', prioridad: 'MEDIA', observaciones: `${MARCA_CALCULADA} (${fechaIso(plan.fechaUltimo)})`, createdBy: actorId });
+  } else if ((abierta.observaciones || '').startsWith(MARCA_CALCULADA)) {
+    await abierta.update({ fechaProgramada: fecha, observaciones: `${MARCA_CALCULADA} (${fechaIso(plan.fechaUltimo)})`, updatedBy: actorId });
+  }
 }
 
 export const planMantenimientoService = {
@@ -55,10 +73,12 @@ export const planMantenimientoService = {
       periodicidadUnidad: payload.periodicidadUnidad,
       estado: payload.estado ?? true,
       plantillaId: (await resolvePlantillaId(payload.plantillaUuid)) ?? null,
+      fechaUltimo: ['DIAS', 'MESES'].includes(payload.periodicidadUnidad) ? fechaIso(payload.fechaUltimo) : null,
       // Planes por km / horas: desde dónde se cuenta (lo escrito, o la lectura actual del equipo).
       lecturaBase: campoDeUnidad(payload.periodicidadUnidad) ? payload.lecturaBase ?? Number(equipo[campoDeUnidad(payload.periodicidadUnidad)] ?? 0) : null,
       createdBy: actorId,
     });
+    await agendarDesdeUltimo(plan, actorId);
     return planConEstado(await planMantenimientoRepository.findByUuid(plan.uuid));
   },
 
@@ -78,6 +98,7 @@ export const planMantenimientoService = {
       ...(payload.periodicidadUnidad ? { periodicidadUnidad: payload.periodicidadUnidad } : {}),
       ...(payload.estado !== undefined ? { estado: payload.estado } : {}),
       ...(payload.lecturaBase !== undefined ? { lecturaBase: payload.lecturaBase, avisoEstado: null } : {}),
+      ...(payload.fechaUltimo !== undefined ? { fechaUltimo: fechaIso(payload.fechaUltimo) } : {}),
       ...(payload.plantillaUuid !== undefined ? { plantillaId: await resolvePlantillaId(payload.plantillaUuid) } : {}),
       updatedBy: actorId,
     };
@@ -88,6 +109,7 @@ export const planMantenimientoService = {
       data.lecturaBase = Number(eq?.[campoDeUnidad(unidadFinal)] ?? 0);
     }
     await planMantenimientoRepository.update(plan, data);
+    if (payload.fechaUltimo !== undefined || payload.periodicidadValor !== undefined || payload.periodicidadUnidad) await agendarDesdeUltimo(await this.getByUuid(uuid), actorId);
     return planConEstado(await planMantenimientoRepository.findByUuid(uuid));
   },
 

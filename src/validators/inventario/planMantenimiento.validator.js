@@ -12,6 +12,7 @@ export const createPlanSchema = Joi.object({
     periodicidadUnidad: Joi.string().valid('DIAS', 'HORAS', 'KILOMETROS', 'HOROMETRO', 'MESES').required(),
     // Planes por km / horas: lectura del equipo en el último mantenimiento (vacío = la lectura actual).
     lecturaBase: Joi.number().min(0).allow(null),
+    fechaUltimo: Joi.date().iso().allow(null, ''),
     plantillaUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
     estado: Joi.boolean().default(true),
   }),
@@ -28,6 +29,7 @@ export const updatePlanSchema = Joi.object({
     periodicidadValor: Joi.number().integer().positive(),
     periodicidadUnidad: Joi.string().valid('DIAS', 'HORAS', 'KILOMETROS', 'HOROMETRO', 'MESES'),
     lecturaBase: Joi.number().min(0).allow(null),
+    fechaUltimo: Joi.date().iso().allow(null, ''),
     plantillaUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
     estado: Joi.boolean(),
   }).min(1),

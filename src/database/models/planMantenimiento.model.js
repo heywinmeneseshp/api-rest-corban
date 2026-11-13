@@ -26,6 +26,8 @@ PlanMantenimiento.init(
     // Planes por km / horas: lectura del equipo en el último mantenimiento (de ahí se cuenta la periodicidad) y último estado ya avisado por correo.
     // Plantilla de checklist que se copia a cada orden de este plan (opcional).
     plantillaId: { type: DataTypes.INTEGER, allowNull: true, field: 'plantilla_id' },
+    // Planes por días / meses: fecha del último mantenimiento (de ahí se cuenta la periodicidad).
+    fechaUltimo: { type: DataTypes.DATEONLY, allowNull: true, field: 'fecha_ultimo' },
     lecturaBase: { type: DataTypes.DECIMAL(12, 2), allowNull: true, field: 'lectura_base' },
     avisoEstado: { type: DataTypes.STRING(10), allowNull: true, field: 'aviso_estado' },
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
