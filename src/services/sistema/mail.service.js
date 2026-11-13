@@ -344,7 +344,7 @@ export const mailService = {
 
   // Alerta diaria cuando la Estación Meteorológica lleva más de 24 horas
   // sin enviar datos (ver estacionMeteorologica.service.js#enviarAlertaSinDatos).
-  async sendAlertaEstacionSinDatos({ destinatarios, ultimoDatoTexto, horasSinDatos, detalle }) {
+  async sendAlertaEstacionSinDatos({ destinatarios, estacionNombre, ultimoDatoTexto, horasSinDatos, detalle }) {
     if (!destinatarios?.length) return;
 
     const { nombre: marca, nombreHtml: marcaHtml, from } = await obtenerMarca();
@@ -360,7 +360,7 @@ export const mailService = {
         </div>
         <div style="padding: 32px;">
           <p style="margin: 0 0 16px; color: #374151; font-size: 15px; line-height: 1.6;">
-            La estación meteorológica <strong>no ha enviado información en más de 24 horas</strong>.
+            La estación meteorológica${estacionNombre ? ` <strong>${escaparHtml(estacionNombre)}</strong>` : ''} <strong>no ha enviado información en más de 24 horas</strong>.
             Por favor revisen si está conectada.
           </p>
           <p style="margin: 0 0 16px; color: #374151; font-size: 14px; line-height: 1.6;">${resumen}</p>

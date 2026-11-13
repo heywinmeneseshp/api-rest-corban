@@ -1,6 +1,7 @@
 import { Op } from 'sequelize';
 import { EstacionClimaDiaria } from '../../database/associations.js';
-import { weatherlinkClient, ESTACIONES, estacionValida } from './weatherlink.client.js';
+import { weatherlinkClient } from './weatherlink.client.js';
+import { estacionValida, estacionesActivas, nombreEstacion } from './estacionCredenciales.service.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { configuracionService } from '../sistema/configuracion.service.js';
 import { mailService } from '../sistema/mail.service.js';
@@ -58,7 +59,7 @@ export const estacionMeteorologicaService = {
   // unidades métricas (la API ya entrega lluvia en mm; temperatura llega
   // en °F y se convierte).
   async obtenerActual(estacion = 1) {
-    const data = await weatherlinkClient.current(estacionValida(estacion));
+    const data = await weatherlinkClient.current(await estacionValida(estacion));
     const sensor = sensorExterior(data);
     const d = sensor?.data?.[0];
     if (!d) throw ApiError.badRequest('La estación no reportó datos actuales');
@@ -83,7 +84,7 @@ export const estacionMeteorologicaService = {
   // del día (cada registro ya trae su propio hi/lo del intervalo). Guarda
   // (o actualiza) la fila de `estacion_clima_diaria` para esa fecha.
   async sincronizarFecha(fechaIso, estacion = 1) {
-    estacion = estacionValida(estacion);
+    estacion = await estacionValida(estacion);
     const { start, end } = rangoDiaBogota(fechaIso);
     const data = await weatherlinkClient.historic(start, end, estacion);
     const sensor = sensorExterior(data);
@@ -151,7 +152,7 @@ export const estacionMeteorologicaService = {
   async sincronizarDiaAnterior() {
     const fecha = fechaAyerBogota();
     const estaciones = [];
-    for (const id of Object.keys(ESTACIONES).map(Number)) {
+    for (const { id } of await estacionesActivas()) {
       try {
         const fila = await this.sincronizarFecha(fecha, id);
         estaciones.push({ estacion: id, registrado: Boolean(fila) });
@@ -205,7 +206,7 @@ export const estacionMeteorologicaService = {
   // no tienen dato — pensado para llamarse al abrir el módulo (ver
   // estacionMeteorologica.controller.js#sincronizarFaltantes), no por cron.
   async sincronizarFaltantes(estacion = 1) {
-    estacion = estacionValida(estacion);
+    estacion = await estacionValida(estacion);
     const faltantes = await this.diasFaltantesUltimoMes(estacion);
     if (!faltantes.length) return { sincronizados: [], errores: [] };
 
@@ -243,6 +244,8 @@ export const estacionMeteorologicaService = {
     const horasSinDatos = ultimoDato ? (Date.now() - ultimoDato.getTime()) / 3600000 : null;
     const sinDatos = ultimoDato === null || horasSinDatos > HORAS_LIMITE_SIN_DATOS;
     return {
+      estacion,
+      nombre: await nombreEstacion(estacion),
       sinDatos,
       ultimoDato: ultimoDato ? ultimoDato.toISOString() : null,
       horasSinDatos: horasSinDatos !== null ? Math.round(horasSinDatos * 10) / 10 : null,
@@ -255,8 +258,13 @@ export const estacionMeteorologicaService = {
   // manda el correo de alerta a los destinatarios configurados. No manda nada
   // si todo está bien o si no hay destinatarios.
   async enviarAlertaSinDatos() {
-    const estado = await this.verificarSinDatos();
-    if (!estado.sinDatos) return { ...estado, enviado: false, destinatarios: [] };
+    // Revisa todas las estaciones activas; el resultado conserva la forma de siempre (sinDatos, horasSinDatos, enviado, destinatarios) con la
+    // primera estación que falla, más el detalle de todas en `estaciones`.
+    const estados = [];
+    for (const { id } of await estacionesActivas()) estados.push(await this.verificarSinDatos(id));
+    const caidas = estados.filter((e) => e.sinDatos);
+    if (caidas.length === 0) return { ...(estados[0] || { sinDatos: false, horasSinDatos: null }), sinDatos: false, enviado: false, destinatarios: [], estaciones: estados };
+    const estado = { ...caidas[0], estaciones: estados };
 
     const config = await configuracionService.getEstacionAlertaDestinatarios();
     const personas = await resolverDestinatarios(config);
@@ -266,20 +274,15 @@ export const estacionMeteorologicaService = {
       return { ...estado, enviado: false, destinatarios: [] };
     }
 
-    const ultimoDatoTexto = estado.ultimoDato
-      ? new Date(estado.ultimoDato).toLocaleString('es-CO', { timeZone: 'America/Bogota', dateStyle: 'long', timeStyle: 'short' })
-      : null;
-    await mailService.sendAlertaEstacionSinDatos({
-      destinatarios,
-      ultimoDatoTexto,
-      horasSinDatos: estado.horasSinDatos,
-      detalle: estado.detalle,
-    });
+    for (const e of caidas) {
+      const texto = e.ultimoDato ? new Date(e.ultimoDato).toLocaleString('es-CO', { timeZone: 'America/Bogota', dateStyle: 'long', timeStyle: 'short' }) : null;
+      await mailService.sendAlertaEstacionSinDatos({ destinatarios, estacionNombre: e.nombre, ultimoDatoTexto: texto, horasSinDatos: e.horasSinDatos, detalle: e.detalle });
+    }
     return { ...estado, enviado: true, destinatarios };
   },
 
   async listarHistorico({ fechaDesde, fechaHasta, estacion } = {}) {
-    const where = { estacion: estacionValida(estacion) };
+    const where = { estacion: await estacionValida(estacion) };
     if (fechaDesde || fechaHasta) {
       where.fecha = {};
       if (fechaDesde) where.fecha[Op.gte] = fechaDesde;

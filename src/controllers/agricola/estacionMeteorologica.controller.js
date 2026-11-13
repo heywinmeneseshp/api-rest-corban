@@ -1,4 +1,5 @@
 import { estacionMeteorologicaService } from '../../services/agricola/estacionMeteorologica.service.js';
+import { estacionRegistroService } from '../../services/agricola/estacionRegistro.service.js';
 import { climaComparativaService } from '../../services/agricola/climaComparativa.service.js';
 import { openMeteoService } from '../../services/agricola/openMeteo.service.js';
 import { configuracionService } from '../../services/sistema/configuracion.service.js';
@@ -6,6 +7,26 @@ import { ApiResponse } from '../../utils/ApiResponse.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 
 export const estacionMeteorologicaController = {
+  // ─── Administración de estaciones ───
+  estacionesListar: asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { message: 'Estaciones obtenidas correctamente', data: await estacionRegistroService.listar() });
+  }),
+  estacionesCrear: asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { statusCode: 201, message: 'Estación creada correctamente', data: await estacionRegistroService.crear(req.body, req.user?.id) });
+  }),
+  estacionesActualizar: asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { message: 'Estación actualizada correctamente', data: await estacionRegistroService.actualizar(Number(req.params.id), req.body, req.user?.id) });
+  }),
+  estacionesEliminar: asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { message: 'Estación eliminada correctamente', data: await estacionRegistroService.eliminar(Number(req.params.id), req.user?.id) });
+  }),
+  estacionesFincas: asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { message: 'Fincas de la estación guardadas correctamente', data: await estacionRegistroService.asignarFincas(Number(req.params.id), req.body.fincaUuids) });
+  }),
+  estacionesProbar: asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { message: 'Prueba de conexión realizada', data: await estacionRegistroService.probar(Number(req.params.id)) });
+  }),
+
   actual: asyncHandler(async (req, res) => {
     const data = await estacionMeteorologicaService.obtenerActual(req.query.estacion);
     ApiResponse.send(res, { message: 'Condiciones actuales obtenidas correctamente', data });

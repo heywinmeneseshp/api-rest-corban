@@ -1,15 +1,17 @@
 import { Op } from 'sequelize';
 import { Finca, EstacionClimaDiaria, OpenMeteoClimaDiaria } from '../../database/associations.js';
+import { estacionesActivas } from './estacionCredenciales.service.js';
 import { getFincaIdsPermitidas } from '../../utils/fincaScope.js';
 
 // Comparativas de clima (pestaña "Gráficas" de Estación Meteorológica): la
 // estación WeatherLink y cada finca de Open-Meteo son "fuentes" con el mismo
-// formato diario, para graficarlas juntas. Más estaciones a futuro = más
-// fuentes de tipo 'estacion'.
-const ESTACION_ID = 'estacion';
-const ESTACION_2_ID = 'estacion2';
-const ESTACION_NOMBRE = 'Estación Pantoja 01 Norte';
-const ESTACION_2_NOMBRE = 'Estación San Francisco Consola';
+// formato diario, para graficarlas juntas. Cada estación registrada (Configuración → Estaciones) es una fuente de tipo 'estacion': la 1 conserva el id
+// 'estacion' y las demás 'estacion<número>' (la 2 sigue siendo 'estacion2'), para no romper lo ya guardado.
+const idFuenteEstacion = (n) => (Number(n) === 1 ? 'estacion' : `estacion${n}`);
+const estacionDeFuente = (id) => {
+  const m = /^estacion(\d*)$/.exec(id);
+  return m ? Number(m[1] || 1) : null;
+};
 const PREFIJO_FINCA = 'finca:';
 
 const num = (v) => (v === null || v === undefined ? null : Number(v));
@@ -33,9 +35,9 @@ export const climaComparativaService = {
     const where = { estado: true, esExterna: false, latitud: { [Op.ne]: null }, longitud: { [Op.ne]: null } };
     if (permitidas) where.id = { [Op.in]: permitidas };
     const fincas = await Finca.findAll({ where, attributes: ['uuid', 'codigo', 'nombre'], order: [['nombre', 'ASC']] });
+    const estaciones = await estacionesActivas();
     return [
-      { id: ESTACION_ID, tipo: 'estacion', nombre: ESTACION_NOMBRE },
-      { id: ESTACION_2_ID, tipo: 'estacion', nombre: ESTACION_2_NOMBRE },
+      ...estaciones.map((e) => ({ id: idFuenteEstacion(e.id), tipo: 'estacion', nombre: `Estación ${e.nombre}` })),
       ...fincas.map((f) => ({ id: `${PREFIJO_FINCA}${f.uuid}`, tipo: 'openmeteo', nombre: f.nombre, codigo: f.codigo })),
     ];
   },
@@ -48,8 +50,9 @@ export const climaComparativaService = {
     const whereFecha = fechaDesde || fechaHasta ? { fecha: rango } : {};
 
     const items = [];
-    for (const [fuente, estacion] of [[ESTACION_ID, 1], [ESTACION_2_ID, 2]]) {
-      if (!fuentes.includes(fuente)) continue;
+    for (const fuente of fuentes) {
+      const estacion = estacionDeFuente(fuente);
+      if (estacion === null) continue;
       const rows = await EstacionClimaDiaria.findAll({ where: { ...whereFecha, estacion }, order: [['fecha', 'ASC']] });
       for (const r of rows) items.push({ fuente, ...normalizar(r) });
     }

@@ -5,13 +5,21 @@ import { permission } from '../../middlewares/permission.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
 import { requireAdmin } from '../../middlewares/requireAdmin.middleware.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
-import { historicoSchema, sincronizarSchema, sincronizarFaltantesSchema, ucBasesSchema, openMeteoListarSchema, openMeteoActualizarSchema, openMeteoConfigSchema, comparativaSchema } from '../../validators/agricola/estacionMeteorologica.validator.js';
+import { estacionIdSchema, estacionCrearSchema, estacionActualizarSchema, estacionFincasSchema, historicoSchema, sincronizarSchema, sincronizarFaltantesSchema, ucBasesSchema, openMeteoListarSchema, openMeteoActualizarSchema, openMeteoConfigSchema, comparativaSchema } from '../../validators/agricola/estacionMeteorologica.validator.js';
 
 const router = Router();
 
 // Alerta por correo cuando la estación lleva más de 24 h sin datos: estado
 // de conexión (cualquiera con acceso al módulo) y destinatarios (solo
 // Administrador, igual que los destinatarios de Alertas de Sanidad Vegetal).
+// Administración de las estaciones (credenciales cifradas, fincas que usan cada una): ver para quien tiene acceso al módulo, el resto solo Administrador.
+router.get('/estaciones', auth, permission(PERMISSIONS.ESTACION_METEOROLOGICA_VER), estacionMeteorologicaController.estacionesListar);
+router.post('/estaciones', auth, requireAdmin, validate(estacionCrearSchema), estacionMeteorologicaController.estacionesCrear);
+router.put('/estaciones/:id', auth, requireAdmin, validate(estacionActualizarSchema), estacionMeteorologicaController.estacionesActualizar);
+router.delete('/estaciones/:id', auth, requireAdmin, validate(estacionIdSchema), estacionMeteorologicaController.estacionesEliminar);
+router.put('/estaciones/:id/fincas', auth, requireAdmin, validate(estacionFincasSchema), estacionMeteorologicaController.estacionesFincas);
+router.post('/estaciones/:id/probar', auth, requireAdmin, validate(estacionIdSchema), estacionMeteorologicaController.estacionesProbar);
+
 router.get('/estado-conexion', auth, permission(PERMISSIONS.ESTACION_METEOROLOGICA_VER), estacionMeteorologicaController.estadoConexion);
 router.get('/alerta-destinatarios', auth, requireAdmin, estacionMeteorologicaController.getAlertaDestinatarios);
 router.put('/alerta-destinatarios', auth, requireAdmin, estacionMeteorologicaController.setAlertaDestinatarios);

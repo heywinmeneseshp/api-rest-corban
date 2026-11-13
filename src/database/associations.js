@@ -78,6 +78,8 @@ import { MezclaEtapa } from './models/mezclaEtapa.model.js';
 import { MezclaFoto } from './models/mezclaFoto.model.js';
 import { MezclaHomogeneidad } from './models/mezclaHomogeneidad.model.js';
 import { EstacionClimaDiaria } from './models/estacionClimaDiaria.model.js';
+import { EstacionMeteorologica } from './models/estacionMeteorologica.model.js';
+import { EstacionMeteorologicaFinca } from './models/estacionMeteorologicaFinca.model.js';
 import { Elaboracion } from './models/elaboracion.model.js';
 import { Proforma } from './models/proforma.model.js';
 import { ProformaDetalle } from './models/proformaDetalle.model.js';
@@ -237,6 +239,11 @@ export const setupAssociations = () => {
   // Ubicación agrícola: Fincas -> Lotes -> Plantas
   Finca.hasMany(Lote, { foreignKey: 'fincaId', as: 'lotes' });
   Lote.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
+
+  // Estaciones meteorológicas: las fincas que usan los datos de cada una.
+  EstacionMeteorologica.hasMany(EstacionMeteorologicaFinca, { foreignKey: 'estacionId', as: 'asignaciones' });
+  EstacionMeteorologicaFinca.belongsTo(EstacionMeteorologica, { foreignKey: 'estacionId', as: 'estacion' });
+  EstacionMeteorologicaFinca.belongsTo(Finca, { foreignKey: 'fincaId', as: 'finca' });
 
   // Grupo de Finca: fincas registradas por separado que operativamente son
   // una sola (ver utils/fincaScope.js). Opt-in: grupoFincaId nulo = sin
@@ -917,6 +924,8 @@ export {
   MezclaFoto,
   MezclaHomogeneidad,
   EstacionClimaDiaria,
+  EstacionMeteorologica,
+  EstacionMeteorologicaFinca,
   Elaboracion,
   Proforma,
   ProformaDetalle,

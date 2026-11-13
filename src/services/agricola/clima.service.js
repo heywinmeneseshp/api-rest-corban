@@ -218,12 +218,8 @@ const resolverFincaUuids = async (query, user) => {
 };
 
 // Temperatura y humedad relativa de las gráficas de clima: salen de Open-Meteo (open_meteo_clima_diaria), salvo las fincas que tienen
-// estación meteorológica propia (San Francisco y Pantoja), que usan lo registrado en `clima`. La precipitación no cambia.
-// Número de estación (estacion_clima_diaria, WeatherLink): 1 = Pantoja, 2 = San Francisco.
-const FINCAS_CON_ESTACION = [
-  { patron: /san\s+francisco/i, estacion: 2 },
-  { patron: /pantoja/i, estacion: 1 },
-];
+// estación meteorológica propia, que usan lo medido por su estación. La precipitación no cambia.
+// Qué fincas usan cada estación se administra en Estación Meteorológica → Configuración → Estaciones (tabla estacion_meteorologica_fincas).
 
 // Devuelve { datos: Map 'fincaUuid-AAAA-MM-DD' → { fincaUuid, fecha, temperatura, humedadRelativa }, nombres: Map fincaUuid → nombre }.
 // `fincaUuids`: null = todas. `desde`/`hasta` (AAAA-MM-DD) y `anio` limitan las fechas.
@@ -236,7 +232,14 @@ async function tempHumPorFincaFecha(fincaUuids, { desde = null, hasta = null, an
     `SELECT id, uuid, nombre FROM fincas WHERE deleted_at IS NULL ${fincaUuids ? 'AND uuid IN (:fincaUuids)' : ''}`,
     { replacements: { fincaUuids }, type: 'SELECT' },
   );
-  const estacionDe = (f) => FINCAS_CON_ESTACION.find((x) => x.patron.test(f.nombre))?.estacion ?? null;
+  const asignaciones = await sequelize.query(
+    `SELECT a.finca_id AS fincaId, a.estacion_id AS estacionId
+       FROM estacion_meteorologica_fincas a
+       JOIN estaciones_meteorologicas e ON e.id = a.estacion_id AND e.deleted_at IS NULL AND e.estado = 1`,
+    { type: 'SELECT' },
+  );
+  const estacionPorFinca = new Map(asignaciones.map((a) => [Number(a.fincaId), Number(a.estacionId)]));
+  const estacionDe = (f) => estacionPorFinca.get(Number(f.id)) ?? null;
   const conEstacion = fincas.filter((f) => estacionDe(f) !== null);
   const conOpenMeteo = fincas.filter((f) => !conEstacion.includes(f));
   for (const f of fincas) nombres.set(f.uuid, f.nombre);
@@ -266,16 +269,18 @@ async function tempHumPorFincaFecha(fincaUuids, { desde = null, hasta = null, an
   }
   if (conEstacion.length) {
     // Estación propia: lo que mide su estación meteorológica.
-    const uuidPorEstacion = new Map(conEstacion.map((f) => [estacionDe(f), f.uuid]));
+    const fincasPorEstacion = new Map(); // estación -> uuids de las fincas que la usan (pueden ser varias)
+    for (const f of conEstacion) fincasPorEstacion.set(estacionDe(f), [...(fincasPorEstacion.get(estacionDe(f)) || []), f.uuid]);
     const filas = await sequelize.query(
       `SELECT estacion, fecha, temperatura, humedad_relativa AS humedadRelativa FROM estacion_clima_diaria
         WHERE estacion IN (:estaciones) AND (temperatura IS NOT NULL OR humedad_relativa IS NOT NULL) ${whereFecha}`,
-      { replacements: { estaciones: [...uuidPorEstacion.keys()], ...limite }, type: 'SELECT' },
+      { replacements: { estaciones: [...fincasPorEstacion.keys()], ...limite }, type: 'SELECT' },
     );
     for (const r of filas) {
-      const fincaUuid = uuidPorEstacion.get(Number(r.estacion));
       const fecha = aIso(r.fecha);
-      datos.set(`${fincaUuid}-${fecha}`, { fincaUuid, fecha, temperatura: r.temperatura === null ? null : Number(r.temperatura), humedadRelativa: r.humedadRelativa === null ? null : Number(r.humedadRelativa) });
+      for (const fincaUuid of fincasPorEstacion.get(Number(r.estacion)) || []) {
+        datos.set(`${fincaUuid}-${fecha}`, { fincaUuid, fecha, temperatura: r.temperatura === null ? null : Number(r.temperatura), humedadRelativa: r.humedadRelativa === null ? null : Number(r.humedadRelativa) });
+      }
     }
   }
   return { datos, nombres };

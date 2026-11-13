@@ -6,7 +6,7 @@ export const historicoSchema = Joi.object({
   query: Joi.object({
     fechaDesde: Joi.date().iso(),
     fechaHasta: Joi.date().iso(),
-    estacion: Joi.number().valid(1, 2),
+    estacion: Joi.number().integer().min(1),
   }),
 });
 
@@ -15,14 +15,14 @@ export const sincronizarSchema = Joi.object({
     fecha: Joi.date().iso(),
     fechaDesde: Joi.date().iso(),
     fechaHasta: Joi.date().iso().min(Joi.ref('fechaDesde')),
-    estacion: Joi.number().valid(1, 2),
+    estacion: Joi.number().integer().min(1),
   }),
   params: Joi.object({}),
   query: Joi.object({}),
 });
 
 export const sincronizarFaltantesSchema = Joi.object({
-  body: Joi.object({ estacion: Joi.number().valid(1, 2) }),
+  body: Joi.object({ estacion: Joi.number().integer().min(1) }),
   params: Joi.object({}),
   query: Joi.object({}),
 });
@@ -69,4 +69,39 @@ export const comparativaSchema = Joi.object({
     fechaDesde: Joi.date().iso(),
     fechaHasta: Joi.date().iso(),
   }),
+});
+
+// ─── Administración de estaciones (alta, edición, fincas) ───
+const credencial = Joi.string().trim().max(200).allow('', null);
+export const estacionIdSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({ id: Joi.number().integer().min(1).required() }),
+  query: Joi.object({}),
+});
+export const estacionCrearSchema = Joi.object({
+  body: Joi.object({
+    nombre: Joi.string().trim().min(2).max(120).required(),
+    apiKey: credencial,
+    apiSecret: credencial,
+    stationId: Joi.string().trim().max(60).allow('', null),
+    estado: Joi.boolean(),
+  }),
+  params: Joi.object({}),
+  query: Joi.object({}),
+});
+export const estacionActualizarSchema = Joi.object({
+  body: Joi.object({
+    nombre: Joi.string().trim().min(2).max(120),
+    apiKey: credencial,
+    apiSecret: credencial,
+    stationId: Joi.string().trim().max(60).allow('', null),
+    estado: Joi.boolean(),
+  }).min(1),
+  params: Joi.object({ id: Joi.number().integer().min(1).required() }),
+  query: Joi.object({}),
+});
+export const estacionFincasSchema = Joi.object({
+  body: Joi.object({ fincaUuids: Joi.array().items(Joi.string().guid({ version: 'uuidv4' })).max(200).required() }),
+  params: Joi.object({ id: Joi.number().integer().min(1).required() }),
+  query: Joi.object({}),
 });
