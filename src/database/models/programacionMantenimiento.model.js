@@ -23,6 +23,8 @@ ProgramacionMantenimiento.init(
       defaultValue: 'MEDIA',
     },
     observaciones: { type: DataTypes.TEXT, allowNull: true },
+    // Último estado ya avisado por correo (PROXIMO | VENCIDO).
+    avisoEstado: { type: DataTypes.STRING(10), allowNull: true, field: 'aviso_estado' },
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
     updatedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'updated_by' },
     deletedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'deleted_by' },

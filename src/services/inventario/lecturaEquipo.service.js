@@ -3,7 +3,7 @@ import { sequelize } from '../../database/connection.js';
 import { Equipo, EquipoTipo, LecturaEquipo, PlanMantenimiento, ProgramacionMantenimiento, User } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { logger } from '../../utils/logger.js';
-import { resolverDestinatarios } from '../../utils/resolverDestinatarios.js';
+import { destinatariosAviso } from './mantenimientoAvisos.service.js';
 import { configuracionService } from '../sistema/configuracion.service.js';
 import { mailService } from '../sistema/mail.service.js';
 
@@ -97,8 +97,7 @@ async function reevaluarPlanes(equipo, transaction) {
 async function enviarAvisos(equipo, avisos) {
   if (avisos.length === 0) return;
   try {
-    const personas = await resolverDestinatarios(await configuracionService.getMantenimientoDestinatarios());
-    const destinatarios = personas.map((p) => p.email).filter(Boolean);
+    const destinatarios = await destinatariosAviso(await configuracionService.getMantenimientoDestinatarios(), { equipoId: equipo.id });
     if (destinatarios.length === 0) {
       logger.warn('Mantenimiento por lectura próximo o vencido, pero no hay destinatarios configurados', { equipo: equipo.codigo });
       return;

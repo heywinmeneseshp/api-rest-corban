@@ -69,6 +69,11 @@ const normalizarDestinatarios = (cfg) => ({
   usuariosUuids: normalizarUuids(cfg?.usuariosUuids),
 });
 
+const normalizarMantenimientoAlertas = (cfg) => {
+  const dias = Number.parseInt(cfg?.diasAnticipacion, 10);
+  return { ...normalizarDestinatarios(cfg), diasAnticipacion: Number.isFinite(dias) ? Math.min(60, Math.max(0, dias)) : 7, avisarResponsable: cfg?.avisarResponsable !== false };
+};
+
 // Sin valor guardado todavía = nada en copia.
 const LABOR_REVISOR_CC_DEFAULT = { correos: [], rolesUuids: [], usuariosUuids: [] };
 // Sin valor guardado todavía = nadie recibe el correo de alertas de Sanidad
@@ -452,19 +457,20 @@ export const configuracionService = {
   },
 
   // Quién recibe el aviso de mantenimiento próximo o vencido por kilometraje / horas: correos sueltos, roles y usuarios (tuerca de Programaciones).
+  // Además de las personas en copia: cuántos días antes se avisa un mantenimiento programado y si el aviso llega al responsable.
   async getMantenimientoDestinatarios() {
     const config = await configuracionRepository.findByClave(CLAVE_MANTENIMIENTO_DESTINATARIOS);
-    const vacio = { correos: [], rolesUuids: [], usuariosUuids: [] };
+    const vacio = normalizarMantenimientoAlertas({});
     if (!config?.valor) return vacio;
     try {
-      return normalizarDestinatarios({ ...vacio, ...JSON.parse(config.valor) });
+      return normalizarMantenimientoAlertas(JSON.parse(config.valor));
     } catch {
       return vacio;
     }
   },
 
   async setMantenimientoDestinatarios(destinatarios, actorId) {
-    const config = await configuracionRepository.upsert(CLAVE_MANTENIMIENTO_DESTINATARIOS, JSON.stringify(normalizarDestinatarios(destinatarios)), actorId);
+    const config = await configuracionRepository.upsert(CLAVE_MANTENIMIENTO_DESTINATARIOS, JSON.stringify(normalizarMantenimientoAlertas(destinatarios)), actorId);
     return JSON.parse(config.valor);
   },
 

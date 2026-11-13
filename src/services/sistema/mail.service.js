@@ -623,6 +623,37 @@ export const mailService = {
     await transporter.sendMail({ from, to: para, cc: copias.length ? copias : undefined, subject: `${marca} — Mantenimiento ${vencido ? 'vencido' : 'próximo'}: ${equipo.codigo} ${equipo.nombre}`, html });
   },
 
+  // Aviso de un mantenimiento programado próximo o vencido (por fecha). `estado`: PROXIMO | VENCIDO; `dias`: días que faltan (negativo si ya pasó).
+  async sendMantenimientoProgramado({ destinatarios, equipo, plan, fecha, estado, dias }) {
+    if (!destinatarios?.length) return;
+    const { nombre: marca, nombreHtml: marcaHtml, from } = await obtenerMarca();
+    const vencido = estado === 'VENCIDO';
+    const texto = vencido ? `Vencido hace ${Math.abs(dias)} día(s)` : dias === 0 ? 'Es hoy' : `Faltan ${dias} día(s)`;
+    const html = `
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 620px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb;">
+        <div style="background: ${vencido ? '#b91c1c' : '#b45309'}; padding: 24px 32px; text-align: center;">
+          <h1 style="color: #fff; margin: 0; font-size: 21px; font-weight: 700;">${marcaHtml}</h1>
+          <p style="color: rgba(255,255,255,.9); margin: 4px 0 0; font-size: 13px;">Mantenimiento ${vencido ? 'vencido' : 'próximo'} — ${escaparHtml(equipo.codigo)} · ${escaparHtml(equipo.nombre)}</p>
+        </div>
+        <div style="padding: 28px 32px; color: #374151; font-size: 14px; line-height: 1.5;">
+          <p style="margin: 0 0 8px;"><strong>${escaparHtml(plan)}</strong></p>
+          <p style="margin: 0 0 8px;">Fecha programada: <strong>${escaparHtml(fecha)}</strong></p>
+          <p style="margin: 0;"><strong style="color:${vencido ? '#dc2626' : '#b45309'}">${escaparHtml(texto)}</strong></p>
+          <p style="margin: 14px 0 0; color: #6b7280; font-size: 12px;">Puedes ejecutarlo desde Inventarios → Órdenes de mantenimiento.</p>
+        </div>
+        <div style="background: #f9fafb; padding: 14px 32px; text-align: center; border-top: 1px solid #e5e7eb;">
+          <p style="margin: 0; color: #9ca3af; font-size: 11px;">Este mensaje se generó automáticamente, por favor no respondas a este correo.</p>
+        </div>
+      </div>
+    `;
+    if (!isConfigured || !transporter) {
+      console.log(`MAIL SERVICE (no configurado) — mantenimiento programado ${estado} ${equipo.codigo}: ${destinatarios.join(', ')}`);
+      return;
+    }
+    const [para, ...copias] = destinatarios;
+    await transporter.sendMail({ from, to: para, cc: copias.length ? copias : undefined, subject: `${marca} — Mantenimiento ${vencido ? 'vencido' : 'próximo'}: ${equipo.codigo} ${equipo.nombre}`, html });
+  },
+
   async sendObjetivosIncumplidos({ destinatarios, semana, fincas, cumplieron, total }) {
     const { nombre: marca, nombreHtml: marcaHtml, from } = await obtenerMarca();
     const fechaHoraTexto = new Date().toLocaleString('es-CO', { timeZone: 'America/Bogota', dateStyle: 'long', timeStyle: 'short' });

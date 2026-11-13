@@ -7,6 +7,7 @@ import { iniciarJobAlertasSanidadVegetal } from './jobs/alertasSanidadVegetal.jo
 import { iniciarJobEstacionSinDatos } from './jobs/estacionSinDatos.job.js';
 import { iniciarJobOpenMeteo } from './jobs/openMeteo.job.js';
 import { iniciarJobJornadaIncompleta } from './jobs/jornadaIncompleta.job.js';
+import { iniciarJobMantenimientoProgramado } from './jobs/mantenimientoProgramado.job.js';
 import { iniciarJobEstimacionLimite } from './jobs/estimacionLimite.job.js';
 import { iniciarJobObjetivosSemana } from './jobs/objetivosSemana.job.js';
 import { iniciarJobRespaldoBaseDatos } from './jobs/respaldoBaseDatos.job.js';
@@ -46,6 +47,7 @@ const start = async () => {
     iniciarJobEstacionSinDatos();
     iniciarJobOpenMeteo();
     iniciarJobJornadaIncompleta();
+    iniciarJobMantenimientoProgramado();
     iniciarJobEstimacionLimite();
     iniciarJobObjetivosSemana();
     iniciarJobRespaldoBaseDatos();
