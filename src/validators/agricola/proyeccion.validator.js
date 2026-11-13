@@ -11,6 +11,8 @@ const paramsSchema = Joi.object({
   hectareasBasePorFinca: Joi.object().pattern(uuid, Joi.number().min(0).max(100000).allow(null, '')),
   pctNoCosechado: Joi.number().min(0).max(90).allow(null, ''),
   pctNoCosechadoPorFinca: Joi.object().pattern(uuid, Joi.number().min(0).max(90).allow(null, '')),
+  // Ratio (cajas por racimo) fijado a mano: { fincaUuid: { 'S12-2027': 0.0295 } } para semanas proyectadas.
+  ratioManual: Joi.object().pattern(uuid, Joi.object().pattern(Joi.string().max(20), Joi.number().min(0.0001).max(5).allow(null, ''))),
 });
 
 const vacio = { body: Joi.object({}), params: Joi.object({}), query: Joi.object({}) };

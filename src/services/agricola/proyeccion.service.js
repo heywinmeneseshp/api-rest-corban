@@ -31,6 +31,7 @@ export const PARAMS_POR_DEFECTO = {
   hectareasBasePorFinca: {}, // { fincaUuid: ha } fija las hectáreas de partida de una finca (vacío = las reales de hoy)
   pctNoCosechado: null, // % no cosechado global (null = histórico de cada finca)
   pctNoCosechadoPorFinca: {}, // { fincaUuid: pct } (tiene prioridad sobre el global)
+  ratioManual: {}, // { fincaUuid: { codigoSemana: ratio } } ratio (cajas por racimo) fijado a mano en semanas proyectadas
 };
 
 const r2 = (n) => Math.round(n * 100) / 100;
@@ -66,6 +67,15 @@ export function normalizarParams(params = {}) {
     const valor = pct(v);
     if (valor !== null) porFinca[k] = valor;
   }
+  const ratioManual = {};
+  for (const [fincaUuid, semanasRatio] of Object.entries(params.ratioManual || {})) {
+    const limpio = {};
+    for (const [codigo, v] of Object.entries(semanasRatio || {})) {
+      const n = Number(v);
+      if (v !== null && v !== '' && Number.isFinite(n) && n > 0 && n <= 5) limpio[codigo] = r4(n);
+    }
+    if (Object.keys(limpio).length) ratioManual[fincaUuid] = limpio;
+  }
   const anios = [...new Set((Array.isArray(params.anios) ? params.anios : []).map(Number).filter((a) => Number.isInteger(a) && a >= 2000 && a <= 2100))].sort().slice(0, 6);
   const haBase = {};
   for (const [k, v] of Object.entries(params.hectareasBasePorFinca || {})) {
@@ -81,6 +91,7 @@ export function normalizarParams(params = {}) {
     aniosHistoricos: Math.round(num(params.aniosHistoricos, PARAMS_POR_DEFECTO.aniosHistoricos, 1, 5)),
     pctNoCosechado: pct(params.pctNoCosechado),
     pctNoCosechadoPorFinca: porFinca,
+    ratioManual,
   };
 }
 
@@ -430,7 +441,10 @@ export async function calcularProyeccion({ anio, params, areas }, user, { fincaU
     for (const s of semanasAnio) {
       const i = s.idx;
       const real = i <= hoyIdx;
-      const ratio = ratioSemana(s.numeroSemana);
+      const ratioAuto = ratioSemana(s.numeroSemana);
+      // Ratio fijado a mano para esta finca y semana: solo en semanas que no tienen cajas reales registradas.
+      const ratioFijado = real && J[i] > 0 ? undefined : p.ratioManual?.[f.uuid]?.[s.codigo];
+      const ratio = ratioFijado ?? ratioAuto;
       const rac = real && C[i] > 0 ? C[i] : racimos(embBase, i);
       const cajas = real && J[i] > 0 ? J[i] : rac * ratio;
       const cajasLow = real && J[i] > 0 ? J[i] : racimos(embLow, i) * ratio;
@@ -481,7 +495,8 @@ export async function calcularProyeccion({ anio, params, areas }, user, { fincaU
         racimos: Math.round(rac),
         // En semanas reales con cosecha y cajas registradas, el ratio es el realmente ocurrido (cajas ÷ racimos).
         ratio: r4(realCompleta ? J[i] / C[i] : ratio),
-        ratioHistorico: r4(ratio),
+        ratioHistorico: r4(ratioAuto),
+        ratioManual: ratioFijado !== undefined,
         embolsesPorHa: r4(real ? (HA[i] > 0 ? E[i] / HA[i] : 0) : statSemana(s.numeroSemana)?.mean ?? 0),
         fuente: realCompleta ? 'real' : 'proyeccion',
         racimosDelDesglose: Math.round(racimos(embBase, i)),
