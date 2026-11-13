@@ -22,6 +22,8 @@ Colaborador.init(
     fincaId: { type: DataTypes.INTEGER, allowNull: true, field: 'finca_id' },
     lugarId: { type: DataTypes.INTEGER, allowNull: true, field: 'lugar_id' },
     estado: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+    // Certificado como piloto de dron.
+    pilotoCertificado: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: 'piloto_certificado' },
     // GENERAL (Maestros → Colaboradores) o SANIDAD_VEGETAL (creado desde Sanidad Vegetal → Colaboradores).
     modulo: { type: DataTypes.STRING(30), allowNull: false, defaultValue: 'GENERAL' },
     // Autorización del tratamiento del dato biométrico (huella facial) y usuario vinculado (marca en su propio celular).

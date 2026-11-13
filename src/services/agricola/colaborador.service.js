@@ -190,6 +190,7 @@ export const colaboradorService = {
           fincaId,
           lugarId,
           estado: payload.estado ?? true,
+          pilotoCertificado: payload.pilotoCertificado === true,
           // Quien solo tiene los permisos de Sanidad Vegetal crea siempre en ese módulo.
           modulo: soloModuloSanidad(actor, 'crear') ? MODULO_SANIDAD : MODULOS_COLABORADOR.includes(payload.modulo) ? payload.modulo : 'GENERAL',
           userId: user?.id ?? null,
@@ -220,6 +221,7 @@ export const colaboradorService = {
     if (payload.vacacionesPrevias !== undefined) data.vacacionesPrevias = Number(payload.vacacionesPrevias) || 0;
     if (payload.cargo !== undefined) Object.assign(data, await resolverCargo(payload.cargo));
     if (payload.estado !== undefined) data.estado = payload.estado;
+    if (payload.pilotoCertificado !== undefined) data.pilotoCertificado = payload.pilotoCertificado === true;
     // Cambiar de módulo solo con el permiso general de colaboradores.
     if (payload.modulo !== undefined && MODULOS_COLABORADOR.includes(payload.modulo) && !soloModuloSanidad(user, 'editar')) data.modulo = payload.modulo;
     if (payload.fincaUuid !== undefined || payload.lugarUuid !== undefined) {
