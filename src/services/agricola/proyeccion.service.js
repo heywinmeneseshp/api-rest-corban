@@ -460,6 +460,9 @@ export async function calcularProyeccion({ anio, params, areas }, user, { fincaU
           edad: e,
           semanaCodigo: semanas[src].codigo,
           embolse: Math.round(embBase[src]),
+          // Hectáreas en producción de la cinta (semana de embolse) y su embolse por hectárea: lo que explica el embolse de origen.
+          hectareas: r2(haEfectiva[src]),
+          embolsesPorHa: haEfectiva[src] > 0 ? r2(embBase[src] / haEfectiva[src]) : null,
           embolseReal: src <= hoyIdx && !(embolseIncompleto(src) && embBase[src] > E[src]),
           tasa: r4(tasas[e]),
           racimos: aporta(src, i) ? Math.round(embBase[src] * tasas[e]) : 0,
