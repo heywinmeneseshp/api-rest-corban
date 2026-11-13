@@ -9,6 +9,7 @@ import {
   Colaborador,
   Cargo,
   Finca,
+  Semana,
   MezclaVersion,
   MezclaComponente,
   UnidadMedida,
@@ -515,13 +516,16 @@ export const comprobanteAspersionService = {
               required: true,
               where: permitidos !== null ? { almacenId: { [Op.in]: permitidos } } : undefined,
               attributes: ['uuid', 'numero'],
-              include: [{ model: Finca, as: 'finca', attributes: ['uuid', 'nombre'] }],
+              include: [{ model: Finca, as: 'finca', attributes: ['uuid', 'nombre', 'codigo'] }],
             },
           ],
         },
-        { model: Colaborador, as: 'colaborador', required: true, where: whereColab, attributes: ['uuid', 'nombre', 'apellido', 'cargo'], paranoid: false },
+        { model: Colaborador, as: 'colaborador', required: true, where: whereColab, attributes: ['uuid', 'nombre', 'apellido', 'cargo', 'documento'], paranoid: false },
       ],
     });
+    // Semana (número) de cada día, para el Excel de pago.
+    const semanas = await Semana.findAll({ attributes: ['numeroSemana', 'fechaInicio', 'fechaFin'], raw: true });
+    const semanaDe = (iso) => semanas.find((s) => String(s.fechaInicio).slice(0, 10) <= iso && iso <= String(s.fechaFin).slice(0, 10))?.numeroSemana ?? null;
     const r2 = (n) => Math.round(n * 100) / 100;
     const detalle = filas
       .map((p) => ({
@@ -530,6 +534,9 @@ export const comprobanteAspersionService = {
         cargo: p.colaborador.cargo || 'Sin cargo',
         rol: p.rol,
         finca: p.comprobante.aspersion?.finca?.nombre || '—',
+        fincaCodigo: p.comprobante.aspersion?.finca?.codigo || '',
+        documento: p.colaborador.documento || '',
+        semana: semanaDe(diaBogota(p.comprobante.ejecutadoEn)),
         aspersion: p.comprobante.aspersion?.numero || '—',
         comprobante: p.comprobante.numero,
         estado: p.comprobante.estado,
