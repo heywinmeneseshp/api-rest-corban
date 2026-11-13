@@ -15,6 +15,7 @@ const router = Router();
 router.get('/', auth, validate(listArticuloSchema), articuloController.list);
 router.post('/', auth, permission(PERMISSIONS.INVENTARIO_ARTICULOS_CREAR), validate(createArticuloSchema), articuloController.create);
 router.post('/bulk-upload', auth, permission(PERMISSIONS.INVENTARIO_ARTICULOS_CREAR), uploadBulkFile, articuloController.bulkUpload);
+router.get('/siguiente-codigo', auth, articuloController.siguienteCodigo);
 router.get('/exportar', auth, permission(PERMISSIONS.INVENTARIO_ARTICULOS_VER), articuloController.exportar);
 // Papelera de artículos eliminados — solo Administrador (ver eliminados).
 router.get('/eliminados', auth, requireAdmin, articuloController.listDeleted);

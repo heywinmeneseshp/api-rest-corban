@@ -16,6 +16,7 @@ const router = Router();
 router.get('/', auth, validate(listArticuloSchema), repuestoController.list);
 // Crear/editar repuestos: con el permiso de Artículos o con el de Equipos (la pantalla vive en Equipos).
 router.post('/', auth, permission(PERMISSIONS.INVENTARIO_ARTICULOS_CREAR, PERMISSIONS.INVENTARIO_EQUIPOS_CREAR), validate(createArticuloSchema), repuestoController.create);
+router.get('/siguiente-codigo', auth, repuestoController.siguienteCodigo);
 router.get('/exportar', auth, permission(PERMISSIONS.INVENTARIO_ARTICULOS_VER, PERMISSIONS.INVENTARIO_EQUIPOS_VER), repuestoController.exportar);
 router.post('/bulk-upload', auth, permission(PERMISSIONS.INVENTARIO_ARTICULOS_CREAR, PERMISSIONS.INVENTARIO_EQUIPOS_CREAR), uploadBulkFile, repuestoController.bulkUpload);
 router.get('/eliminados', auth, requireAdmin, repuestoController.listDeleted);

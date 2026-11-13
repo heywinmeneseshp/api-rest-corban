@@ -220,6 +220,21 @@ export const articuloService = {
     return { ...actualizado.toJSON(), advertencias: evaluarMargen(precioVentaFinal, costoCompraFinal) };
   },
 
+  // Código sugerido para un artículo nuevo: el siguiente número libre (con el prefijo, si lo hay), a partir del mayor ya usado — incluidos los
+  // eliminados, porque el código es único. Ej.: 007, 008 -> 009; con prefijo «REP-»: REP-001, REP-002 -> REP-003.
+  async siguienteCodigo(prefijo = '') {
+    const base = prefijo.replace(/[^A-Za-z0-9-]/g, '');
+    const [filas] = await sequelize.query('SELECT codigo FROM articulos WHERE codigo REGEXP :patron', { replacements: { patron: `^${base}[0-9]+$` } });
+    let max = 0;
+    let ancho = 3;
+    for (const { codigo } of filas) {
+      const digitos = codigo.slice(base.length);
+      max = Math.max(max, Number(digitos));
+      ancho = Math.max(ancho, digitos.length);
+    }
+    return { codigo: `${base}${String(max + 1).padStart(ancho, '0')}` };
+  },
+
   async delete(uuid, actorId) {
     const art = await this.getByUuid(uuid);
     await articuloRepository.softDelete(art, actorId);

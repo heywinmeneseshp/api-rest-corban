@@ -1,3 +1,4 @@
+import { articuloService } from '../../services/inventario/articulo.service.js';
 import { repuestoService } from '../../services/inventario/repuesto.service.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { ApiResponse } from '../../utils/ApiResponse.js';
@@ -21,6 +22,9 @@ export const repuestoController = {
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="repuestos-${Date.now()}.xlsx"`);
     res.send(buffer);
+  }),
+  siguienteCodigo: asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { message: 'Código sugerido', data: await articuloService.siguienteCodigo('REP-') });
   }),
   listDeleted: asyncHandler(async (req, res) => {
     const { items, meta } = await repuestoService.listDeleted(req.query);

@@ -37,6 +37,9 @@ export const articuloController = {
     const resultado = await articuloService.bulkCreateArticulos(req.file, req.user?.id, { dryRun });
     ApiResponse.send(res, { message: 'Cargue masivo de artículos procesado', data: resultado });
   }),
+  siguienteCodigo: asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { message: 'Código sugerido', data: await articuloService.siguienteCodigo() });
+  }),
   exportar: asyncHandler(async (req, res) => {
     const buffer = await articuloService.exportArticulosToExcel();
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
