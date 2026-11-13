@@ -15,6 +15,7 @@ import {
   registrarLecturasLoteSchema,
   historialLecturasSchema,
 } from '../../validators/inventario/equipo.validator.js';
+import { hallazgosEquipoSchema } from '../../validators/inventario/checklist.validator.js';
 
 const router = Router();
 
@@ -27,6 +28,7 @@ const PUEDE_REGISTRAR_LECTURAS = [PERMISSIONS.INVENTARIO_EQUIPOS_LECTURAS, PERMI
 router.get('/para-lecturas', auth, permission(...PUEDE_REGISTRAR_LECTURAS), equipoController.paraLecturas);
 router.post('/lecturas/lote', auth, permission(...PUEDE_REGISTRAR_LECTURAS), validate(registrarLecturasLoteSchema), equipoController.registrarLecturasLote);
 router.post('/:uuid/lecturas', auth, permission(...PUEDE_REGISTRAR_LECTURAS), validate(registrarLecturaSchema), equipoController.registrarLectura);
+router.get('/:uuid/hallazgos', auth, permission(PERMISSIONS.INVENTARIO_EQUIPOS_VER, PERMISSIONS.INVENTARIO_ORDENES_VER), validate(hallazgosEquipoSchema), equipoController.hallazgosPendientes);
 router.get('/:uuid/lecturas', auth, permission(...PUEDE_LEER_LECTURAS), validate(historialLecturasSchema), equipoController.historialLecturas);
 
 router.get('/:uuid', auth, permission(PERMISSIONS.INVENTARIO_EQUIPOS_VER, PERMISSIONS.INVENTARIO_PLANES_VER, PERMISSIONS.INVENTARIO_PROGRAMACIONES_VER, PERMISSIONS.INVENTARIO_ORDENES_VER), validate(getEquipoSchema), equipoController.getByUuid);

@@ -24,6 +24,8 @@ Equipo.init(
       allowNull: false,
       defaultValue: 'OPERATIVO',
     },
+    // Configuración instalada (p. ej. «LS100, Esparcido 4.0»): sale en la identificación del informe de mantenimiento.
+    configuracion: { type: DataTypes.STRING(300), allowNull: true },
     horometro: { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 0 },
     kilometraje: { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 0 },
     responsableId: { type: DataTypes.INTEGER, allowNull: true, field: 'responsable_id' },

@@ -8,6 +8,7 @@ import { generarCorrelativo } from '../../utils/correlativo.js';
 import { OrdenMantenimiento } from '../../database/associations.js';
 import { assertAlmacenPermitido, getAlmacenIdsPermitidas } from '../../utils/almacenScope.js';
 import { esPlanPorLectura, reiniciarCicloLectura } from './lecturaEquipo.service.js';
+import { copiarDePlantilla } from './ordenChecklist.service.js';
 
 async function resolveProveedor(uuid) {
   if (!uuid) return null;
@@ -152,11 +153,16 @@ export const ordenMantenimientoService = {
           prioridad: payload.prioridad || 'MEDIA',
           costoTotal,
           observaciones: payload.observaciones || null,
+          // Lecturas del equipo al ingreso (el informe del servicio las muestra).
+          lecturaKm: equipo.kilometraje,
+          lecturaHoras: equipo.horometro,
           usuarioId: actorId,
           createdBy: actorId,
         },
         { transaction: t },
       );
+      // Si el plan tiene plantilla de checklist, la orden nace con su checklist copiado.
+      if (plan?.plantillaId) await copiarDePlantilla(orden.id, plan.plantillaId, t);
 
       if (payload.detalles && payload.detalles.length) {
         for (const det of payload.detalles) {

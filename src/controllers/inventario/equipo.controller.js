@@ -1,5 +1,6 @@
 import { equipoService } from '../../services/inventario/equipo.service.js';
 import { lecturaEquipoService } from '../../services/inventario/lecturaEquipo.service.js';
+import { ordenChecklistService } from '../../services/inventario/ordenChecklist.service.js';
 import { ApiResponse } from '../../utils/ApiResponse.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { HTTP_STATUS } from '../../constants/httpStatus.constants.js';
@@ -7,6 +8,9 @@ import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import { ROLES } from '../../constants/roles.constants.js';
 
 export const equipoController = {
+  hallazgosPendientes: asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { message: 'Hallazgos obtenidos correctamente', data: await ordenChecklistService.hallazgosDeEquipo(req.params.uuid, req.query) });
+  }),
   // ─── Lecturas de kilometraje / horas ───
   registrarLectura: asyncHandler(async (req, res) => {
     // `corregir` (aceptar una lectura menor a la anterior) solo lo puede quien edita equipos.

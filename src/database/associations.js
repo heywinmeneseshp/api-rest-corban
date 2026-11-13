@@ -80,6 +80,14 @@ import { MezclaHomogeneidad } from './models/mezclaHomogeneidad.model.js';
 import { EstacionClimaDiaria } from './models/estacionClimaDiaria.model.js';
 import { EstacionMeteorologica } from './models/estacionMeteorologica.model.js';
 import { LecturaEquipo } from './models/lecturaEquipo.model.js';
+import { ChecklistPlantilla } from './models/checklistPlantilla.model.js';
+import { ChecklistPlantillaItem } from './models/checklistPlantillaItem.model.js';
+import { OrdenChecklistItem } from './models/ordenChecklistItem.model.js';
+import { OrdenHallazgo } from './models/ordenHallazgo.model.js';
+import { ParteEquipo } from './models/parteEquipo.model.js';
+import { ParteEquipoRegistro } from './models/parteEquipoRegistro.model.js';
+import { OrdenParticipante } from './models/ordenParticipante.model.js';
+import { OrdenAdjunto } from './models/ordenAdjunto.model.js';
 import { EstacionMeteorologicaFinca } from './models/estacionMeteorologicaFinca.model.js';
 import { Elaboracion } from './models/elaboracion.model.js';
 import { Proforma } from './models/proforma.model.js';
@@ -745,6 +753,26 @@ export const setupAssociations = () => {
   PlanMantenimiento.belongsTo(Equipo, { foreignKey: 'equipoId', as: 'equipo' });
   Equipo.hasMany(PlanMantenimiento, { foreignKey: 'equipoId', as: 'planesMantenimiento' });
   Equipo.hasMany(LecturaEquipo, { foreignKey: 'equipoId', as: 'lecturas' });
+
+  // Checklist de mantenimiento: plantillas (plan -> plantilla), checklist y hallazgos de cada orden, partes con serie, participantes y adjuntos.
+  ChecklistPlantilla.hasMany(ChecklistPlantillaItem, { foreignKey: 'plantillaId', as: 'items' });
+  ChecklistPlantillaItem.belongsTo(ChecklistPlantilla, { foreignKey: 'plantillaId', as: 'plantilla' });
+  PlanMantenimiento.belongsTo(ChecklistPlantilla, { foreignKey: 'plantillaId', as: 'plantilla' });
+  OrdenMantenimiento.hasMany(OrdenChecklistItem, { foreignKey: 'ordenId', as: 'checklist' });
+  OrdenChecklistItem.belongsTo(OrdenMantenimiento, { foreignKey: 'ordenId', as: 'ordenMantenimiento' }); // no 'orden': choca con el atributo `orden` (posición del ítem)
+  OrdenMantenimiento.hasMany(OrdenHallazgo, { foreignKey: 'ordenId', as: 'hallazgos' });
+  OrdenHallazgo.belongsTo(OrdenMantenimiento, { foreignKey: 'ordenId', as: 'orden' });
+  OrdenHallazgo.belongsTo(OrdenChecklistItem, { foreignKey: 'checklistItemId', as: 'checklistItem' });
+  OrdenHallazgo.belongsTo(ProgramacionMantenimiento, { foreignKey: 'programacionId', as: 'programacion' });
+  OrdenHallazgo.belongsTo(ParteEquipo, { foreignKey: 'parteId', as: 'parte' });
+  OrdenMantenimiento.hasMany(OrdenParticipante, { foreignKey: 'ordenId', as: 'participantes' });
+  OrdenMantenimiento.hasMany(OrdenAdjunto, { foreignKey: 'ordenId', as: 'adjuntos' });
+  OrdenAdjunto.belongsTo(OrdenMantenimiento, { foreignKey: 'ordenId', as: 'orden' });
+  Equipo.hasMany(ParteEquipo, { foreignKey: 'equipoId', as: 'partes' });
+  ParteEquipo.belongsTo(Equipo, { foreignKey: 'equipoId', as: 'equipo' });
+  ParteEquipo.hasMany(ParteEquipoRegistro, { foreignKey: 'parteId', as: 'registros' });
+  ParteEquipoRegistro.belongsTo(ParteEquipo, { foreignKey: 'parteId', as: 'parte' });
+  ParteEquipoRegistro.belongsTo(User, { foreignKey: 'usuarioId', as: 'usuario' });
   LecturaEquipo.belongsTo(Equipo, { foreignKey: 'equipoId', as: 'equipo' });
   LecturaEquipo.belongsTo(User, { foreignKey: 'usuarioId', as: 'usuario' });
   withAuditAssociations(PlanMantenimiento);
@@ -931,6 +959,14 @@ export {
   EstacionMeteorologica,
   EstacionMeteorologicaFinca,
   LecturaEquipo,
+  ChecklistPlantilla,
+  ChecklistPlantillaItem,
+  OrdenChecklistItem,
+  OrdenHallazgo,
+  ParteEquipo,
+  ParteEquipoRegistro,
+  OrdenParticipante,
+  OrdenAdjunto,
   Elaboracion,
   Proforma,
   ProformaDetalle,

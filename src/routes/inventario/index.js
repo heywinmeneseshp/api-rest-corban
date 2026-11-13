@@ -17,6 +17,7 @@ import proveedorRoutes from './proveedor.routes.js';
 import planMantenimientoRoutes from './planMantenimiento.routes.js';
 import programacionMantenimientoRoutes from './programacionMantenimiento.routes.js';
 import ordenMantenimientoRoutes from './ordenMantenimiento.routes.js';
+import checklistPlantillaRoutes from './checklistPlantilla.routes.js';
 import dashboardRoutes from './dashboard.routes.js';
 
 const router = Router();
@@ -39,6 +40,7 @@ router.use('/proveedores', proveedorRoutes);
 router.use('/planes-mantenimiento', planMantenimientoRoutes);
 router.use('/programaciones-mantenimiento', programacionMantenimientoRoutes);
 router.use('/ordenes-mantenimiento', ordenMantenimientoRoutes);
+router.use('/checklist-plantillas', checklistPlantillaRoutes);
 router.use('/dashboard', dashboardRoutes);
 
 export default router;

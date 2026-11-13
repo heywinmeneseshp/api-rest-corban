@@ -1,5 +1,5 @@
 import { planMantenimientoRepository } from '../../repositories/inventario/planMantenimiento.repository.js';
-import { Equipo } from '../../database/associations.js';
+import { Equipo, ChecklistPlantilla } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { campoDeUnidad, planConEstado } from './lecturaEquipo.service.js';
@@ -8,6 +8,15 @@ async function resolveEquipo(uuid) {
   const e = await Equipo.findOne({ where: { uuid } });
   if (!e) throw ApiError.notFound('Equipo no encontrado');
   return e;
+}
+
+// `plantillaUuid`: undefined = no tocar, null/'' = quitar, uuid = asignar.
+async function resolvePlantillaId(uuid) {
+  if (uuid === undefined) return undefined;
+  if (!uuid) return null;
+  const p = await ChecklistPlantilla.findOne({ where: { uuid } });
+  if (!p) throw ApiError.notFound('Plantilla de checklist no encontrada');
+  return p.id;
 }
 
 export const planMantenimientoService = {
@@ -45,6 +54,7 @@ export const planMantenimientoService = {
       periodicidadValor: payload.periodicidadValor,
       periodicidadUnidad: payload.periodicidadUnidad,
       estado: payload.estado ?? true,
+      plantillaId: (await resolvePlantillaId(payload.plantillaUuid)) ?? null,
       // Planes por km / horas: desde dónde se cuenta (lo escrito, o la lectura actual del equipo).
       lecturaBase: campoDeUnidad(payload.periodicidadUnidad) ? payload.lecturaBase ?? Number(equipo[campoDeUnidad(payload.periodicidadUnidad)] ?? 0) : null,
       createdBy: actorId,
@@ -68,6 +78,7 @@ export const planMantenimientoService = {
       ...(payload.periodicidadUnidad ? { periodicidadUnidad: payload.periodicidadUnidad } : {}),
       ...(payload.estado !== undefined ? { estado: payload.estado } : {}),
       ...(payload.lecturaBase !== undefined ? { lecturaBase: payload.lecturaBase, avisoEstado: null } : {}),
+      ...(payload.plantillaUuid !== undefined ? { plantillaId: await resolvePlantillaId(payload.plantillaUuid) } : {}),
       updatedBy: actorId,
     };
     // Si el plan pasa a km / horas sin base, se cuenta desde la lectura actual del equipo.
