@@ -79,6 +79,7 @@ import { MezclaFoto } from './models/mezclaFoto.model.js';
 import { MezclaHomogeneidad } from './models/mezclaHomogeneidad.model.js';
 import { EstacionClimaDiaria } from './models/estacionClimaDiaria.model.js';
 import { EstacionMeteorologica } from './models/estacionMeteorologica.model.js';
+import { LecturaEquipo } from './models/lecturaEquipo.model.js';
 import { EstacionMeteorologicaFinca } from './models/estacionMeteorologicaFinca.model.js';
 import { Elaboracion } from './models/elaboracion.model.js';
 import { Proforma } from './models/proforma.model.js';
@@ -743,6 +744,9 @@ export const setupAssociations = () => {
   // Inventarios - FASE 6: Mantenimiento
   PlanMantenimiento.belongsTo(Equipo, { foreignKey: 'equipoId', as: 'equipo' });
   Equipo.hasMany(PlanMantenimiento, { foreignKey: 'equipoId', as: 'planesMantenimiento' });
+  Equipo.hasMany(LecturaEquipo, { foreignKey: 'equipoId', as: 'lecturas' });
+  LecturaEquipo.belongsTo(Equipo, { foreignKey: 'equipoId', as: 'equipo' });
+  LecturaEquipo.belongsTo(User, { foreignKey: 'usuarioId', as: 'usuario' });
   withAuditAssociations(PlanMantenimiento);
 
   ProgramacionMantenimiento.belongsTo(PlanMantenimiento, { foreignKey: 'planId', as: 'plan' });
@@ -926,6 +930,7 @@ export {
   EstacionClimaDiaria,
   EstacionMeteorologica,
   EstacionMeteorologicaFinca,
+  LecturaEquipo,
   Elaboracion,
   Proforma,
   ProformaDetalle,

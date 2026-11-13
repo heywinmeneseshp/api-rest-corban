@@ -82,3 +82,34 @@ export const removeComponenteSchema = Joi.object({
   params: Joi.object({ uuid: uuidParam, articuloUuid: Joi.string().guid({ version: 'uuidv4' }).required() }),
   query: Joi.object({}),
 });
+
+// ─── Lecturas de kilometraje / horas ───
+const lectura = {
+  uuid: Joi.string().guid({ version: 'uuidv4' }),
+  kilometraje: Joi.number().min(0).max(99999999),
+  horometro: Joi.number().min(0).max(99999999),
+  fechaHora: Joi.date().iso(),
+  nota: Joi.string().trim().max(300).allow('', null),
+  corregir: Joi.boolean(),
+};
+export const registrarLecturaSchema = Joi.object({
+  body: Joi.object(lectura).or('kilometraje', 'horometro'),
+  params: Joi.object({ uuid: Joi.string().guid({ version: 'uuidv4' }).required() }),
+  query: Joi.object({}),
+});
+export const registrarLecturasLoteSchema = Joi.object({
+  body: Joi.object({
+    items: Joi.array()
+      .items(Joi.object({ ...lectura, uuid: Joi.string().guid({ version: 'uuidv4' }).required(), equipoUuid: Joi.string().guid({ version: 'uuidv4' }).required() }).or('kilometraje', 'horometro'))
+      .min(1)
+      .max(200)
+      .required(),
+  }),
+  params: Joi.object({}),
+  query: Joi.object({}),
+});
+export const historialLecturasSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({ uuid: Joi.string().guid({ version: 'uuidv4' }).required() }),
+  query: Joi.object({ limite: Joi.number().integer().min(1).max(500) }),
+});

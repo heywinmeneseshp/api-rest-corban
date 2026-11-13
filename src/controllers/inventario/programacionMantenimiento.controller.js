@@ -1,9 +1,17 @@
+import { configuracionService } from '../../services/sistema/configuracion.service.js';
 import { programacionMantenimientoService } from '../../services/inventario/programacionMantenimiento.service.js';
 import { ApiResponse } from '../../utils/ApiResponse.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { HTTP_STATUS } from '../../constants/httpStatus.constants.js';
 
 export const programacionMantenimientoController = {
+  avisosGet: asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { message: 'Destinatarios obtenidos correctamente', data: await configuracionService.getMantenimientoDestinatarios() });
+  }),
+  avisosSet: asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { message: 'Destinatarios guardados correctamente', data: await configuracionService.setMantenimientoDestinatarios(req.body, req.user?.id) });
+  }),
+
   list: asyncHandler(async (req, res) => {
     const { items, meta } = await programacionMantenimientoService.list(req.query);
     ApiResponse.send(res, { message: 'Programaciones obtenidas correctamente', data: { items, meta } });

@@ -341,7 +341,12 @@ export const PERMISOS_CATALOGO = [
     nombre: 'Equipos',
     codigo: null,
     pantallas: [
-      { nombre: 'Equipos y repuestos', acceso: 'menu.inventarios.equipos', filas: [crud('inventario.equipos')] },
+      {
+        nombre: 'Equipos y repuestos',
+        acceso: 'menu.inventarios.equipos',
+        filas: [crud('inventario.equipos')],
+        especiales: [especial('inventario.equipos.lecturas', 'Registrar el kilometraje y las horas de los equipos')],
+      },
       { nombre: 'Planes de mantenimiento', acceso: 'menu.inventarios.planes', filas: [crud('inventario.planes')] },
       { nombre: 'Programaciones', acceso: 'menu.inventarios.programaciones', filas: [crud('inventario.programaciones')] },
       {

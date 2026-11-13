@@ -393,6 +393,7 @@ export const PERMISSIONS = {
   INVENTARIO_EQUIPOS_CREAR: 'inventario.equipos.crear',
   INVENTARIO_EQUIPOS_EDITAR: 'inventario.equipos.editar',
   INVENTARIO_EQUIPOS_ELIMINAR: 'inventario.equipos.eliminar',
+  INVENTARIO_EQUIPOS_LECTURAS: 'inventario.equipos.lecturas',
 
   MENU_INVENTARIOS_EQUIPOS: 'menu.inventarios.equipos',
 
@@ -707,6 +708,7 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.INVENTARIO_EQUIPOS_CREAR, nombre: 'Crear equipos' },
   { codigo: PERMISSIONS.INVENTARIO_EQUIPOS_EDITAR, nombre: 'Editar equipos' },
   { codigo: PERMISSIONS.INVENTARIO_EQUIPOS_ELIMINAR, nombre: 'Eliminar equipos' },
+  { codigo: PERMISSIONS.INVENTARIO_EQUIPOS_LECTURAS, nombre: 'Registrar lecturas de equipos (km / horas)' },
   { codigo: PERMISSIONS.MENU_INVENTARIOS_EQUIPOS, nombre: 'Ver submenú Equipos (Inventarios)' },
   { codigo: PERMISSIONS.INVENTARIO_PLANES_VER, nombre: 'Ver planes de mantenimiento' },
   { codigo: PERMISSIONS.INVENTARIO_PLANES_CREAR, nombre: 'Crear planes de mantenimiento' },

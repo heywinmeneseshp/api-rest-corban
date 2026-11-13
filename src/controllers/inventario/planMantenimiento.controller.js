@@ -10,7 +10,7 @@ export const planMantenimientoController = {
   }),
 
   getByUuid: asyncHandler(async (req, res) => {
-    const plan = await planMantenimientoService.getByUuid(req.params.uuid);
+    const plan = await planMantenimientoService.getConEstado(req.params.uuid);
     ApiResponse.send(res, { message: 'Plan obtenido correctamente', data: plan });
   }),
 

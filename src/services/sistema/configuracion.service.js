@@ -28,6 +28,7 @@ export const RADIO_FINCA_DEFAULT_M = 500;
 const CLAVE_ESTIMACION_LIMITE_AVISADO = 'estimacion_limite_avisado';
 const CLAVE_OBJETIVOS_AVISADO = 'objetivos_incumplidos_avisado';
 const CLAVE_OBJETIVOS_DESTINATARIOS = 'objetivos_destinatarios';
+const CLAVE_MANTENIMIENTO_DESTINATARIOS = 'mantenimiento_destinatarios';
 
 // "Cajas de 20kg" es el nombre convencional de la unidad, pero el peso neto
 // real de referencia es otro (ej. 18.6) — configurable en vez de fijo por
@@ -447,6 +448,23 @@ export const configuracionService = {
 
   async setObjetivosDestinatarios(destinatarios, actorId) {
     const config = await configuracionRepository.upsert(CLAVE_OBJETIVOS_DESTINATARIOS, JSON.stringify(normalizarDestinatarios(destinatarios)), actorId);
+    return JSON.parse(config.valor);
+  },
+
+  // Quién recibe el aviso de mantenimiento próximo o vencido por kilometraje / horas: correos sueltos, roles y usuarios (tuerca de Programaciones).
+  async getMantenimientoDestinatarios() {
+    const config = await configuracionRepository.findByClave(CLAVE_MANTENIMIENTO_DESTINATARIOS);
+    const vacio = { correos: [], rolesUuids: [], usuariosUuids: [] };
+    if (!config?.valor) return vacio;
+    try {
+      return normalizarDestinatarios({ ...vacio, ...JSON.parse(config.valor) });
+    } catch {
+      return vacio;
+    }
+  },
+
+  async setMantenimientoDestinatarios(destinatarios, actorId) {
+    const config = await configuracionRepository.upsert(CLAVE_MANTENIMIENTO_DESTINATARIOS, JSON.stringify(normalizarDestinatarios(destinatarios)), actorId);
     return JSON.parse(config.valor);
   },
 

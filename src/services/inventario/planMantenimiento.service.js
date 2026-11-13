@@ -2,6 +2,7 @@ import { planMantenimientoRepository } from '../../repositories/inventario/planM
 import { Equipo } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
+import { campoDeUnidad, planConEstado } from './lecturaEquipo.service.js';
 
 async function resolveEquipo(uuid) {
   const e = await Equipo.findOne({ where: { uuid } });
@@ -20,13 +21,18 @@ export const planMantenimientoService = {
       estado: query.estado,
       search: query.search,
     });
-    return { items: rows, meta: buildPaginationMeta({ page, limit, total: count }) };
+    return { items: rows.map(planConEstado), meta: buildPaginationMeta({ page, limit, total: count }) };
   },
 
   async getByUuid(uuid) {
     const plan = await planMantenimientoRepository.findByUuid(uuid);
     if (!plan) throw ApiError.notFound('Plan de mantenimiento no encontrado');
     return plan;
+  },
+
+  // Igual que getByUuid pero con el estado de lectura (km / horas) para responder a la web.
+  async getConEstado(uuid) {
+    return planConEstado(await this.getByUuid(uuid));
   },
 
   async create(payload, actorId) {
@@ -39,9 +45,11 @@ export const planMantenimientoService = {
       periodicidadValor: payload.periodicidadValor,
       periodicidadUnidad: payload.periodicidadUnidad,
       estado: payload.estado ?? true,
+      // Planes por km / horas: desde dónde se cuenta (lo escrito, o la lectura actual del equipo).
+      lecturaBase: campoDeUnidad(payload.periodicidadUnidad) ? payload.lecturaBase ?? Number(equipo[campoDeUnidad(payload.periodicidadUnidad)] ?? 0) : null,
       createdBy: actorId,
     });
-    return planMantenimientoRepository.findByUuid(plan.uuid);
+    return planConEstado(await planMantenimientoRepository.findByUuid(plan.uuid));
   },
 
   async update(uuid, payload, actorId) {
@@ -59,10 +67,17 @@ export const planMantenimientoService = {
       ...(payload.periodicidadValor !== undefined ? { periodicidadValor: payload.periodicidadValor } : {}),
       ...(payload.periodicidadUnidad ? { periodicidadUnidad: payload.periodicidadUnidad } : {}),
       ...(payload.estado !== undefined ? { estado: payload.estado } : {}),
+      ...(payload.lecturaBase !== undefined ? { lecturaBase: payload.lecturaBase, avisoEstado: null } : {}),
       updatedBy: actorId,
     };
+    // Si el plan pasa a km / horas sin base, se cuenta desde la lectura actual del equipo.
+    const unidadFinal = payload.periodicidadUnidad || plan.periodicidadUnidad;
+    if (campoDeUnidad(unidadFinal) && payload.lecturaBase === undefined && (plan.lecturaBase === null || plan.lecturaBase === undefined)) {
+      const eq = payload.equipoUuid ? await resolveEquipo(payload.equipoUuid) : await Equipo.findByPk(plan.equipoId);
+      data.lecturaBase = Number(eq?.[campoDeUnidad(unidadFinal)] ?? 0);
+    }
     await planMantenimientoRepository.update(plan, data);
-    return planMantenimientoRepository.findByUuid(uuid);
+    return planConEstado(await planMantenimientoRepository.findByUuid(uuid));
   },
 
   async delete(uuid, actorId) {

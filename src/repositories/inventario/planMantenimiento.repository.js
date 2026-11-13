@@ -2,7 +2,7 @@ import { Op } from 'sequelize';
 import { PlanMantenimiento, Equipo, EquipoTipo, User } from '../../database/associations.js';
 
 const INCLUDE = [
-  { model: Equipo, as: 'equipo', attributes: ['uuid', 'codigo', 'nombre', 'estado'], include: [{ model: EquipoTipo, as: 'tipo', attributes: ['uuid', 'nombre'] }] },
+  { model: Equipo, as: 'equipo', attributes: ['uuid', 'codigo', 'nombre', 'estado', 'kilometraje', 'horometro'], include: [{ model: EquipoTipo, as: 'tipo', attributes: ['uuid', 'nombre'] }] },
   { model: User, as: 'creadoPor', attributes: ['uuid', 'usuario'] },
 ];
 

@@ -3,6 +3,7 @@ import { programacionMantenimientoController } from '../../controllers/inventari
 import { auth } from '../../middlewares/auth.middleware.js';
 import { permission } from '../../middlewares/permission.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
+import { requireAdmin } from '../../middlewares/requireAdmin.middleware.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import {
   createProgramacionSchema,
@@ -12,6 +13,10 @@ import {
 } from '../../validators/inventario/programacionMantenimiento.validator.js';
 
 const router = Router();
+
+// Quién recibe el aviso de mantenimiento próximo / vencido por km u horas (solo Administrador). Antes de '/:uuid'.
+router.get('/avisos-destinatarios', auth, requireAdmin, programacionMantenimientoController.avisosGet);
+router.put('/avisos-destinatarios', auth, requireAdmin, programacionMantenimientoController.avisosSet);
 
 router.get('/', auth, permission(PERMISSIONS.INVENTARIO_PROGRAMACIONES_VER), validate(listProgramacionSchema), programacionMantenimientoController.list);
 router.post('/', auth, permission(PERMISSIONS.INVENTARIO_PROGRAMACIONES_CREAR), validate(createProgramacionSchema), programacionMantenimientoController.create);
