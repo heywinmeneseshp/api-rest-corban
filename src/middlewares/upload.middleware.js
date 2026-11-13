@@ -156,3 +156,14 @@ export const uploadComunicadoAdjuntos = multer({
 }).array('adjuntos', 5);
 
 export default uploadBulkFile;
+
+// Fotos, cartas de autorización e informes (PDF) de una orden de mantenimiento: hasta 10 archivos de 15 MB, directo a Google Drive.
+const ALLOWED_MANTENIMIENTO_MIME = [...ALLOWED_IMAGE_MIME, 'application/pdf'];
+export const uploadAdjuntosMantenimiento = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024, files: 10 },
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_MANTENIMIENTO_MIME.includes(file.mimetype)) cb(null, true);
+    else cb(Object.assign(new Error('Formato no soportado. Usa imágenes (JPG, PNG, WEBP, HEIC) o PDF'), { statusCode: 400 }));
+  },
+}).array('archivos', 10);

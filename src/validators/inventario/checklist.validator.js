@@ -58,3 +58,26 @@ export const hallazgosEquipoSchema = Joi.object({
   params: Joi.object({ uuid: uuidReq }),
   query: Joi.object({ estado: Joi.string().valid('ABIERTO', 'EN_SEGUIMIENTO', 'RESUELTO') }),
 });
+
+// ─── Servicio externo, participantes y adjuntos de la orden ───
+export const guardarServicioSchema = Joi.object({
+  ...vacio,
+  params: Joi.object({ uuid: uuidReq }),
+  body: Joi.object({
+    ejecutorTipo: Joi.string().valid('INTERNO', 'EXTERNO'),
+    proveedorUuid: uuid.allow(null, ''),
+    tecnicoResponsable: Joi.string().trim().max(150).allow('', null),
+    fechaInicio: Joi.date().iso().allow(null, ''),
+    lecturaKm: Joi.number().min(0).allow(null, ''),
+    lecturaHoras: Joi.number().min(0).allow(null, ''),
+    recibidoPor: Joi.string().trim().max(150).allow('', null),
+    fechaAceptacion: Joi.date().iso().allow(null, ''),
+    participantes: Joi.array().items(Joi.object({ nombre: Joi.string().trim().max(150).required(), rol: Joi.string().valid('ENTRENAMIENTO', 'ACOMPANANTE') })).max(30),
+  }).min(1),
+});
+export const adjuntosOrdenSchema = Joi.object({
+  ...vacio,
+  params: Joi.object({ uuid: uuidReq }),
+  body: Joi.object({ tipo: Joi.string().valid('FOTO', 'CARTA_AUTORIZACION', 'INFORME'), hallazgoUuid: uuid.allow('', null), itemUuid: uuid.allow('', null) }),
+});
+export const adjuntoUuidSchema = Joi.object({ ...vacio, params: Joi.object({ aUuid: uuidReq }) });

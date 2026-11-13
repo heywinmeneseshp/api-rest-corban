@@ -766,6 +766,7 @@ export const setupAssociations = () => {
   OrdenHallazgo.belongsTo(ProgramacionMantenimiento, { foreignKey: 'programacionId', as: 'programacion' });
   OrdenHallazgo.belongsTo(ParteEquipo, { foreignKey: 'parteId', as: 'parte' });
   OrdenMantenimiento.hasMany(OrdenParticipante, { foreignKey: 'ordenId', as: 'participantes' });
+  OrdenMantenimiento.belongsTo(Proveedor, { foreignKey: 'proveedorId', as: 'proveedor' });
   OrdenMantenimiento.hasMany(OrdenAdjunto, { foreignKey: 'ordenId', as: 'adjuntos' });
   OrdenAdjunto.belongsTo(OrdenMantenimiento, { foreignKey: 'ordenId', as: 'orden' });
   Equipo.hasMany(ParteEquipo, { foreignKey: 'equipoId', as: 'partes' });

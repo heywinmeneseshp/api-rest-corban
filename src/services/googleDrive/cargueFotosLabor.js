@@ -265,6 +265,44 @@ export async function cargarFotosMezclaPrueba({ documento, mezclaNombre }, archi
   }
 }
 
+const MODULO_MANTENIMIENTO = 'Mantenimiento_Equipos';
+
+// Sube fotos, cartas o informes de UNA orden de mantenimiento. Jerarquía en Drive:
+// GOOGLE_DRIVE_FOLDER / Mantenimiento_Equipos / {equipo}_{orden} / archivos
+export async function cargarAdjuntosMantenimiento({ equipoCodigo, ordenNumero }, archivos) {
+  if (!archivos?.length) throw new Error('No hay archivos para subir');
+
+  const drive = getDrive();
+  const identificador = [normalizarTexto(equipoCodigo) || 'sin_equipo', normalizarTexto(ordenNumero) || 'sin_orden'].join('_');
+
+  try {
+    const carpetaModuloId = await obtenerCarpetaModulo(MODULO_MANTENIMIENTO);
+    const subcarpetaId = await obtenerOCrearCarpeta(identificador, carpetaModuloId);
+
+    const subidos = [];
+    const sello = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    let contador = 1;
+    for (const archivo of archivos) {
+      if (!archivo.buffer?.length) continue;
+      const extension = path.extname(archivo.originalname || '').toLowerCase() || '.jpg';
+      const nombreArchivo = `${identificador}_${sello}_${Date.now().toString(36)}${contador}${extension}`;
+      const creado = await drive.files.create({
+        resource: { name: nombreArchivo, parents: [subcarpetaId] },
+        media: { mimeType: archivo.mimetype || 'application/octet-stream', body: Readable.from(archivo.buffer) },
+        fields: 'id, webViewLink',
+        supportsAllDrives: true,
+      });
+      subidos.push({ idDrive: creado.data.id, urlDrive: creado.data.webViewLink, nombreOriginal: archivo.originalname, nombreDrive: nombreArchivo, mime: archivo.mimetype });
+      contador += 1;
+    }
+    if (subidos.length === 0) throw new Error('Ninguno de los archivos recibidos tenía contenido válido');
+    return { carpetaId: subcarpetaId, carpetaUrl: `https://drive.google.com/drive/folders/${subcarpetaId}`, archivos: subidos };
+  } catch (error) {
+    logger.error('Error al subir adjuntos de mantenimiento a Google Drive', { message: error.message });
+    throw normalizarErrorGoogleDrive(error);
+  }
+}
+
 const MODULO_FIRMAS = 'Firmas_Usuarios';
 
 // Sube la firma (PNG) de un usuario. Jerarquía en Drive: GOOGLE_DRIVE_FOLDER / Firmas_Usuarios / firma_{usuario}_{fecha}.png
@@ -358,4 +396,4 @@ export async function subirRespaldo(nombre, stream) {
   }
 }
 
-export default { cargarFotosLaborCultural, cargarFotosMezclaPrueba, cargarFirmaUsuario, eliminarFotoDeDrive, descargarArchivoDeDrive, listarRespaldos, subirRespaldo };
+export default { cargarFotosLaborCultural, cargarFotosMezclaPrueba, cargarAdjuntosMantenimiento, cargarFirmaUsuario, eliminarFotoDeDrive, descargarArchivoDeDrive, listarRespaldos, subirRespaldo };
