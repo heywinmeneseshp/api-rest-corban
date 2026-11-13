@@ -490,8 +490,10 @@ export const comprobanteAspersionService = {
   // Hectáreas asperjadas por colaborador: cada participante (piloto o asistente) suma las hectáreas aplicadas del comprobante.
   // Sin anulados. Por día de ejecución (hora de Bogotá).
   async reporteHectareas(query, user) {
-    const desde = query.desde ? new Date(`${String(query.desde).slice(0, 10)}T00:00:00-05:00`) : null;
-    const hasta = query.hasta ? new Date(`${String(query.hasta).slice(0, 10)}T23:59:59.999-05:00`) : null;
+    // Joi ya convierte desde/hasta a Date: se toma solo el día (YYYY-MM-DD) antes de armar el rango en hora de Bogotá.
+    const soloDia = (v) => (v instanceof Date ? v.toISOString() : String(v)).slice(0, 10);
+    const desde = query.desde ? new Date(`${soloDia(query.desde)}T00:00:00-05:00`) : null;
+    const hasta = query.hasta ? new Date(`${soloDia(query.hasta)}T23:59:59.999-05:00`) : null;
     const whereComp = { estado: query.soloEmitidos === true || query.soloEmitidos === 'true' ? 'EMITIDO' : { [Op.ne]: 'ANULADO' } };
     if (desde || hasta) whereComp.ejecutadoEn = { ...(desde ? { [Op.gte]: desde } : {}), ...(hasta ? { [Op.lte]: hasta } : {}) };
     const whereColab = {};
