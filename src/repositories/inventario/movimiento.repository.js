@@ -1,5 +1,20 @@
 import { Op, fn, literal } from 'sequelize';
-import { MovimientoInventario, Existencia, Almacen, Articulo, UnidadMedida, Motivo, Proveedor, User } from '../../database/associations.js';
+
+// Condición sobre articuloId a partir de un artículo puntual y/o una categoría (ambos opcionales). null = sin filtro.
+async function condicionArticulo({ articuloUuid, categoriaUuid }) {
+  let ids = null;
+  if (articuloUuid) {
+    const prod = await Articulo.findOne({ where: { uuid: articuloUuid }, attributes: ['id'], paranoid: false });
+    ids = prod ? [prod.id] : [];
+  }
+  if (categoriaUuid) {
+    const cat = await ArticuloCategoria.findOne({ where: { uuid: categoriaUuid }, attributes: ['id'], paranoid: false });
+    const deCategoria = cat ? (await Articulo.findAll({ where: { categoriaId: cat.id }, attributes: ['id'], paranoid: false })).map((a) => a.id) : [];
+    ids = ids ? ids.filter((id) => deCategoria.includes(id)) : deCategoria;
+  }
+  return ids === null ? null : { [Op.in]: ids.length ? ids : [-1] };
+}
+import { MovimientoInventario, Existencia, Almacen, Articulo, ArticuloCategoria, UnidadMedida, Motivo, Proveedor, User } from '../../database/associations.js';
 
 const INCLUDE = [
   { model: Almacen, as: 'almacen', attributes: ['uuid', 'nombre'] },
@@ -45,16 +60,14 @@ export const movimientoRepository = {
   // histórico de movimientos y no con el stock actual.
   // Saldo en una fecha pasada: se reconstruye desde el kárdex (movimientos hasta ese día, inclusive). Coincide con el cache `existencias`
   // porque cada movimiento lo actualiza en la misma transacción. Devuelve todas las filas ya ordenadas (almacén y artículo).
-  async getExistenciasAFecha({ almacenUuid, articuloUuid, fecha }) {
+  async getExistenciasAFecha({ almacenUuid, articuloUuid, categoriaUuid, fecha }) {
     const where = { fecha: { [Op.lte]: fecha } };
     if (almacenUuid) {
       const alm = await Almacen.findOne({ where: { uuid: almacenUuid } });
       where.almacenId = alm ? alm.id : -1;
     }
-    if (articuloUuid) {
-      const prod = await Articulo.findOne({ where: { uuid: articuloUuid } });
-      where.articuloId = prod ? prod.id : -1;
-    }
+    const condArt = await condicionArticulo({ articuloUuid, categoriaUuid });
+    if (condArt) where.articuloId = condArt;
     const sumas = await MovimientoInventario.findAll({
       where,
       attributes: [
@@ -91,8 +104,8 @@ export const movimientoRepository = {
       .sort((x, y) => String(x.almacen?.nombre).localeCompare(String(y.almacen?.nombre)) || String(x.articulo?.nombre).localeCompare(String(y.articulo?.nombre)));
   },
 
-  async getExistenciasPaginado({ almacenUuid, articuloUuid, limit, offset }) {
-    const { where, include } = await this._existenciasQuery({ almacenUuid, articuloUuid });
+  async getExistenciasPaginado({ almacenUuid, articuloUuid, categoriaUuid, limit, offset }) {
+    const { where, include } = await this._existenciasQuery({ almacenUuid, articuloUuid, categoriaUuid });
     const { rows, count } = await Existencia.findAndCountAll({
       where,
       include,
@@ -103,16 +116,14 @@ export const movimientoRepository = {
     return { items: this._existenciasFilas(rows), total: count };
   },
 
-  async _existenciasQuery({ almacenUuid, articuloUuid }) {
+  async _existenciasQuery({ almacenUuid, articuloUuid, categoriaUuid }) {
     const where = {};
     if (almacenUuid) {
       const alm = await Almacen.findOne({ where: { uuid: almacenUuid } });
       where.almacenId = alm ? alm.id : -1;
     }
-    if (articuloUuid) {
-      const prod = await Articulo.findOne({ where: { uuid: articuloUuid } });
-      where.articuloId = prod ? prod.id : -1;
-    }
+    const condArt = await condicionArticulo({ articuloUuid, categoriaUuid });
+    if (condArt) where.articuloId = condArt;
     const include = [
       { model: Almacen, as: 'almacen', attributes: ['uuid', 'nombre'] },
       { model: Articulo, as: 'articulo', attributes: ['uuid', 'nombre', 'codigo'], include: [{ model: UnidadMedida, as: 'unidadMedida', attributes: ['uuid', 'nombre', 'simbolo'] }] },
@@ -129,16 +140,14 @@ export const movimientoRepository = {
     }));
   },
 
-  async getExistencias({ almacenUuid, articuloUuid }) {
+  async getExistencias({ almacenUuid, articuloUuid, categoriaUuid }) {
     const where = {};
     if (almacenUuid) {
       const alm = await Almacen.findOne({ where: { uuid: almacenUuid } });
       where.almacenId = alm ? alm.id : -1;
     }
-    if (articuloUuid) {
-      const prod = await Articulo.findOne({ where: { uuid: articuloUuid } });
-      where.articuloId = prod ? prod.id : -1;
-    }
+    const condArt = await condicionArticulo({ articuloUuid, categoriaUuid });
+    if (condArt) where.articuloId = condArt;
 
     const filas = await Existencia.findAll({
       where,

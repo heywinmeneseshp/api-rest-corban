@@ -333,7 +333,7 @@ export const movimientoService = {
   },
 
   async getExistencias(query) {
-    const filtros = { almacenUuid: query.almacenUuid, articuloUuid: query.articuloUuid };
+    const filtros = { almacenUuid: query.almacenUuid, articuloUuid: query.articuloUuid, categoriaUuid: query.categoriaUuid };
     if (query.fecha) {
       const todas = await movimientoRepository.getExistenciasAFecha({ ...filtros, fecha: query.fecha });
       if (query.page === undefined && query.limit === undefined) return todas;
