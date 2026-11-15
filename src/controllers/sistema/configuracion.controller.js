@@ -59,12 +59,12 @@ export const configuracionController = {
   }),
 
   getAppVersionInfo: asyncHandler(async (req, res) => {
-    const data = await configuracionService.getAppVersionInfo();
+    const data = await configuracionService.getAppVersionInfo(req.query?.app === 'finca' ? 'finca' : 'movil');
     ApiResponse.send(res, { message: 'Información de versión obtenida correctamente', data });
   }),
 
   updateAppVersionInfo: asyncHandler(async (req, res) => {
-    const data = await configuracionService.setAppVersionInfo(req.body, req.user?.id);
+    const data = await configuracionService.setAppVersionInfo(req.body, req.user?.id, req.query?.app === 'finca' ? 'finca' : 'movil');
     ApiResponse.send(res, { message: 'Información de versión actualizada correctamente', data });
   }),
 

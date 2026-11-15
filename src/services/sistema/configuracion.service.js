@@ -5,6 +5,9 @@ import { ApiError } from '../../utils/ApiError.js';
 export const CLAVE_BANARICA_API_URL = 'banarica_api_url';
 export const CLAVE_BANARICA_API_KEY = 'banarica_api_key';
 export const CLAVE_APP_VERSION_INFO = 'app_version_info';
+// Cada app móvil tiene su propia versión: `movil` (app-movil, la de siempre) y `finca` (app-finca).
+export const CLAVE_APP_VERSION_FINCA = 'app_finca_version_info';
+const claveAppVersion = (app) => (app === 'finca' ? CLAVE_APP_VERSION_FINCA : CLAVE_APP_VERSION_INFO);
 export const CLAVE_TASA_CONVERSION = 'tasa_conversion';
 export const CLAVE_PRIMERA_SEMANA_PROGRAMACION = 'primera_semana_programacion_id';
 export const CLAVE_MARCA_APP = 'marca_app';
@@ -173,8 +176,8 @@ export const configuracionService = {
     await configuracionRepository.upsert(CLAVE_PRIMERA_SEMANA_PROGRAMACION, String(semanaId), actorId);
   },
 
-  async getAppVersionInfo() {
-    const config = await configuracionRepository.findByClave(CLAVE_APP_VERSION_INFO);
+  async getAppVersionInfo(app = 'movil') {
+    const config = await configuracionRepository.findByClave(claveAppVersion(app));
     if (!config?.valor) return APP_VERSION_DEFAULT;
     try {
       return { ...APP_VERSION_DEFAULT, ...JSON.parse(config.valor) };
@@ -183,14 +186,14 @@ export const configuracionService = {
     }
   },
 
-  async setAppVersionInfo(info, actorId) {
+  async setAppVersionInfo(info, actorId, app = 'movil') {
     const valor = JSON.stringify({
       latestVersion: info.latestVersion,
       minSupportedVersion: info.minSupportedVersion,
       downloadUrl: info.downloadUrl || '',
       releaseNotes: info.releaseNotes || '',
     });
-    const config = await configuracionRepository.upsert(CLAVE_APP_VERSION_INFO, valor, actorId);
+    const config = await configuracionRepository.upsert(claveAppVersion(app), valor, actorId);
     return JSON.parse(config.valor);
   },
 

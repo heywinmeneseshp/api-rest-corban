@@ -37,7 +37,8 @@ export const updateAppVersionInfoSchema = Joi.object({
     releaseNotes: Joi.string().max(1000).allow('', null),
   }),
   params: Joi.object({}),
-  query: Joi.object({}),
+  // `app`: movil (por defecto) o finca.
+  query: Joi.object({ app: Joi.string().valid('movil', 'finca') }),
 });
 
 export const updateMarcaAppSchema = Joi.object({
