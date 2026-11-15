@@ -499,17 +499,16 @@ export const asistenciaService = {
         );
       detalle.set(j, tramos);
       if (yaAvisados.has(j.colaborador.id)) continue;
-      const email = j.colaborador.email?.trim();
+      // El aviso NO le llega al colaborador: solo a quienes están en copia (roles y usuarios elegidos en la tuerca de asistencia).
       const copias = copiasDe(j.colaborador);
-      if (!email) {
-        r.sinEmail += 1;
-        logger.info('Jornada incompleta sin email del colaborador', { colaboradorId: j.colaborador.id, fecha });
-        if (!copias.length) continue;
+      if (!copias.length) {
+        r.sinEmail += 1; // sin nadie en copia a quien avisar
+        logger.info('Jornada incompleta sin destinatarios en copia', { colaboradorId: j.colaborador.id, fecha });
+        continue;
       }
       try {
-        // Sin email del colaborador, el correo llega igual a quienes están en copia.
-        const para = email || copias[0];
-        await mailService.sendJornadaIncompleta({ destinatario: para, cc: copias.filter((c) => c !== para), nombre: j.colaborador.nombre, fecha, tramos });
+        const [para, ...resto] = copias;
+        await mailService.sendJornadaIncompleta({ destinatario: para, cc: resto, nombre: j.colaborador.nombre, fecha, tramos });
         await AsistenciaAvisoJornada.create({ colaboradorId: j.colaborador.id, fecha, email: para });
         r.enviados += 1;
       } catch (error) {

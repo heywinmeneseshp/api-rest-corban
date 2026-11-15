@@ -711,10 +711,9 @@ export const mailService = {
           <p style="color: rgba(255,255,255,.85); margin: 4px 0 0; font-size: 13px;">Asistencia — Jornada incompleta</p>
         </div>
         <div style="padding: 32px; color: #374151; font-size: 14px; line-height: 1.5;">
-          <p style="margin: 0 0 16px; font-size: 15px;">Hola, ${escaparHtml(nombre)}:</p>
-          <p style="margin: 0 0 12px;">Tu jornada del <strong>${fechaLegible}</strong> quedó incompleta:</p>
+          <p style="margin: 0 0 12px;">La jornada de <strong>${escaparHtml(nombre)}</strong> del <strong>${fechaLegible}</strong> quedó incompleta:</p>
           <ul style="margin: 0 0 16px; padding-left: 20px;">${filas}</ul>
-          <p style="margin: 0;">Si es un error, comunícate con tu supervisor o con el responsable de asistencia para corregirla.</p>
+          <p style="margin: 0;">Si es un error, puedes corregirla desde Asistencia y jornadas.</p>
         </div>
         <div style="background: #f9fafb; padding: 16px 32px; text-align: center; border-top: 1px solid #e5e7eb;">
           <p style="margin: 0; color: #9ca3af; font-size: 11px;">Este mensaje se generó automáticamente, por favor no respondas a este correo.</p>
