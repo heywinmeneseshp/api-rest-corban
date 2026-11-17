@@ -293,15 +293,35 @@ export async function calcularProyeccion({ anio, params, areas }, user, { fincaU
     if (!entradasPorFinca.has(a.fincaId)) continue;
     const eIdx = idxPorId.get(a.semanaId);
     if (eIdx === undefined) continue;
-    if (eIdx <= hoyIdx) {
-      // Entrada en una semana ya transcurrida (p. ej. un lote recién sembrado que aún no está en las áreas reales): cuenta desde la próxima semana
-      // proyectada, con su rampa contada desde la semana de la entrada. Si ya estuviera en las áreas reales de hoy se contaría dos veces.
-      advertencias.push('Hay entradas de hectáreas en semanas ya transcurridas: se suman a las hectáreas reales de hoy. Si ya están registradas en las áreas reales, se estarían contando dos veces.');
-    }
     // Una entrada con 0 hectáreas es un CIERRE: desde esa semana la finca no embolsa ni cosecha (racimos y cajas en 0; lo ya
     // embolsado tampoco se cosecha). Lo que se sume después parte de cero. Las demás son altas (positivas, con rampa) o bajas.
     entradasPorFinca.get(a.fincaId).push({ eIdx, ha: Number(a.hectareas), cierre: Number(a.hectareas) === 0, rampaPct: a.rampaPct, rampaSemanas: a.rampaSemanas });
   }
+  // Entradas en semanas ya transcurridas (p. ej. un lote recién sembrado): si las áreas reales YA crecieron esas hectáreas desde esa semana, la
+  // entrada ya está dentro de las hectáreas reales de hoy y se descarta para no contarla dos veces. Si el crecimiento real no alcanza, la
+  // entrada es la que aún falta por registrar y se suma. Se revisa de la más reciente a la más antigua, descontando lo ya explicado por entradas
+  // posteriores (el crecimiento real desde una semana incluye el de las semanas siguientes).
+  const TOLERANCIA_ABSORCION = 0.9; // basta con que el área real haya subido el 90 % de lo que dice la entrada
+  for (const f of fincas) {
+    const lista = entradasPorFinca.get(f.id);
+    const HA = haPorFinca.get(f.id);
+    if (!lista || !HA || hoyIdx < 0) continue;
+    let explicado = 0;
+    const pasadas = lista.filter((e) => e.eIdx <= hoyIdx && !e.cierre && e.ha > 0).sort((a, b) => b.eIdx - a.eIdx);
+    for (const e of pasadas) {
+      const crecimiento = HA[hoyIdx] - (e.eIdx > 0 ? HA[e.eIdx - 1] : 0);
+      const disponible = crecimiento - explicado;
+      const semana = semanas[e.eIdx].codigo;
+      if (disponible >= e.ha * TOLERANCIA_ABSORCION) {
+        e.absorbida = true;
+        explicado += e.ha;
+        advertencias.push(`${f.nombre}: la entrada de ${r2(e.ha)} ha de ${semana} ya está en las áreas reales (subieron ${r2(Math.max(0, disponible))} ha desde esa semana): no se suma otra vez.`);
+      } else {
+        advertencias.push(`${f.nombre}: la entrada de ${r2(e.ha)} ha de ${semana} aún no aparece en las áreas reales (desde esa semana subieron ${r2(Math.max(0, disponible))} ha): se suma a las hectáreas de hoy. Si ya la registraste en las áreas reales, elimina esta entrada.`);
+      }
+    }
+  }
+
   // Rampa de una entrada: arranca en rampaPct % del embolse por hectárea y sube lineal al 100 % en rampaSemanas. Cada entrada
   // trae la suya; si no la tiene, usa la del escenario.
   const rampa = (k, e) => {
@@ -378,7 +398,7 @@ export async function calcularProyeccion({ anio, params, areas }, user, { fincaU
     }
 
     // Hectáreas nominales y efectivas por semana.
-    const entradas = [...entradasPorFinca.get(id)].sort((a, b) => a.eIdx - b.eIdx || Number(b.cierre) - Number(a.cierre));
+    const entradas = [...entradasPorFinca.get(id)].filter((e) => !e.absorbida).sort((a, b) => a.eIdx - b.eIdx || Number(b.cierre) - Number(a.cierre));
     // Nivel de la finca en la semana i: parte de las hectáreas base, o de 0 si hubo un cierre; solo cuentan las entradas
     // posteriores al último cierre.
     const nivelEn = (i) => {
