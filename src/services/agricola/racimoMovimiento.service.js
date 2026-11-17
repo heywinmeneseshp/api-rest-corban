@@ -1,4 +1,4 @@
-import { Op } from 'sequelize';
+import { Op, QueryTypes } from 'sequelize';
 import { sequelize } from '../../database/connection.js';
 import { Finca, Lote, Semana, MotivoRepique, MotivoRecuse, User, FincaSemanaLiquidacion } from '../../database/associations.js';
 import { racimoMovimientoRepository } from '../../repositories/agricola/racimoMovimiento.repository.js';
@@ -67,6 +67,32 @@ async function semanaQueFaltaLiquidar(fincaId, semanaRegistro, user) {
 }
 
 const TIPOS_VALIDOS = ['EMBOLSE', 'REPIQUE', 'RECUSE', 'PROCESADO'];
+
+// Un lote sin área en producción (0 ha) no puede embolsar: el área en producción es la que tiene racimos embolsados. Se exige actualizarla antes
+// de registrar el embolse (la pantalla de embolse ofrece hacerlo ahí mismo). Se mira el área vigente a la semana del embolse (último registro
+// hasta esa semana). No aplica a ajustes ni al cargue masivo histórico.
+class AreaProduccionCeroError extends Error {
+  constructor(lote) {
+    super(`El lote ${lote.nombre} no tiene área en producción (0 ha): actualízala antes de registrar el embolse. Un lote solo puede embolsar si tiene área en producción.`);
+    this.lote = lote;
+  }
+}
+
+async function assertAreaEnProduccion(lote, semanaEmbolse) {
+  const [fila] = await sequelize.query(
+    `SELECT ap.area AS area
+       FROM lote_area_produccion ap
+       LEFT JOIN semanas s ON s.id = ap.semana_id
+      WHERE ap.lote_id = :loteId AND COALESCE(s.fecha_inicio, ap.fecha_registro) <= :fecha
+      ORDER BY COALESCE(s.fecha_inicio, ap.fecha_registro) DESC, ap.id DESC
+      LIMIT 1`,
+    { replacements: { loteId: lote.id, fecha: String(semanaEmbolse.fechaInicio).slice(0, 10) }, type: QueryTypes.SELECT },
+  );
+  if (!fila || !(Number(fila.area) > 0)) throw new AreaProduccionCeroError(lote);
+}
+
+const errorAreaCero = (e, prefijo = '') =>
+  ApiError.badRequest(`${prefijo}${e.message}`, [{ codigo: 'AREA_PRODUCCION_CERO', loteUuid: e.lote.uuid, loteNombre: e.lote.nombre }]);
 
 // Un racimo no se puede cortar/procesar (ni recusar en el corte) antes de
 // esta edad — pedido explícito del negocio. No aplica a EMBOLSE/REPIQUE (no
@@ -408,6 +434,15 @@ export const racimoMovimientoService = {
     }
     await assertSemanaNoLiquidada(finca.id, semanaRegistro.id, user);
 
+    if (payload.tipo === 'EMBOLSE') {
+      try {
+        await assertAreaEnProduccion(lote, semanaEmbolse);
+      } catch (e) {
+        if (e instanceof AreaProduccionCeroError) throw errorAreaCero(e);
+        throw e;
+      }
+    }
+
     if (payload.tipo !== 'EMBOLSE') {
       const saldo = await racimoMovimientoRepository.getSaldoCohorte({
         fincaId: finca.id,
@@ -510,6 +545,7 @@ export const racimoMovimientoService = {
         if (esAjuste && !puedeAjustar(user)) {
           throw new Error('No tienes permiso para registrar ajustes');
         }
+        if (m.tipo === 'EMBOLSE' && !esAjuste) await assertAreaEnProduccion(lote, semanaEmbolse);
 
         if ((m.tipo === 'PROCESADO' || m.tipo === 'RECUSE') && !esAjuste) {
           const edadSemanas = Math.round(
@@ -578,6 +614,7 @@ export const racimoMovimientoService = {
           createdBy: actorId,
         });
       } catch (error) {
+        if (error instanceof AreaProduccionCeroError) throw errorAreaCero(error, `Línea ${nro}: `);
         throw ApiError.badRequest(`Línea ${nro}: ${error.message}`);
       }
     }
