@@ -1414,10 +1414,14 @@ async function computeForecast(query, user, asOfDate = new Date()) {
     for (let idx = desde; idx <= hasta; idx++) {
       const sm = semanas[idx];
       const hist = [];
+      const porAnio = {}; // año -> ratio de esa misma semana del año (para comparar con un año en particular)
       for (let k = 1; k <= ANIOS_ESTACIONAL; k++) {
         const j = semanas.findIndex((x) => x.anio === sm.anio - k && x.numeroSemana === sm.numeroSemana);
         const v = ratioEn(j, true);
-        if (v !== null) hist.push(v);
+        if (v !== null) {
+          hist.push(v);
+          porAnio[sm.anio - k] = Math.round(v * 1000) / 1000;
+        }
       }
       aniosConDatos = Math.max(aniosConDatos, hist.length);
       const actual = ratioEn(idx, true);
@@ -1431,6 +1435,7 @@ async function computeForecast(query, user, asOfDate = new Date()) {
         // Simulación: ratio que realmente se dio después de la fecha simulada.
         ratioPosterior: simulacion && idx > hoyIdx ? (ratioEn(idx, false) === null ? null : Math.round(ratioEn(idx, false) * 1000) / 1000) : null,
         promedio: hist.length > 0 ? Math.round(promedio(hist) * 1000) / 1000 : null,
+        porAnio,
       });
     }
     return { anio: semanas[hoyIdx].anio, aniosHistoricos: aniosConDatos, pasadas: ratioPasadas, futuras: ratioFuturas, serie };
