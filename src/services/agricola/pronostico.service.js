@@ -1412,16 +1412,17 @@ async function computeForecast(query, user, asOfDate = new Date()) {
     const externas = (await Finca.findAll({ where: { estado: true, esExterna: true }, attributes: ['id'], raw: true }))
       .map((f) => f.id)
       .filter((id) => permitidas === null || permitidas.includes(id));
-    const estimadoExterno = new Map(); // `${fincaId}|${semanaId}` -> cajas (última semana de registro)
+    const estimadoExterno = new Map(); // `${fincaId}|${semanaId}` -> cajas estimadas (última semana de registro), externas y propias
     const semanaIdsFilas = [...new Set(rows.map((r) => semanas[r._idx].id))];
-    if (externas.length && semanaIdsFilas.length) {
+    const fincasEstimacion = [...new Set([...externas, ...grupos.flatMap((g) => g.idList)])];
+    if (fincasEstimacion.length && semanaIdsFilas.length) {
       const filasEst = await sequelize.query(
         `SELECT e.finca_id AS fincaId, e.semana_id AS semanaId, e.cajas_20kg AS cajas, sr.fecha_inicio AS registro, e.id AS id
            FROM estimaciones_finca e
            JOIN semanas sr ON sr.id = e.semana_registro_id
           WHERE e.deleted_at IS NULL AND e.finca_id IN (:externas) AND e.semana_id IN (:semanas)
           ORDER BY sr.fecha_inicio ASC, e.id ASC`,
-        { replacements: { externas, semanas: semanaIdsFilas }, type: QueryTypes.SELECT },
+        { replacements: { externas: fincasEstimacion, semanas: semanaIdsFilas }, type: QueryTypes.SELECT },
       );
       for (const f of filasEst) estimadoExterno.set(`${f.fincaId}|${f.semanaId}`, Number(f.cajas) || 0); // la última registrada queda
     }
@@ -1434,6 +1435,11 @@ async function computeForecast(query, user, asOfDate = new Date()) {
       const manual = manuales[row.fincaUuid ?? 'GLOBAL']?.[row.semanaCodigo];
       const v = manual != null ? Number(manual) || 0 : estimado;
       row.cajasAdicionalesEstimado = estimado;
+      // Estimación Finca: suma de lo que estimaron las fincas del grupo para esa semana (Estimaciones finca), incluidas las externas, para
+      // compararla con el Total cajas (proyección + adicionales).
+      const propias = [...new Set(row.fincaUuid ? grupos.find((g) => g.uuid === row.fincaUuid)?.idList || [] : [...grupos.flatMap((g) => g.idList), ...externas])];
+      const hayEstimacion = propias.some((id) => estimadoExterno.has(`${id}|${semanaId}`));
+      row.estimacionFinca = hayEstimacion ? Math.round(propias.reduce((a, id) => a + (estimadoExterno.get(`${id}|${semanaId}`) || 0), 0) * 100) / 100 : null;
       row.cajasAdicionalesManual = manual != null;
       row.cajasAdicionales = v;
       row.cajasTotal = Math.round((row.cajas20kg + v) * 100) / 100;
@@ -1633,6 +1639,7 @@ export const pronosticoService = {
       'Cajas 20kg': r.cajas20kg,
       'Cajas adicionales': r.cajasAdicionales || 0,
       'Total cajas': r.cajasTotal ?? r.cajas20kg,
+      'Estimación Finca': r.estimacionFinca,
       'IC 90% mínimo': r.cajasCiLow,
       'IC 90% máximo': r.cajasCiHigh,
       Confianza: r.confianza,
