@@ -1,6 +1,7 @@
 import { Op, QueryTypes } from 'sequelize';
 import { sequelize } from '../../database/connection.js';
 import { Finca, Semana, Producto, ProyeccionEscenario, ProyeccionArea, ProyeccionProducto } from '../../database/associations.js';
+import { estimacionFincaRepository } from '../../repositories/agricola/estimacionFinca.repository.js';
 import { configuracionService } from '../sistema/configuracion.service.js';
 import { racimoMovimientoRepository } from '../../repositories/agricola/racimoMovimiento.repository.js';
 import { produccionSemanalRepository } from '../../repositories/agricola/produccionSemanal.repository.js';
@@ -840,7 +841,81 @@ const cargarEscenario = async (uuid) => {
   return e;
 };
 
+// ─── Fincas externas en la proyección anual ───
+// Sus cajas no se proyectan (no hay racimos): se ingresan a mano por semana y quedan registradas como su Estimación finca (la última
+// registrada de cada semana es la que vale). Aquí se leen para el año del escenario.
+async function cajasExternas(anio, user) {
+  const permitidas = getFincaIdsPermitidas(user);
+  const fincas = (await Finca.findAll({ where: { estado: true, esExterna: true }, attributes: ['id', 'uuid', 'codigo', 'nombre'], order: [['nombre', 'ASC']], raw: true })).filter(
+    (f) => permitidas === null || permitidas.includes(f.id),
+  );
+  const semanas = await Semana.findAll({ where: { anio }, attributes: ['id', 'uuid', 'codigo', 'numeroSemana', 'fechaInicio'], order: [['numeroSemana', 'ASC']], raw: true });
+  const valores = {};
+  const porSemana = {};
+  if (fincas.length && semanas.length) {
+    const filas = await sequelize.query(
+      `SELECT e.finca_id AS fincaId, e.semana_id AS semanaId, e.cajas_20kg AS cajas
+         FROM estimaciones_finca e
+         JOIN semanas sr ON sr.id = e.semana_registro_id
+        WHERE e.deleted_at IS NULL AND e.finca_id IN (:fincas) AND e.semana_id IN (:semanas)
+        ORDER BY sr.fecha_inicio ASC, e.id ASC`,
+      { replacements: { fincas: fincas.map((f) => f.id), semanas: semanas.map((s) => s.id) }, type: QueryTypes.SELECT },
+    );
+    const uuidDe = new Map(fincas.map((f) => [f.id, f.uuid]));
+    const codigoDe = new Map(semanas.map((s) => [s.id, s.codigo]));
+    for (const f of filas) {
+      const u = uuidDe.get(f.fincaId);
+      valores[u] = valores[u] || {};
+      valores[u][codigoDe.get(f.semanaId)] = Number(f.cajas) || 0; // la última registrada queda
+    }
+    for (const u of Object.keys(valores)) for (const [c, v] of Object.entries(valores[u])) porSemana[c] = r2((porSemana[c] || 0) + v);
+  }
+  return {
+    fincas: fincas.map((f) => ({ uuid: f.uuid, codigo: f.codigo, nombre: f.nombre })),
+    semanas: semanas.map((s) => ({ uuid: s.uuid, codigo: s.codigo, numeroSemana: s.numeroSemana, fechaInicio: iso(s.fechaInicio) })),
+    valores,
+    porSemana,
+  };
+}
+
 export const proyeccionService = {
+  // Cajas de las fincas externas (por finca y semana del año del escenario) desde sus estimaciones.
+  async externas(uuid, user) {
+    const e = await cargarEscenario(uuid);
+    return cajasExternas(e.anio, user);
+  },
+
+  // Guarda las cajas de las fincas externas como su Estimación finca (semana de registro: la actual), sin pasar por aprobación.
+  // `items`: [{ fincaUuid, semanaCodigo, cajas }]. Las semanas que ya iniciaron no se tocan (como en Estimaciones).
+  async guardarExternas(uuid, items, actorId, user) {
+    const e = await cargarEscenario(uuid);
+    const hoy = new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10);
+    const semanaActual = await Semana.findOne({ where: { fechaInicio: { [Op.lte]: hoy } }, order: [['fechaInicio', 'DESC']] });
+    if (!semanaActual) throw ApiError.badRequest('No hay semana de calendario para hoy');
+    const { fincas, semanas } = await cajasExternas(e.anio, user);
+    const fincaPorUuid = new Map(fincas.map((f) => [f.uuid, f]));
+    const fincaIds = new Map((await Finca.findAll({ where: { uuid: { [Op.in]: fincas.map((f) => f.uuid) } }, attributes: ['id', 'uuid'], raw: true })).map((f) => [f.uuid, f.id]));
+    const semanaPorCodigo = new Map((await Semana.findAll({ where: { anio: e.anio }, attributes: ['id', 'codigo', 'fechaInicio'], raw: true })).map((s) => [s.codigo, s]));
+    const filas = [];
+    const omitidas = [];
+    for (const it of items || []) {
+      if (!fincaPorUuid.has(it.fincaUuid)) throw ApiError.badRequest('Solo se pueden cargar cajas de fincas externas');
+      const s = semanaPorCodigo.get(it.semanaCodigo);
+      if (!s) continue;
+      if (it.cajas == null || it.cajas === '') continue;
+      const cajas = Number(it.cajas);
+      if (!Number.isFinite(cajas) || cajas < 0) throw ApiError.badRequest(`Cajas no válidas en ${it.semanaCodigo}`);
+      if (iso(s.fechaInicio) <= hoy) {
+        omitidas.push(it.semanaCodigo);
+        continue;
+      }
+      filas.push({ semanaId: s.id, fincaId: fincaIds.get(it.fincaUuid), semanaRegistroId: semanaActual.id, cajas20kg: r2(cajas), observaciones: 'Cargada desde la proyección anual', createdBy: actorId, updatedBy: actorId });
+    }
+    if (filas.length) await estimacionFincaRepository.bulkUpsert(filas);
+    void semanas;
+    return { guardadas: filas.length, omitidas: [...new Set(omitidas)] };
+  },
+
   async listarEscenarios(query = {}) {
     const where = query.anio ? { anio: Number(query.anio) } : {};
     const filas = await ProyeccionEscenario.findAll({ where, order: [['anio', 'DESC'], ['nombre', 'ASC']] });
@@ -966,6 +1041,15 @@ export const proyeccionService = {
     const tasa = await configuracionService.getTasaConversion();
     res.meta.tasaConversion = tasa;
     res.porProducto = repartoPorProducto(res, mapEscenario(e, [], e.productos).productos, tasa);
+    // Cajas de las fincas externas (de su estimación): se suman aparte al total de la proyección.
+    const ext = await cajasExternas(e.anio, user);
+    res.externas = ext;
+    for (const s of res.porSemana) {
+      s.cajasExternas = ext.porSemana[s.semanaCodigo] || 0;
+      s.cajasConExternas = r2(s.cajas + s.cajasExternas);
+    }
+    res.anual.cajasExternas = r2(res.porSemana.reduce((a, s) => a + s.cajasExternas, 0));
+    res.anual.cajasConExternas = r2(res.anual.cajas + res.anual.cajasExternas);
     return res;
   },
 

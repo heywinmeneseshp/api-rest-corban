@@ -11,6 +11,7 @@ import { HTTP_STATUS } from '../../constants/httpStatus.constants.js';
 import {
   listarEscenariosSchema,
   escenarioUuidSchema,
+  guardarExternasSchema,
   crearEscenarioSchema,
   actualizarEscenarioSchema,
   guardarAreasSchema,
@@ -93,6 +94,14 @@ router.delete('/escenarios/:uuid', ...editar, validate(escenarioUuidSchema), asy
  *     responses:
  *       200: { description: OK }
  */
+router.get('/escenarios/:uuid/externas', ...ver, validate(escenarioUuidSchema), asyncHandler(async (req, res) => {
+  ApiResponse.send(res, { message: 'Cajas de las fincas externas', data: await proyeccionService.externas(req.params.uuid, req.user) });
+}));
+router.put('/escenarios/:uuid/externas', ...editar, validate(guardarExternasSchema), asyncHandler(async (req, res) => {
+  const data = await proyeccionService.guardarExternas(req.params.uuid, req.body.items, req.user?.id, req.user);
+  ApiResponse.send(res, { message: 'Cajas de las fincas externas guardadas como su estimación', data });
+}));
+
 router.put('/escenarios/:uuid/areas', ...editar, validate(guardarAreasSchema), asyncHandler(async (req, res) => {
   const data = await proyeccionService.guardarAreas(req.params.uuid, req.body.areas, req.user?.id, req.user);
   ApiResponse.send(res, { message: 'Plan de hectáreas guardado correctamente', data });

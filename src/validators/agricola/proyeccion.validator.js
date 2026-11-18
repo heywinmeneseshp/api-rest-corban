@@ -91,3 +91,21 @@ export const resultadoSchema = Joi.object({
   params: Joi.object({ uuid: uuidParam }),
   query: Joi.object({ fincaUuids: Joi.string() }),
 });
+
+// Cajas de las fincas externas por semana (se guardan como su estimación).
+export const guardarExternasSchema = Joi.object({
+  body: Joi.object({
+    items: Joi.array()
+      .items(
+        Joi.object({
+          fincaUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
+          semanaCodigo: Joi.string().pattern(/^S\d{1,2}-\d{4}$/).required(),
+          cajas: Joi.number().min(0).max(10000000).allow(null, '').required(),
+        }),
+      )
+      .max(5000)
+      .required(),
+  }),
+  params: Joi.object({ uuid: Joi.string().guid({ version: 'uuidv4' }).required() }),
+  query: Joi.object({}),
+});
