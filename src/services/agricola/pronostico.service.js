@@ -1405,13 +1405,13 @@ async function computeForecast(query, user, asOfDate = new Date()) {
   const seriesAnuales = Object.fromEntries(grupos.map((g) => [g.uuid ?? 'GLOBAL', serieAnualDe(g.idList)]));
 
   // Patrón de corte (como en Estimaciones): una fila por cada una de las últimas 5 SEMANAS LIQUIDADAS (las cintas se calcularon antes del
-  // loop de grupos). Por cinta, el % de lo procesado que se cortó en cada edad y el aprovechamiento (procesado ÷ procesado + repique + recuse).
+  // loop de grupos). Por cinta, el % de lo procesado que se cortó en cada edad y el aprovechamiento ((procesado + recusado) ÷ embolsado).
   const patronCorte = {};
   {
     const todasIds = [...new Set(grupos.flatMap((g) => g.idList))];
     const movs = cintasIdxTodas.size
       ? await RacimoMovimiento.findAll({
-          where: { fincaId: { [Op.in]: todasIds }, semanaEmbolseId: { [Op.in]: [...cintasIdxTodas].map((i) => semanas[i].id) }, tipo: { [Op.in]: ['PROCESADO', 'REPIQUE', 'RECUSE'] } },
+          where: { fincaId: { [Op.in]: todasIds }, semanaEmbolseId: { [Op.in]: [...cintasIdxTodas].map((i) => semanas[i].id) }, tipo: { [Op.in]: ['EMBOLSE', 'PROCESADO', 'RECUSE'] } },
           attributes: ['fincaId', 'semanaEmbolseId', 'semanaRegistroId', 'tipo', [fn('SUM', col('cantidad')), 'total']],
           group: ['fincaId', 'semanaEmbolseId', 'semanaRegistroId', 'tipo'],
           raw: true,
@@ -1422,11 +1422,13 @@ async function computeForecast(query, user, asOfDate = new Date()) {
       patronCorte[g.uuid ?? 'GLOBAL'] = filasPorGrupo.get(g).map(({ liquidadaIdx, cintaIdx: i }) => {
         const porEdad = Object.fromEntries(EDADES.map((e) => [e, 0]));
         let procesado = 0;
-        let decidido = 0;
+        let recusado = 0;
+        let embolsado = 0;
         for (const m of movs) {
           if (!ids.has(m.fincaId) || m.semanaEmbolseId !== semanas[i].id) continue;
           const t = Number(m.total) || 0;
-          decidido += t;
+          if (m.tipo === 'EMBOLSE') embolsado += t;
+          if (m.tipo === 'RECUSE') recusado += t;
           if (m.tipo !== 'PROCESADO') continue;
           procesado += t;
           const r = idxById.get(m.semanaRegistroId);
@@ -1437,7 +1439,8 @@ async function computeForecast(query, user, asOfDate = new Date()) {
           semanaLiquidada: semanas[liquidadaIdx].codigo,
           edadHoy: hoyIdx - i + 1,
           porEdad: EDADES.map((e) => ({ edad: e, porcentaje: procesado > 0 ? Math.round((porEdad[e] / procesado) * 10000) / 100 : null })),
-          aprovechamiento: decidido > 0 ? Math.round((procesado / decidido) * 10000) / 10000 : null,
+          // (procesado + recusado) ÷ embolsado — misma medida que el panel inicial y que el aprovechamiento de la proyección.
+          aprovechamiento: embolsado > 0 ? Math.round(((procesado + recusado) / embolsado) * 10000) / 10000 : null,
         };
       });
     }

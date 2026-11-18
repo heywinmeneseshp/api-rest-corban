@@ -1459,10 +1459,12 @@ export const estimacionFincaService = {
     const porCohorte = new Map();
     for (const m of movimientosCohortes) {
       if (!porCohorte.has(m.semanaEmbolseId)) {
-        porCohorte.set(m.semanaEmbolseId, { porEdad: Object.fromEntries(PATRON_CORTE_EDADES.map((e) => [e, 0])), totalProcesado: 0, totalDecidido: 0 });
+        porCohorte.set(m.semanaEmbolseId, { porEdad: Object.fromEntries(PATRON_CORTE_EDADES.map((e) => [e, 0])), totalProcesado: 0, totalDecidido: 0, totalEmbolsado: 0, totalRecusado: 0 });
       }
       const acc = porCohorte.get(m.semanaEmbolseId);
       if (m.tipo === 'PROCESADO' || m.tipo === 'REPIQUE' || m.tipo === 'RECUSE') acc.totalDecidido += m.cantidad;
+      if (m.tipo === 'EMBOLSE') acc.totalEmbolsado += m.cantidad;
+      if (m.tipo === 'RECUSE') acc.totalRecusado += m.cantidad;
       if (m.tipo === 'PROCESADO') {
         acc.totalProcesado += m.cantidad;
         const registroIdx = idxPorId.get(m.semanaRegistroId);
@@ -1480,7 +1482,8 @@ export const estimacionFincaService = {
         edad,
         porcentaje: acc && acc.totalProcesado > 0 ? Math.round(((acc.porEdad[edad] || 0) / acc.totalProcesado) * 10000) / 100 : null,
       }));
-      const aprovechamiento = acc && acc.totalDecidido > 0 ? Math.round((acc.totalProcesado / acc.totalDecidido) * 10000) / 10000 : null;
+      // Aprovechamiento de la cinta: (procesado + recusado) ÷ embolsado — misma medida que el panel inicial y la proyección.
+      const aprovechamiento = acc && acc.totalEmbolsado > 0 ? Math.round(((acc.totalProcesado + acc.totalRecusado) / acc.totalEmbolsado) * 10000) / 10000 : null;
       return {
         semana: { uuid: semanaLiquidada.uuid, codigo: semanaLiquidada.codigo, anio: semanaLiquidada.anio, numeroSemana: semanaLiquidada.numeroSemana },
         semanaEmbolse: semanaEmbolse ? { uuid: semanaEmbolse.uuid, codigo: semanaEmbolse.codigo } : null,
