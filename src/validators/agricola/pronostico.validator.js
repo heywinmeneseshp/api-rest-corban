@@ -22,3 +22,14 @@ export const exportarPronosticoSchema = Joi.object({
   params: Joi.object({}),
   query: querySchema,
 });
+
+// Ratio editado a mano: con ratio null se quita la edición.
+export const guardarRatioManualSchema = Joi.object({
+  body: Joi.object({
+    fincaUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
+    semanaCodigo: Joi.string().pattern(/^S\d{1,2}-\d{4}$/).required(),
+    ratio: Joi.number().min(0).max(5).allow(null).required(),
+  }),
+  params: Joi.object({}),
+  query: Joi.object({}),
+});

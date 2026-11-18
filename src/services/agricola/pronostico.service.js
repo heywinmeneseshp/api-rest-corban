@@ -11,6 +11,19 @@ import { cargarClimaSemanal, crearVistaClima, ajustarRatioClima, crearAjusteTerm
 import { ApiError } from '../../utils/ApiError.js';
 import { getFincaIdsPermitidas } from '../../utils/fincaScope.js';
 import { logger } from '../../utils/logger.js';
+import { configuracionRepository } from '../../repositories/sistema/configuracion.repository.js';
+
+// Ratios editados a mano en la proyección semanal: { [fincaUuid | 'GLOBAL']: { [semanaCodigo]: ratio } }. Se guardan para todos los usuarios
+// y reemplazan el ratio proyectado de esa finca y semana (las semanas reales no se tocan).
+const CLAVE_RATIO_MANUAL = 'pronostico_ratio_manual';
+async function leerRatiosManuales() {
+  const c = await configuracionRepository.findByClave(CLAVE_RATIO_MANUAL);
+  try {
+    return c?.valor ? JSON.parse(c.valor) || {} : {};
+  } catch {
+    return {};
+  }
+}
 
 // Tabla de cuantiles de error histórico (5%/95%) por horizonte, generada por
 // `scripts/generar-cuantiles-error.mjs` y validada contra un período de
@@ -1359,6 +1372,27 @@ async function computeForecast(query, user, asOfDate = new Date()) {
   // Serie del ratio para el gráfico: `ratioPasadas` semanas antes de hoy y `ratioFuturas` después, cada una con el ratio real (hasta hoy), el
   // proyectado (después) y el promedio histórico de la misma semana del año en años anteriores. Siempre del conjunto de fincas con datos
   // (cruzando cajas y racimos por finca, sin externas).
+  // Ratios editados a mano (no en simulación): reemplazan el ratio proyectado y recalculan las cajas de esa semana. Se aplican antes de
+  // armar la serie del gráfico de ratio para que la edición también se vea ahí.
+  if (!simulacion) {
+    const manuales = await leerRatiosManuales();
+    for (const row of rows) {
+      if (row.real) continue;
+      const v = manuales[row.fincaUuid ?? 'GLOBAL']?.[row.semanaCodigo];
+      if (v == null || !(Number(v) >= 0)) continue;
+      const nuevo = Number(v);
+      const factor = row.ratio > 0 ? nuevo / row.ratio : null;
+      row.ratio = nuevo;
+      row.cajas20kg = Math.round(row.racimosCosechados * nuevo * 100) / 100;
+      if (factor != null) {
+        if (row.cajasCiLow != null) row.cajasCiLow = Math.round(row.cajasCiLow * factor * 100) / 100;
+        if (row.cajasCiHigh != null) row.cajasCiHigh = Math.round(row.cajasCiHigh * factor * 100) / 100;
+      }
+      row.ratioManual = true;
+      row.detalle = `Ratio editado a mano (${nuevo}) · ${row.detalle}`;
+    }
+  }
+
   const ratioSerie = (() => {
     const ids = [...fincaIdsConDatos];
     const ratioEn = (idx, soloReal) => {
@@ -1506,6 +1540,18 @@ export const pronosticoService = {
       return computeForecast(resto, user, new Date(`${query.simularDesde.slice(0, 10)}T12:00:00`));
     }
     return computeForecast(query, user);
+  },
+
+  // Guarda (o quita, con ratio null) el ratio editado a mano de una finca (o de "Todas") en una semana.
+  async guardarRatioManual({ fincaUuid, semanaCodigo, ratio }, actorId) {
+    const manuales = await leerRatiosManuales();
+    const clave = fincaUuid || 'GLOBAL';
+    manuales[clave] = manuales[clave] || {};
+    if (ratio == null) delete manuales[clave][semanaCodigo];
+    else manuales[clave][semanaCodigo] = Math.round(Number(ratio) * 10000) / 10000;
+    if (Object.keys(manuales[clave]).length === 0) delete manuales[clave];
+    await configuracionRepository.upsert(CLAVE_RATIO_MANUAL, JSON.stringify(manuales), actorId);
+    return { fincaUuid: fincaUuid || null, semanaCodigo, ratio: ratio == null ? null : manuales[clave]?.[semanaCodigo] ?? null };
   },
 
   async exportPronosticoToExcel(query, user) {
