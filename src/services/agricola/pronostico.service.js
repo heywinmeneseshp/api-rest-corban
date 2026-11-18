@@ -1362,12 +1362,12 @@ async function computeForecast(query, user, asOfDate = new Date()) {
 
   const seriesAnuales = Object.fromEntries(grupos.map((g) => [g.uuid ?? 'GLOBAL', serieAnualDe(g.idList)]));
 
-  // Patrón de corte (como en Estimaciones): las últimas 5 cintas que ya tienen 13 semanas de edad o más (cosecha terminada). Por cinta,
+  // Patrón de corte (como en Estimaciones): las últimas 5 cintas que ya tienen 12 semanas de edad o más (cosecha terminada). Por cinta,
   // el % de lo procesado que se cortó en cada edad y el aprovechamiento (procesado ÷ procesado + repique + recuse).
   const patronCorte = {};
-  if (hoyIdx >= 12) {
+  if (hoyIdx >= 11) {
     const cintasIdx = [];
-    for (let i = hoyIdx - 12; i >= 0 && cintasIdx.length < 5; i--) cintasIdx.push(i);
+    for (let i = hoyIdx - 11; i >= 0 && cintasIdx.length < 5; i--) cintasIdx.push(i);
     const todasIds = [...new Set(grupos.flatMap((g) => g.idList))];
     const movs = await RacimoMovimiento.findAll({
       where: { fincaId: { [Op.in]: todasIds }, semanaEmbolseId: { [Op.in]: cintasIdx.map((i) => semanas[i].id) }, tipo: { [Op.in]: ['PROCESADO', 'REPIQUE', 'RECUSE'] } },
