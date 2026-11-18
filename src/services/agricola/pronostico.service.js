@@ -938,6 +938,42 @@ async function computeForecast(query, user, asOfDate = new Date()) {
     };
   }
 
+  // Mismas semanas de años anteriores (gráficas de la proyección semanal): por grupo de fincas y semana, lo real de 1 a 3 años atrás. Sale de
+  // los datos ya cargados (la ventana trae ~10 años de historia), sin consultas nuevas.
+  const idxAnioSemana = new Map(semanas.map((sm, i) => [`${sm.anio}-${sm.numeroSemana}`, i]));
+  const edadesRegistro = new Map(); // `${fincaId}|${registroIdx}` -> { 8..12: racimos cosechados de esa edad }
+  for (const [fid, lista] of cohortePorFinca) {
+    for (const c of lista) {
+      const k = `${fid}|${c.embolseIdx + c.edad - 1}`;
+      const e = edadesRegistro.get(k) || {};
+      e[c.edad] = (e[c.edad] || 0) + Number(c.total || 0);
+      edadesRegistro.set(k, e);
+    }
+  }
+  const haGrupo = (idList, idx) => Math.round(idList.reduce((a, fid) => a + haDe(fid, idx), 0) * 100) / 100;
+  function anterioresDe(idList, semana) {
+    const salida = [];
+    for (let k = 1; k <= 3; k++) {
+      const i = idxAnioSemana.get(`${semana.anio - k}-${semana.numeroSemana}`);
+      if (i === undefined) continue;
+      const racimos = cosechadoGrupo(idList, i);
+      const cajasT = cajasGrupo(idList, i);
+      if (!(racimos > 0) && !(cajasT > 0)) continue;
+      const { r, c } = cosechadoYCajasCruzados(idList, i);
+      const edades = {};
+      for (const edad of EDADES) edades[edad] = idList.reduce((a, fid) => a + (edadesRegistro.get(`${fid}|${i}`)?.[edad] || 0), 0);
+      salida.push({
+        anio: semana.anio - k,
+        hectareas: haGrupo(idList, i),
+        racimos,
+        cajas: Math.round(cajasT * 100) / 100,
+        ratio: r > 0 && c > 0 ? Math.round((c / r) * 10000) / 10000 : null,
+        edades,
+      });
+    }
+    return salida;
+  }
+
   const rows = [];
   for (const grupo of grupos) {
     const { rawRate: rateGrupo, pctNoCosechado: pctGrupoHist, cohortesCerradas, usoEstacional: usoEstacionalTasa } = tasasBlend(grupo.idList);
@@ -1226,6 +1262,9 @@ async function computeForecast(query, user, asOfDate = new Date()) {
         // distintas, una por edad). Permite medir la etapa 1
         // (racimos embolsados) de forma completamente independiente.
         embolseProyectado: embolseSemana(idx),
+        // Hectáreas en producción de la semana (las futuras arrastran la última área vigente) y las mismas semanas de años anteriores.
+        hectareas: haGrupo(grupo.idList, idx),
+        anteriores: anterioresDe(grupo.idList, semana),
         racimosCosechados,
         ratio: Math.round(ratioUsado * 10000) / 10000,
         aprovechamiento: Math.round(aprovechamiento * 10000) / 10000,
@@ -1358,7 +1397,9 @@ export const pronosticoService = {
     const datos = rows.map((r) => ({
       Finca: r.fincaNombre,
       Semana: r.semanaCodigo,
+      'Hectáreas en producción': r.hectareas,
       'Racimos cosechados': r.racimosCosechados,
+      'Racimos/ha': r.hectareas > 0 ? Math.round((r.racimosCosechados / r.hectareas) * 100) / 100 : null,
       Ratio: r.ratio,
       'Aprovechamiento %': Math.round(r.aprovechamiento * 10000) / 100,
       'Cajas 20kg': r.cajas20kg,
