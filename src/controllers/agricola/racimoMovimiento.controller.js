@@ -1,3 +1,4 @@
+import { loteService } from '../../services/agricola/lote.service.js';
 import { racimoMovimientoService, puedeForzarSaldoNegativo } from '../../services/agricola/racimoMovimiento.service.js';
 import { ApiResponse } from '../../utils/ApiResponse.js';
 import { ApiError } from '../../utils/ApiError.js';
@@ -31,6 +32,11 @@ export const racimoMovimientoController = {
     });
   }),
 
+  registrarAreaProduccion: asyncHandler(async (req, res) => {
+    const { loteUuid, semanaUuid, area } = req.body;
+    const data = await loteService.registrarAreaParaEmbolse(loteUuid, { semanaUuid, area }, req.user?.id, req.user);
+    ApiResponse.send(res, { message: 'Área en producción registrada', data });
+  }),
   crearEnLote: asyncHandler(async (req, res) => {
     const resultado = await racimoMovimientoService.crearMovimientosEnLote(req.body, req.user?.id, req.user);
     if (resultado.requiereLiquidarSemana) {

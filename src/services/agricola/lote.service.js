@@ -1,4 +1,4 @@
-import { Op } from 'sequelize';
+import { Op, QueryTypes } from 'sequelize';
 import { Finca, Lote, Planta, RacimoMovimiento, LoteAreaProduccion } from '../../database/associations.js';
 import { sequelize } from '../../database/connection.js';
 import { loteRepository } from '../../repositories/agricola/lote.repository.js';
@@ -600,6 +600,37 @@ export const loteService = {
       semanaId: semana ? semana.id : null,
       createdBy: actorId,
     });
+  },
+
+  // Área en producción pedida al registrar un embolse: un lote con 0 ha en producción no puede embolsar, y quien registra el embolse debe poder
+  // dejarla al momento sin tener el permiso de editar lotes. Por eso solo se acepta cuando el lote NO tiene área en producción vigente a esa
+  // semana (nunca para cambiar un valor existente) y solo en semanas ya iniciadas.
+  async registrarAreaParaEmbolse(uuid, payload, actorId, user) {
+    const lote = await this.getLoteByUuid(uuid, user);
+    const semana = await semanaRepository.findByUuid(payload.semanaUuid);
+    if (!semana) throw ApiError.notFound('Semana no encontrada');
+    const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+    const semanaActual = await semanaRepository.findByFecha(hoy);
+    if (semanaActual && semana.fechaInicio > semanaActual.fechaInicio) {
+      throw ApiError.badRequest('No se puede registrar el área de una semana futura');
+    }
+    const [vigente] = await sequelize.query(
+      `SELECT ap.area AS area
+         FROM lote_area_produccion ap
+         LEFT JOIN semanas s ON s.id = ap.semana_id
+        WHERE ap.lote_id = :loteId AND COALESCE(s.fecha_inicio, ap.fecha_registro) <= :fecha
+        ORDER BY COALESCE(s.fecha_inicio, ap.fecha_registro) DESC, ap.id DESC
+        LIMIT 1`,
+      { replacements: { loteId: lote.id, fecha: String(semana.fechaInicio).slice(0, 10) }, type: QueryTypes.SELECT },
+    );
+    if (vigente && Number(vigente.area) > 0) {
+      throw ApiError.badRequest('Este lote ya tiene área en producción en esa semana: para cambiarla se necesita el permiso de editar lotes');
+    }
+    // Misma regla de siempre: el área bruta del lote es mayor que el área en producción.
+    if (hay(lote.area) && brutaNoSuperaProduccion(Number(lote.area), payload.area)) {
+      throw ApiError.badRequest(mensajeBrutaProduccion(Number(lote.area), payload.area));
+    }
+    return loteAreaProduccionRepository.create({ loteId: lote.id, area: payload.area, areaTotal: null, fechaRegistro: hoy, semanaId: semana.id, createdBy: actorId });
   },
 };
 

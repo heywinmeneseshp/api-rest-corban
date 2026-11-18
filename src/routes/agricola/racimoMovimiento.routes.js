@@ -11,6 +11,7 @@ import {
   createRacimoMovimientoSchema,
   updateRacimoMovimientoSchema,
   createRacimoMovimientosEnLoteSchema,
+  registrarAreaProduccionSchema,
   deleteRacimoMovimientosEnLoteSchema,
   inventarioRacimosSchema,
   resumenCohorteSchema,
@@ -113,6 +114,15 @@ router.post(
  *     responses:
  *       201: { description: Creado }
  */
+// Área en producción de un lote que intenta embolsar con 0 ha: la deja quien registra el embolse (sin exigirle el permiso de editar lotes).
+router.post(
+  '/area-produccion',
+  auth,
+  permission(PERMISSIONS.RACIMO_MOVIMIENTO_CREAR),
+  validate(registrarAreaProduccionSchema),
+  racimoMovimientoController.registrarAreaProduccion,
+);
+
 router.post(
   '/lote',
   auth,

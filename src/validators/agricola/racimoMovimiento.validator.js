@@ -207,3 +207,14 @@ export const inventarioRacimosSchema = Joi.object({
     cantidadSemanas: Joi.number().integer().min(1).max(53),
   }),
 });
+
+// Área en producción pedida al registrar un embolse de un lote con 0 ha.
+export const registrarAreaProduccionSchema = Joi.object({
+  body: Joi.object({
+    loteUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
+    semanaUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
+    area: Joi.number().greater(0).precision(2).required(),
+  }),
+  params: Joi.object({}),
+  query: Joi.object({}),
+});
