@@ -16,6 +16,16 @@ import { configuracionRepository } from '../../repositories/sistema/configuracio
 // Ratios editados a mano en la proyección semanal: { [fincaUuid | 'GLOBAL']: { [semanaCodigo]: ratio } }. Se guardan para todos los usuarios
 // y reemplazan el ratio proyectado de esa finca y semana (las semanas reales no se tocan).
 const CLAVE_RATIO_MANUAL = 'pronostico_ratio_manual';
+// Cajas adicionales ingresadas a mano por semana: { [fincaUuid | 'GLOBAL']: { [semanaCodigo]: cajas } }. Se suman a las cajas 20k.
+const CLAVE_CAJAS_ADICIONALES = 'pronostico_cajas_adicionales';
+async function leerMapa(clave) {
+  const c = await configuracionRepository.findByClave(clave);
+  try {
+    return c?.valor ? JSON.parse(c.valor) || {} : {};
+  } catch {
+    return {};
+  }
+}
 async function leerRatiosManuales() {
   const c = await configuracionRepository.findByClave(CLAVE_RATIO_MANUAL);
   try {
@@ -1392,6 +1402,15 @@ async function computeForecast(query, user, asOfDate = new Date()) {
       row.detalle = `Ratio editado a mano (${nuevo}) · ${row.detalle}`;
     }
   }
+  // Cajas adicionales por semana (ingresadas a mano) y el total con las cajas 20k.
+  {
+    const adicionales = simulacion ? {} : await leerMapa(CLAVE_CAJAS_ADICIONALES);
+    for (const row of rows) {
+      const v = Number(adicionales[row.fincaUuid ?? 'GLOBAL']?.[row.semanaCodigo]) || 0;
+      row.cajasAdicionales = v;
+      row.cajasTotal = Math.round((row.cajas20kg + v) * 100) / 100;
+    }
+  }
 
   const ratioSerie = (() => {
     const ids = [...fincaIdsConDatos];
@@ -1559,6 +1578,18 @@ export const pronosticoService = {
     return { fincaUuid: fincaUuid || null, semanaCodigo, ratio: ratio == null ? null : manuales[clave]?.[semanaCodigo] ?? null };
   },
 
+  // Guarda (o quita, con cajas null o 0) las cajas adicionales de una finca (o de "Todas") en una semana.
+  async guardarCajasAdicionales({ fincaUuid, semanaCodigo, cajas }, actorId) {
+    const mapa = await leerMapa(CLAVE_CAJAS_ADICIONALES);
+    const clave = fincaUuid || 'GLOBAL';
+    mapa[clave] = mapa[clave] || {};
+    if (cajas == null || Number(cajas) === 0) delete mapa[clave][semanaCodigo];
+    else mapa[clave][semanaCodigo] = Math.round(Number(cajas) * 100) / 100;
+    if (Object.keys(mapa[clave]).length === 0) delete mapa[clave];
+    await configuracionRepository.upsert(CLAVE_CAJAS_ADICIONALES, JSON.stringify(mapa), actorId);
+    return { fincaUuid: fincaUuid || null, semanaCodigo, cajas: mapa[clave]?.[semanaCodigo] ?? 0 };
+  },
+
   async exportPronosticoToExcel(query, user) {
     const { default: XLSX } = await import('xlsx');
     const { rows } = await computeForecast(query, user);
@@ -1572,6 +1603,8 @@ export const pronosticoService = {
       Ratio: r.ratio,
       'Aprovechamiento %': Math.round(r.aprovechamiento * 10000) / 100,
       'Cajas 20kg': r.cajas20kg,
+      'Cajas adicionales': r.cajasAdicionales || 0,
+      'Total cajas': r.cajasTotal ?? r.cajas20kg,
       'IC 90% mínimo': r.cajasCiLow,
       'IC 90% máximo': r.cajasCiHigh,
       Confianza: r.confianza,

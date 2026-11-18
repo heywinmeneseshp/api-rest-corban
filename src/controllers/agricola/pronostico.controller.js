@@ -13,6 +13,11 @@ export const pronosticoController = {
     ApiResponse.send(res, { message: data.ratio == null ? 'Ratio restablecido' : 'Ratio guardado', data });
   }),
 
+  guardarCajasAdicionales: asyncHandler(async (req, res) => {
+    const data = await pronosticoService.guardarCajasAdicionales(req.body, req.user?.id);
+    ApiResponse.send(res, { message: 'Cajas adicionales guardadas', data });
+  }),
+
   exportar: asyncHandler(async (req, res) => {
     const buffer = await pronosticoService.exportPronosticoToExcel(req.query, req.user);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

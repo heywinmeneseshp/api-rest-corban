@@ -4,7 +4,7 @@ import { auth } from '../../middlewares/auth.middleware.js';
 import { permission } from '../../middlewares/permission.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
-import { getPronosticoSchema, exportarPronosticoSchema, guardarRatioManualSchema } from '../../validators/agricola/pronostico.validator.js';
+import { getPronosticoSchema, exportarPronosticoSchema, guardarRatioManualSchema, guardarCajasAdicionalesSchema } from '../../validators/agricola/pronostico.validator.js';
 
 const router = Router();
 
@@ -39,6 +39,7 @@ router.get(
 );
 
 // Ratio editado a mano en la proyección semanal (se guarda para todos). Quien edita escenarios de proyección.
+router.put('/cajas-adicionales', auth, permission(PERMISSIONS.PROYECCION_EDITAR), validate(guardarCajasAdicionalesSchema), pronosticoController.guardarCajasAdicionales);
 router.put('/ratio-manual', auth, permission(PERMISSIONS.PROYECCION_EDITAR), validate(guardarRatioManualSchema), pronosticoController.guardarRatioManual);
 
 export default router;

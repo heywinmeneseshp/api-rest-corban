@@ -33,3 +33,14 @@ export const guardarRatioManualSchema = Joi.object({
   params: Joi.object({}),
   query: Joi.object({}),
 });
+
+// Cajas adicionales a mano: con cajas null (o 0) se quitan.
+export const guardarCajasAdicionalesSchema = Joi.object({
+  body: Joi.object({
+    fincaUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
+    semanaCodigo: Joi.string().pattern(/^S\d{1,2}-\d{4}$/).required(),
+    cajas: Joi.number().min(0).max(10000000).allow(null).required(),
+  }),
+  params: Joi.object({}),
+  query: Joi.object({}),
+});
