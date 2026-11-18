@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Op, fn, col } from 'sequelize';
+import { Op, fn, col, QueryTypes } from 'sequelize';
+import { sequelize } from '../../database/connection.js';
 import { Finca, Semana, RacimoMovimiento, FincaSemanaLiquidacion } from '../../database/associations.js';
 import { racimoMovimientoRepository } from '../../repositories/agricola/racimoMovimiento.repository.js';
 import { produccionSemanalRepository } from '../../repositories/agricola/produccionSemanal.repository.js';
@@ -1402,11 +1403,38 @@ async function computeForecast(query, user, asOfDate = new Date()) {
       row.detalle = `Ratio editado a mano (${nuevo}) · ${row.detalle}`;
     }
   }
-  // Cajas adicionales por semana (ingresadas a mano) y el total con las cajas 20k.
+  // Cajas adicionales por semana: por defecto, la estimación de cajas de las FINCAS EXTERNAS (la última registrada para esa semana) — con
+  // "Todas", la suma de todas las externas; con fincas elegidas, la de las externas que estén entre ellas. Se pueden editar a mano (la
+  // edición se guarda y reemplaza la estimación; al restablecerla vuelve la estimación). Total cajas = cajas 20k + adicionales.
   {
-    const adicionales = simulacion ? {} : await leerMapa(CLAVE_CAJAS_ADICIONALES);
+    const manuales = simulacion ? {} : await leerMapa(CLAVE_CAJAS_ADICIONALES);
+    const permitidas = getFincaIdsPermitidas(user);
+    const externas = (await Finca.findAll({ where: { estado: true, esExterna: true }, attributes: ['id'], raw: true }))
+      .map((f) => f.id)
+      .filter((id) => permitidas === null || permitidas.includes(id));
+    const estimadoExterno = new Map(); // `${fincaId}|${semanaId}` -> cajas (última semana de registro)
+    const semanaIdsFilas = [...new Set(rows.map((r) => semanas[r._idx].id))];
+    if (externas.length && semanaIdsFilas.length) {
+      const filasEst = await sequelize.query(
+        `SELECT e.finca_id AS fincaId, e.semana_id AS semanaId, e.cajas_20kg AS cajas, sr.fecha_inicio AS registro, e.id AS id
+           FROM estimaciones_finca e
+           JOIN semanas sr ON sr.id = e.semana_registro_id
+          WHERE e.deleted_at IS NULL AND e.finca_id IN (:externas) AND e.semana_id IN (:semanas)
+          ORDER BY sr.fecha_inicio ASC, e.id ASC`,
+        { replacements: { externas, semanas: semanaIdsFilas }, type: QueryTypes.SELECT },
+      );
+      for (const f of filasEst) estimadoExterno.set(`${f.fincaId}|${f.semanaId}`, Number(f.cajas) || 0); // la última registrada queda
+    }
+    const externasSet = new Set(externas);
     for (const row of rows) {
-      const v = Number(adicionales[row.fincaUuid ?? 'GLOBAL']?.[row.semanaCodigo]) || 0;
+      const grupoIds = row.fincaUuid ? (grupos.find((g) => g.uuid === row.fincaUuid)?.idList || []) : externas;
+      const ids = grupoIds.filter((id) => externasSet.has(id));
+      const semanaId = semanas[row._idx].id;
+      const estimado = Math.round(ids.reduce((a, id) => a + (estimadoExterno.get(`${id}|${semanaId}`) || 0), 0) * 100) / 100;
+      const manual = manuales[row.fincaUuid ?? 'GLOBAL']?.[row.semanaCodigo];
+      const v = manual != null ? Number(manual) || 0 : estimado;
+      row.cajasAdicionalesEstimado = estimado;
+      row.cajasAdicionalesManual = manual != null;
       row.cajasAdicionales = v;
       row.cajasTotal = Math.round((row.cajas20kg + v) * 100) / 100;
     }
@@ -1583,11 +1611,11 @@ export const pronosticoService = {
     const mapa = await leerMapa(CLAVE_CAJAS_ADICIONALES);
     const clave = fincaUuid || 'GLOBAL';
     mapa[clave] = mapa[clave] || {};
-    if (cajas == null || Number(cajas) === 0) delete mapa[clave][semanaCodigo];
+    if (cajas == null) delete mapa[clave][semanaCodigo];
     else mapa[clave][semanaCodigo] = Math.round(Number(cajas) * 100) / 100;
     if (Object.keys(mapa[clave]).length === 0) delete mapa[clave];
     await configuracionRepository.upsert(CLAVE_CAJAS_ADICIONALES, JSON.stringify(mapa), actorId);
-    return { fincaUuid: fincaUuid || null, semanaCodigo, cajas: mapa[clave]?.[semanaCodigo] ?? 0 };
+    return { fincaUuid: fincaUuid || null, semanaCodigo, cajas: mapa[clave]?.[semanaCodigo] ?? null };
   },
 
   async exportPronosticoToExcel(query, user) {
