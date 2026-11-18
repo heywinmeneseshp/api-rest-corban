@@ -15,7 +15,7 @@ export const pronosticoController = {
 
   guardarCajasProyectada: asyncHandler(async (req, res) => {
     const data = await pronosticoService.guardarCajasProyectada(req.body, req.user?.id);
-    ApiResponse.send(res, { message: data.cajas == null ? 'Cajas ajustadas restablecidas' : 'Cajas ajustadas guardadas', data });
+    ApiResponse.send(res, { message: data.cajas == null ? 'Cajas proyectadas restablecidas' : 'Cajas proyectadas guardadas', data });
   }),
 
   guardarCajasAdicionales: asyncHandler(async (req, res) => {
