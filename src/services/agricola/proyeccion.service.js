@@ -2,6 +2,7 @@ import { Op, QueryTypes } from 'sequelize';
 import { sequelize } from '../../database/connection.js';
 import { Finca, Semana, Producto, ProyeccionEscenario, ProyeccionArea, ProyeccionProducto } from '../../database/associations.js';
 import { estimacionFincaRepository } from '../../repositories/agricola/estimacionFinca.repository.js';
+import { configuracionRepository } from '../../repositories/sistema/configuracion.repository.js';
 import { configuracionService } from '../sistema/configuracion.service.js';
 import { racimoMovimientoRepository } from '../../repositories/agricola/racimoMovimiento.repository.js';
 import { produccionSemanalRepository } from '../../repositories/agricola/produccionSemanal.repository.js';
@@ -841,6 +842,83 @@ const cargarEscenario = async (uuid) => {
   return e;
 };
 
+// Valida un reparto por producto (mismas reglas para los escenarios anuales y la proyección semanal). Devuelve los productos por uuid.
+async function validarItemsProductos(items) {
+  const uuids = items.map((x) => x.productoUuid);
+  if (new Set(uuids).size !== uuids.length) throw ApiError.badRequest('Hay un producto repetido en el reparto');
+  const productos = uuids.length ? await Producto.findAll({ where: { uuid: { [Op.in]: uuids } }, attributes: ['id', 'uuid', 'nombre', 'pesoNeto', 'cajasPorPalet', 'cantidadPalets', 'cajasPorMinipalet', 'cantidadMinipalets'] }) : [];
+  const porUuid = new Map(productos.map((x) => [x.uuid, x]));
+  for (const it of items) {
+    const prod = porUuid.get(it.productoUuid);
+    if (!prod) throw ApiError.badRequest('Producto no encontrado en el reparto');
+    if (!(Number(prod.pesoNeto) > 0)) throw ApiError.badRequest(`El producto "${prod.nombre}" no tiene peso neto: configúralo en Maestros → Productos`);
+    const modo = it.modo || 'PORCENTAJE';
+    if (modo === 'PORCENTAJE' && !(Number(it.porcentaje) > 0)) throw ApiError.badRequest(`Escribe el % de los kilos de "${prod.nombre}"`);
+    if (modo === 'CONTENEDORES') {
+      if (!(Number(it.contenedores) > 0)) throw ApiError.badRequest(`Escribe cuántos contenedores por semana de "${prod.nombre}"`);
+      if (!(Number(it.cajasContenedor) > 0) && !(cajasDeContenedor(prod) > 0)) throw ApiError.badRequest(`El producto "${prod.nombre}" no tiene cajas por palet y palets por contenedor: configúralos en Maestros → Productos o escribe las cajas por contenedor`);
+    }
+  }
+  // Productos FINCA: fincas existentes y cada finca en un solo producto.
+  const fincasUsadas = new Map();
+  for (const it of items.filter((x) => x.modo === 'FINCA')) {
+    const nombreProd = porUuid.get(it.productoUuid).nombre;
+    if (!it.fincaUuids?.length) throw ApiError.badRequest(`Elige al menos una finca para "${nombreProd}"`);
+    for (const f of it.fincaUuids) {
+      if (fincasUsadas.has(f)) throw ApiError.badRequest(`Una finca está en dos productos: "${fincasUsadas.get(f)}" y "${nombreProd}"`);
+      fincasUsadas.set(f, nombreProd);
+    }
+  }
+  if (fincasUsadas.size) {
+    const existentes = await Finca.count({ where: { uuid: { [Op.in]: [...fincasUsadas.keys()] } } });
+    if (existentes !== fincasUsadas.size) throw ApiError.badRequest('Una de las fincas del reparto no existe');
+  }
+  // Las reglas de %/resto aplican a la mezcla general (todo menos los productos FINCA).
+  const modos = items.map((x) => x.modo || 'PORCENTAJE').filter((m) => m !== 'FINCA');
+  if (modos.filter((m) => m === 'RESTO').length > 1) throw ApiError.badRequest('Solo un producto puede quedarse con el resto');
+  const suma = items.filter((x) => (x.modo || 'PORCENTAJE') === 'PORCENTAJE').reduce((a, x) => a + Number(x.porcentaje), 0);
+  const hayResto = modos.includes('RESTO');
+  if (modos.length > 0 && !hayResto) {
+    // Sin «resto» todo el reparto debe ser por porcentaje y sumar 100.
+    if (modos.includes('CONTENEDORES')) throw ApiError.badRequest('Con contenedores fijos agrega un producto «resto» para lo que sobre');
+    if (fincasUsadas.size) throw ApiError.badRequest('Con fincas dedicadas a un producto agrega un producto «resto» para la fruta de las demás fincas');
+    if (Math.abs(suma - 100) > 0.01) throw ApiError.badRequest(`Los porcentajes deben sumar 100 % (suman ${r2b(suma)} %)`);
+  }
+  if (suma > 100.01) throw ApiError.badRequest(`Los porcentajes no pueden pasar de 100 % (suman ${r2b(suma)} %)`);
+  return porUuid;
+}
+
+// Reparto por producto de la PROYECCIÓN SEMANAL: tiene su propia configuración (prioridad); sin ella usa la del escenario anual del año
+// en curso (o el último escenario con productos).
+const CLAVE_PRODUCTOS_SEMANAL = 'pronostico_productos';
+async function mapearItemsProductos(items) {
+  const uuids = items.map((x) => x.productoUuid);
+  const productos = uuids.length ? await Producto.findAll({ where: { uuid: { [Op.in]: uuids } }, attributes: ['id', 'uuid', 'codigo', 'nombre', 'pesoNeto', 'cajasPorPalet', 'cantidadPalets', 'cajasPorMinipalet', 'cantidadMinipalets'] }) : [];
+  const porUuid = new Map(productos.map((x) => [x.uuid, x]));
+  return items
+    .filter((it) => porUuid.has(it.productoUuid))
+    .map((it) => {
+      const prod = porUuid.get(it.productoUuid);
+      const modo = it.modo || 'PORCENTAJE';
+      const propio = it.cajasContenedor === null || it.cajasContenedor === undefined || it.cajasContenedor === '' ? null : Number(it.cajasContenedor);
+      return {
+        uuid: prod.uuid,
+        codigo: prod.codigo,
+        nombre: prod.nombre,
+        pesoNeto: prod.pesoNeto === null || prod.pesoNeto === undefined ? null : Number(prod.pesoNeto),
+        cajasCatalogo: cajasDeContenedor(prod),
+        cajasContenedor: propio,
+        cajasPorContenedor: propio === null ? cajasDeContenedor(prod) : propio,
+        modo,
+        cadaSemanas: Number(it.cadaSemanas || 1),
+        desdeSemana: Number(it.desdeSemana || 1),
+        porcentaje: it.porcentaje === null || it.porcentaje === undefined || it.porcentaje === '' ? null : Number(it.porcentaje),
+        contenedores: it.contenedores === null || it.contenedores === undefined || it.contenedores === '' ? null : Number(it.contenedores),
+        fincaUuids: modo === 'FINCA' ? it.fincaUuids || [] : [],
+      };
+    });
+}
+
 // ─── Fincas externas en la proyección anual ───
 // Sus cajas no se proyectan (no hay racimos): se ingresan a mano por semana y quedan registradas como su Estimación finca (la última
 // registrada de cada semana es la que vale). Aquí se leen para el año del escenario.
@@ -879,6 +957,48 @@ async function cajasExternas(anio, user) {
 }
 
 export const proyeccionService = {
+  // Reparto por producto de la proyección semanal: el propio si está guardado; si no, el del escenario anual.
+  async productosSemanal() {
+    const c = await configuracionRepository.findByClave(CLAVE_PRODUCTOS_SEMANAL);
+    let items = null;
+    try {
+      items = c?.valor ? JSON.parse(c.valor) : null;
+    } catch {
+      items = null;
+    }
+    if (Array.isArray(items)) return { origen: 'propia', escenario: null, productos: await mapearItemsProductos(items) };
+    const anioActual = Number(new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 4));
+    const escenarios = await ProyeccionEscenario.findAll({
+      include: [{ model: ProyeccionProducto, as: 'productos', required: true, include: [{ model: Producto, as: 'producto', attributes: ['id', 'uuid', 'codigo', 'nombre', 'pesoNeto', 'cajasPorPalet', 'cantidadPalets', 'cajasPorMinipalet', 'cantidadMinipalets'] }] }],
+      order: [['updatedAt', 'DESC']],
+    });
+    const e = escenarios.find((x) => x.anio === anioActual) || escenarios[0];
+    if (!e) return { origen: 'ninguna', escenario: null, productos: [] };
+    return { origen: 'anual', escenario: { uuid: e.uuid, nombre: e.nombre, anio: e.anio }, productos: mapEscenario(e, [], e.productos).productos };
+  },
+
+  async guardarProductosSemanal(items, actorId) {
+    await validarItemsProductos(items);
+    const limpios = items.map((it) => ({
+      productoUuid: it.productoUuid,
+      modo: it.modo || 'PORCENTAJE',
+      porcentaje: it.porcentaje ?? null,
+      contenedores: it.contenedores ?? null,
+      cajasContenedor: it.cajasContenedor ?? null,
+      cadaSemanas: it.cadaSemanas || 1,
+      desdeSemana: it.desdeSemana || 1,
+      fincaUuids: it.modo === 'FINCA' ? it.fincaUuids || [] : [],
+    }));
+    await configuracionRepository.upsert(CLAVE_PRODUCTOS_SEMANAL, JSON.stringify(limpios), actorId);
+    return this.productosSemanal();
+  },
+
+  // Vuelve a usar el reparto del escenario anual.
+  async restablecerProductosSemanal(actorId) {
+    await configuracionRepository.upsert(CLAVE_PRODUCTOS_SEMANAL, '', actorId);
+    return this.productosSemanal();
+  },
+
   // Cajas de las fincas externas (por finca y semana del año del escenario) desde sus estimaciones.
   async externas(uuid, user) {
     const e = await cargarEscenario(uuid);
@@ -1056,47 +1176,7 @@ export const proyeccionService = {
   // Reemplaza los productos del reparto (producto y % de los kilos). Deben sumar 100 y tener peso neto.
   async guardarProductos(uuid, items, actorId) {
     const e = await cargarEscenario(uuid);
-    const uuids = items.map((x) => x.productoUuid);
-    if (new Set(uuids).size !== uuids.length) throw ApiError.badRequest('Hay un producto repetido en el reparto');
-    const productos = uuids.length ? await Producto.findAll({ where: { uuid: { [Op.in]: uuids } }, attributes: ['id', 'uuid', 'nombre', 'pesoNeto', 'cajasPorPalet', 'cantidadPalets', 'cajasPorMinipalet', 'cantidadMinipalets'] }) : [];
-    const porUuid = new Map(productos.map((x) => [x.uuid, x]));
-    for (const it of items) {
-      const prod = porUuid.get(it.productoUuid);
-      if (!prod) throw ApiError.badRequest('Producto no encontrado en el reparto');
-      if (!(Number(prod.pesoNeto) > 0)) throw ApiError.badRequest(`El producto "${prod.nombre}" no tiene peso neto: configúralo en Maestros → Productos`);
-      const modo = it.modo || 'PORCENTAJE';
-      if (modo === 'PORCENTAJE' && !(Number(it.porcentaje) > 0)) throw ApiError.badRequest(`Escribe el % de los kilos de "${prod.nombre}"`);
-      if (modo === 'CONTENEDORES') {
-        if (!(Number(it.contenedores) > 0)) throw ApiError.badRequest(`Escribe cuántos contenedores por semana de "${prod.nombre}"`);
-        if (!(Number(it.cajasContenedor) > 0) && !(cajasDeContenedor(prod) > 0)) throw ApiError.badRequest(`El producto "${prod.nombre}" no tiene cajas por palet y palets por contenedor: configúralos en Maestros → Productos o escribe las cajas por contenedor`);
-      }
-    }
-    // Productos FINCA: fincas existentes y cada finca en un solo producto.
-    const fincasUsadas = new Map();
-    for (const it of items.filter((x) => x.modo === 'FINCA')) {
-      const nombreProd = porUuid.get(it.productoUuid).nombre;
-      if (!it.fincaUuids?.length) throw ApiError.badRequest(`Elige al menos una finca para "${nombreProd}"`);
-      for (const f of it.fincaUuids) {
-        if (fincasUsadas.has(f)) throw ApiError.badRequest(`Una finca está en dos productos: "${fincasUsadas.get(f)}" y "${nombreProd}"`);
-        fincasUsadas.set(f, nombreProd);
-      }
-    }
-    if (fincasUsadas.size) {
-      const existentes = await Finca.count({ where: { uuid: { [Op.in]: [...fincasUsadas.keys()] } } });
-      if (existentes !== fincasUsadas.size) throw ApiError.badRequest('Una de las fincas del reparto no existe');
-    }
-    // Las reglas de %/resto aplican a la mezcla general (todo menos los productos FINCA).
-    const modos = items.map((x) => x.modo || 'PORCENTAJE').filter((m) => m !== 'FINCA');
-    if (modos.filter((m) => m === 'RESTO').length > 1) throw ApiError.badRequest('Solo un producto puede quedarse con el resto');
-    const suma = items.filter((x) => (x.modo || 'PORCENTAJE') === 'PORCENTAJE').reduce((a, x) => a + Number(x.porcentaje), 0);
-    const hayResto = modos.includes('RESTO');
-    if (modos.length > 0 && !hayResto) {
-      // Sin «resto» todo el reparto debe ser por porcentaje y sumar 100.
-      if (modos.includes('CONTENEDORES')) throw ApiError.badRequest('Con contenedores fijos agrega un producto «resto» para lo que sobre');
-      if (fincasUsadas.size) throw ApiError.badRequest('Con fincas dedicadas a un producto agrega un producto «resto» para la fruta de las demás fincas');
-      if (Math.abs(suma - 100) > 0.01) throw ApiError.badRequest(`Los porcentajes deben sumar 100 % (suman ${r2b(suma)} %)`);
-    }
-    if (suma > 100.01) throw ApiError.badRequest(`Los porcentajes no pueden pasar de 100 % (suman ${r2b(suma)} %)`);
+    const porUuid = await validarItemsProductos(items);
     await sequelize.transaction(async (transaction) => {
       await ProyeccionProducto.destroy({ where: { escenarioId: e.id }, transaction });
       if (items.length) {

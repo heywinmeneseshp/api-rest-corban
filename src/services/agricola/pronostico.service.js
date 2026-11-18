@@ -13,6 +13,7 @@ import { ApiError } from '../../utils/ApiError.js';
 import { getFincaIdsPermitidas } from '../../utils/fincaScope.js';
 import { logger } from '../../utils/logger.js';
 import { configuracionRepository } from '../../repositories/sistema/configuracion.repository.js';
+import { configuracionService } from '../sistema/configuracion.service.js';
 
 // Ratios editados a mano en la proyección semanal: { [fincaUuid | 'GLOBAL']: { [semanaCodigo]: ratio } }. Se guardan para todos los usuarios
 // y reemplazan el ratio proyectado de esa finca y semana (las semanas reales no se tocan).
@@ -1351,6 +1352,7 @@ async function computeForecast(query, user, asOfDate = new Date()) {
         semanaCodigo: semana.codigo,
         anio: semana.anio,
         numeroSemana: semana.numeroSemana,
+        fechaInicio: String(semana.fechaInicio).slice(0, 10),
         real,
         // Diagnóstico para el backtest por etapas (herramienta oficial de
         // validación, ver scripts/backtest-pronostico.mjs): el embolse
@@ -1581,6 +1583,8 @@ async function computeForecast(query, user, asOfDate = new Date()) {
       ultimaSemanaCalendario: ultimaSemanaDisponible
         ? { codigo: ultimaSemanaDisponible.codigo, anio: ultimaSemanaDisponible.anio, numeroSemana: ultimaSemanaDisponible.numeroSemana }
         : null,
+      // Peso real de la «caja 20kg» (tasa de conversión): para repartir los kilos por producto.
+      tasaConversion: await configuracionService.getTasaConversion(),
       pctNoCosechadoOverride,
       pctNoCosechadoHistoricoPromedio: global.pctNoCosechado,
       // Diagnóstico, no exclusión — ver nota extensa junto a `cohortesAnomalas`

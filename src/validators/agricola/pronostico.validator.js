@@ -44,3 +44,26 @@ export const guardarCajasAdicionalesSchema = Joi.object({
   params: Joi.object({}),
   query: Joi.object({}),
 });
+
+// Reparto por producto de la proyección semanal (las reglas se validan en el servicio, igual que en los escenarios anuales).
+export const guardarProductosSemanalSchema = Joi.object({
+  body: Joi.object({
+    productos: Joi.array()
+      .items(
+        Joi.object({
+          productoUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
+          modo: Joi.string().valid('PORCENTAJE', 'RESTO', 'CONTENEDORES', 'FINCA').default('PORCENTAJE'),
+          porcentaje: Joi.number().min(0).max(100).allow(null),
+          contenedores: Joi.number().min(0).allow(null),
+          cajasContenedor: Joi.number().min(0).allow(null),
+          cadaSemanas: Joi.number().integer().min(1).max(52).default(1),
+          desdeSemana: Joi.number().integer().min(1).max(53).default(1),
+          fincaUuids: Joi.array().items(Joi.string().guid({ version: 'uuidv4' })).default([]),
+        }),
+      )
+      .max(50)
+      .required(),
+  }),
+  params: Joi.object({}),
+  query: Joi.object({}),
+});
