@@ -951,27 +951,49 @@ async function computeForecast(query, user, asOfDate = new Date()) {
     }
   }
   const haGrupo = (idList, idx) => Math.round(idList.reduce((a, fid) => a + haDe(fid, idx), 0) * 100) / 100;
+  // Datos reales de un grupo en la semana i (null si no hubo cosecha ni cajas).
+  function datosSemana(idList, i) {
+    const racimos = cosechadoGrupo(idList, i);
+    const cajasT = cajasGrupo(idList, i);
+    if (!(racimos > 0) && !(cajasT > 0)) return null;
+    const { r, c } = cosechadoYCajasCruzados(idList, i);
+    const edades = {};
+    for (const edad of EDADES) edades[edad] = idList.reduce((a, fid) => a + (edadesRegistro.get(`${fid}|${i}`)?.[edad] || 0), 0);
+    return {
+      hectareas: haGrupo(idList, i),
+      racimos,
+      cajas: Math.round(cajasT * 100) / 100,
+      ratio: r > 0 && c > 0 ? Math.round((c / r) * 10000) / 10000 : null,
+      edades,
+    };
+  }
   function anterioresDe(idList, semana) {
     const salida = [];
     for (let k = 1; k <= 3; k++) {
       const i = idxAnioSemana.get(`${semana.anio - k}-${semana.numeroSemana}`);
       if (i === undefined) continue;
-      const racimos = cosechadoGrupo(idList, i);
-      const cajasT = cajasGrupo(idList, i);
-      if (!(racimos > 0) && !(cajasT > 0)) continue;
-      const { r, c } = cosechadoYCajasCruzados(idList, i);
-      const edades = {};
-      for (const edad of EDADES) edades[edad] = idList.reduce((a, fid) => a + (edadesRegistro.get(`${fid}|${i}`)?.[edad] || 0), 0);
-      salida.push({
-        anio: semana.anio - k,
-        hectareas: haGrupo(idList, i),
-        racimos,
-        cajas: Math.round(cajasT * 100) / 100,
-        ratio: r > 0 && c > 0 ? Math.round((c / r) * 10000) / 10000 : null,
-        edades,
-      });
+      const d = datosSemana(idList, i);
+      if (d) salida.push({ anio: semana.anio - k, ...d });
     }
     return salida;
+  }
+  // Año completo (semanas 1-53) del año de la semana inicial y de los 3 anteriores, solo con datos reales: para las gráficas de la proyección
+  // semanal, que muestran todas las semanas del año y no solo las consultadas.
+  function serieAnualDe(idList) {
+    const anioBase = semanaInicio.anio;
+    const anios = {};
+    for (let k = 0; k <= 3; k++) {
+      const y = anioBase - k;
+      const lista = [];
+      for (let n = 1; n <= 53; n++) {
+        const i = idxAnioSemana.get(`${y}-${n}`);
+        if (i === undefined || !esReal(i)) continue;
+        const d = datosSemana(idList, i);
+        if (d) lista.push({ n, ...d });
+      }
+      if (lista.length) anios[y] = lista;
+    }
+    return { anio: anioBase, anios };
   }
 
   const rows = [];
@@ -1330,8 +1352,11 @@ async function computeForecast(query, user, asOfDate = new Date()) {
     return { anio: semanas[hoyIdx].anio, aniosHistoricos: aniosConDatos, pasadas: ratioPasadas, futuras: ratioFuturas, serie };
   })();
 
+  const seriesAnuales = Object.fromEntries(grupos.map((g) => [g.uuid ?? 'GLOBAL', serieAnualDe(g.idList)]));
+
   return {
     ratioSerie,
+    seriesAnuales,
     meta: {
       simulacion: simulacion ? { fecha: query.simularDesde, semana: semanaInicio.codigo } : null,
       fincas: fincas.map((f) => ({ uuid: f.uuid, codigo: f.codigo, nombre: f.nombre })),
