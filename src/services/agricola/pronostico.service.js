@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Op } from 'sequelize';
-import { Finca, Semana } from '../../database/associations.js';
+import { Op, fn, col } from 'sequelize';
+import { Finca, Semana, RacimoMovimiento } from '../../database/associations.js';
 import { racimoMovimientoRepository } from '../../repositories/agricola/racimoMovimiento.repository.js';
 import { produccionSemanalRepository } from '../../repositories/agricola/produccionSemanal.repository.js';
 import { semanaRepository } from '../../repositories/agricola/semana.repository.js';
@@ -1362,9 +1362,48 @@ async function computeForecast(query, user, asOfDate = new Date()) {
 
   const seriesAnuales = Object.fromEntries(grupos.map((g) => [g.uuid ?? 'GLOBAL', serieAnualDe(g.idList)]));
 
+  // Patrón de corte (como en Estimaciones): las últimas 5 cintas que ya tienen 13 semanas de edad o más (cosecha terminada). Por cinta,
+  // el % de lo procesado que se cortó en cada edad y el aprovechamiento (procesado ÷ procesado + repique + recuse).
+  const patronCorte = {};
+  if (hoyIdx >= 12) {
+    const cintasIdx = [];
+    for (let i = hoyIdx - 12; i >= 0 && cintasIdx.length < 5; i--) cintasIdx.push(i);
+    const todasIds = [...new Set(grupos.flatMap((g) => g.idList))];
+    const movs = await RacimoMovimiento.findAll({
+      where: { fincaId: { [Op.in]: todasIds }, semanaEmbolseId: { [Op.in]: cintasIdx.map((i) => semanas[i].id) }, tipo: { [Op.in]: ['PROCESADO', 'REPIQUE', 'RECUSE'] } },
+      attributes: ['fincaId', 'semanaEmbolseId', 'semanaRegistroId', 'tipo', [fn('SUM', col('cantidad')), 'total']],
+      group: ['fincaId', 'semanaEmbolseId', 'semanaRegistroId', 'tipo'],
+      raw: true,
+    });
+    for (const g of grupos) {
+      const ids = new Set(g.idList);
+      patronCorte[g.uuid ?? 'GLOBAL'] = cintasIdx.map((i) => {
+        const porEdad = Object.fromEntries(EDADES.map((e) => [e, 0]));
+        let procesado = 0;
+        let decidido = 0;
+        for (const m of movs) {
+          if (!ids.has(m.fincaId) || m.semanaEmbolseId !== semanas[i].id) continue;
+          const t = Number(m.total) || 0;
+          decidido += t;
+          if (m.tipo !== 'PROCESADO') continue;
+          procesado += t;
+          const r = idxById.get(m.semanaRegistroId);
+          if (r !== undefined && r - i + 1 in porEdad) porEdad[r - i + 1] += t;
+        }
+        return {
+          cinta: { codigo: semanas[i].codigo, anio: semanas[i].anio, numeroSemana: semanas[i].numeroSemana },
+          edadHoy: hoyIdx - i + 1,
+          porEdad: EDADES.map((e) => ({ edad: e, porcentaje: procesado > 0 ? Math.round((porEdad[e] / procesado) * 10000) / 100 : null })),
+          aprovechamiento: decidido > 0 ? Math.round((procesado / decidido) * 10000) / 10000 : null,
+        };
+      });
+    }
+  }
+
   return {
     ratioSerie,
     seriesAnuales,
+    patronCorte,
     meta: {
       simulacion: simulacion ? { fecha: query.simularDesde, semana: semanaInicio.codigo } : null,
       fincas: fincas.map((f) => ({ uuid: f.uuid, codigo: f.codigo, nombre: f.nombre })),
