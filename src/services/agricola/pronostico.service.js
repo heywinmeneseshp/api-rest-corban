@@ -1675,7 +1675,7 @@ export const pronosticoService = {
       'Cajas 20kg': r.cajas20kg,
       'Cajas adicionales': r.cajasAdicionales || 0,
       Estimación: r.cajasTotal ?? r.cajas20kg,
-      Proyectada: r.cajasProyectada ?? r.cajasTotal ?? r.cajas20kg,
+      'Cajas Ajustadas': r.cajasProyectada ?? r.cajasTotal ?? r.cajas20kg,
       'Estimación Finca': r.estimacionFinca,
       'IC 90% mínimo': r.cajasCiLow,
       'IC 90% máximo': r.cajasCiHigh,
