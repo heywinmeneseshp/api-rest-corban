@@ -1403,6 +1403,8 @@ async function computeForecast(query, user, asOfDate = new Date()) {
       row.detalle = `Ratio editado a mano (${nuevo}) · ${row.detalle}`;
     }
   }
+  // Detalle de "Estimación Finca": lo estimado por cada finca (propias y externas) en las semanas de la tabla.
+  let estimacionPorFinca = { fincas: [], semanas: [], valores: {} };
   // Cajas adicionales por semana: por defecto, la estimación de cajas de las FINCAS EXTERNAS (la última registrada para esa semana) — con
   // "Todas", la suma de todas las externas; con fincas elegidas, la de las externas que estén entre ellas. Se pueden editar a mano (la
   // edición se guarda y reemplaza la estimación; al restablecerla vuelve la estimación). Total cajas = cajas 20k + adicionales.
@@ -1427,6 +1429,20 @@ async function computeForecast(query, user, asOfDate = new Date()) {
       for (const f of filasEst) estimadoExterno.set(`${f.fincaId}|${f.semanaId}`, Number(f.cajas) || 0); // la última registrada queda
     }
     const externasSet = new Set(externas);
+    {
+      const visibles = rows.filter((r) => r._idx < startIdx + semanasCount);
+      const semanasTabla = [...new Map(visibles.map((r) => [r._idx, semanas[r._idx]])).values()];
+      const conDato = fincasEstimacion.filter((id) => semanasTabla.some((sm) => estimadoExterno.has(`${id}|${sm.id}`)));
+      const info = conDato.length ? await Finca.findAll({ where: { id: { [Op.in]: conDato } }, attributes: ['id', 'uuid', 'codigo', 'nombre', 'esExterna'], raw: true }) : [];
+      info.sort((a, b) => Number(a.esExterna) - Number(b.esExterna) || a.nombre.localeCompare(b.nombre, 'es'));
+      estimacionPorFinca = {
+        fincas: info.map((f) => ({ uuid: f.uuid, codigo: f.codigo, nombre: f.nombre, externa: Boolean(f.esExterna) })),
+        semanas: semanasTabla.map((sm) => sm.codigo),
+        valores: Object.fromEntries(
+          info.map((f) => [f.uuid, Object.fromEntries(semanasTabla.filter((sm) => estimadoExterno.has(`${f.id}|${sm.id}`)).map((sm) => [sm.codigo, estimadoExterno.get(`${f.id}|${sm.id}`)]))]),
+        ),
+      };
+    }
     for (const row of rows) {
       const grupoIds = row.fincaUuid ? (grupos.find((g) => g.uuid === row.fincaUuid)?.idList || []) : externas;
       const ids = grupoIds.filter((id) => externasSet.has(id));
@@ -1542,6 +1558,7 @@ async function computeForecast(query, user, asOfDate = new Date()) {
     ratioSerie,
     seriesAnuales,
     patronCorte,
+    estimacionPorFinca,
     meta: {
       simulacion: simulacion ? { fecha: query.simularDesde, semana: semanaInicio.codigo } : null,
       fincas: fincas.map((f) => ({ uuid: f.uuid, codigo: f.codigo, nombre: f.nombre })),
