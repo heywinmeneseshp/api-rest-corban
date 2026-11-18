@@ -13,6 +13,11 @@ export const pronosticoController = {
     ApiResponse.send(res, { message: data.ratio == null ? 'Ratio restablecido' : 'Ratio guardado', data });
   }),
 
+  guardarCajasProyectada: asyncHandler(async (req, res) => {
+    const data = await pronosticoService.guardarCajasProyectada(req.body, req.user?.id);
+    ApiResponse.send(res, { message: data.cajas == null ? 'Proyectada restablecida' : 'Proyectada guardada', data });
+  }),
+
   guardarCajasAdicionales: asyncHandler(async (req, res) => {
     const data = await pronosticoService.guardarCajasAdicionales(req.body, req.user?.id);
     ApiResponse.send(res, { message: 'Cajas adicionales guardadas', data });

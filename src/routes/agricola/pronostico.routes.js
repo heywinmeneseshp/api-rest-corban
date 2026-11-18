@@ -39,6 +39,7 @@ router.get(
 );
 
 // Ratio editado a mano en la proyección semanal (se guarda para todos). Quien edita escenarios de proyección.
+router.put('/cajas-proyectada', auth, permission(PERMISSIONS.PROYECCION_EDITAR), validate(guardarCajasAdicionalesSchema), pronosticoController.guardarCajasProyectada);
 router.put('/cajas-adicionales', auth, permission(PERMISSIONS.PROYECCION_EDITAR), validate(guardarCajasAdicionalesSchema), pronosticoController.guardarCajasAdicionales);
 router.put('/ratio-manual', auth, permission(PERMISSIONS.PROYECCION_EDITAR), validate(guardarRatioManualSchema), pronosticoController.guardarRatioManual);
 

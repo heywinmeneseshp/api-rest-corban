@@ -19,6 +19,8 @@ import { configuracionRepository } from '../../repositories/sistema/configuracio
 const CLAVE_RATIO_MANUAL = 'pronostico_ratio_manual';
 // Cajas adicionales ingresadas a mano por semana: { [fincaUuid | 'GLOBAL']: { [semanaCodigo]: cajas } }. Se suman a las cajas 20k.
 const CLAVE_CAJAS_ADICIONALES = 'pronostico_cajas_adicionales';
+// Cajas "Proyectada" fijadas a mano por semana (por defecto es la Estimación = cajas 20k + adicionales): { [fincaUuid | 'GLOBAL']: { [semanaCodigo]: cajas } }.
+const CLAVE_CAJAS_PROYECTADAS = 'pronostico_cajas_proyectadas';
 async function leerMapa(clave) {
   const c = await configuracionRepository.findByClave(clave);
   try {
@@ -1410,6 +1412,7 @@ async function computeForecast(query, user, asOfDate = new Date()) {
   // edición se guarda y reemplaza la estimación; al restablecerla vuelve la estimación). Total cajas = cajas 20k + adicionales.
   {
     const manuales = simulacion ? {} : await leerMapa(CLAVE_CAJAS_ADICIONALES);
+    const proyectadasManuales = simulacion ? {} : await leerMapa(CLAVE_CAJAS_PROYECTADAS);
     const permitidas = getFincaIdsPermitidas(user);
     const externas = (await Finca.findAll({ where: { estado: true, esExterna: true }, attributes: ['id'], raw: true }))
       .map((f) => f.id)
@@ -1459,6 +1462,10 @@ async function computeForecast(query, user, asOfDate = new Date()) {
       row.cajasAdicionalesManual = manual != null;
       row.cajasAdicionales = v;
       row.cajasTotal = Math.round((row.cajas20kg + v) * 100) / 100;
+      // Proyectada: por defecto la Estimación (cajasTotal); se puede fijar a mano y restablecer.
+      const proy = proyectadasManuales[row.fincaUuid ?? 'GLOBAL']?.[row.semanaCodigo];
+      row.cajasProyectadaManual = proy != null;
+      row.cajasProyectada = proy != null ? Number(proy) || 0 : row.cajasTotal;
     }
   }
 
@@ -1630,6 +1637,18 @@ export const pronosticoService = {
   },
 
   // Guarda (o quita, con cajas null o 0) las cajas adicionales de una finca (o de "Todas") en una semana.
+  // Fija (o quita, con cajas null) la cifra "Proyectada" de una finca (o de "Todas") en una semana.
+  async guardarCajasProyectada({ fincaUuid, semanaCodigo, cajas }, actorId) {
+    const mapa = await leerMapa(CLAVE_CAJAS_PROYECTADAS);
+    const clave = fincaUuid || 'GLOBAL';
+    mapa[clave] = mapa[clave] || {};
+    if (cajas == null) delete mapa[clave][semanaCodigo];
+    else mapa[clave][semanaCodigo] = Math.round(Number(cajas) * 100) / 100;
+    if (Object.keys(mapa[clave]).length === 0) delete mapa[clave];
+    await configuracionRepository.upsert(CLAVE_CAJAS_PROYECTADAS, JSON.stringify(mapa), actorId);
+    return { fincaUuid: fincaUuid || null, semanaCodigo, cajas: mapa[clave]?.[semanaCodigo] ?? null };
+  },
+
   async guardarCajasAdicionales({ fincaUuid, semanaCodigo, cajas }, actorId) {
     const mapa = await leerMapa(CLAVE_CAJAS_ADICIONALES);
     const clave = fincaUuid || 'GLOBAL';
@@ -1655,7 +1674,8 @@ export const pronosticoService = {
       'Aprovechamiento %': Math.round(r.aprovechamiento * 10000) / 100,
       'Cajas 20kg': r.cajas20kg,
       'Cajas adicionales': r.cajasAdicionales || 0,
-      'Total cajas': r.cajasTotal ?? r.cajas20kg,
+      Estimación: r.cajasTotal ?? r.cajas20kg,
+      Proyectada: r.cajasProyectada ?? r.cajasTotal ?? r.cajas20kg,
       'Estimación Finca': r.estimacionFinca,
       'IC 90% mínimo': r.cajasCiLow,
       'IC 90% máximo': r.cajasCiHigh,
