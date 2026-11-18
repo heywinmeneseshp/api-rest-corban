@@ -1004,6 +1004,39 @@ async function computeForecast(query, user, asOfDate = new Date()) {
     return { anio: anioBase, anios };
   }
 
+  // Cintas de las últimas 5 SEMANAS LIQUIDADAS por grupo (la finca ya terminó de registrar esa semana): cada una es la cinta que cumplió
+  // 12 semanas en esa semana liquidada. Se usan para el patrón de corte y para que el aprovechamiento proyectado refleje lo reciente.
+  // Con varias fincas en un grupo, se toman las últimas 5 semanas liquidadas por alguna de ellas.
+  const filasPorGrupo = new Map(); // grupo -> [{ liquidadaIdx, cintaIdx }]
+  const cintasIdxTodas = new Set();
+  {
+    const todasIds = [...new Set(grupos.flatMap((g) => g.idList))];
+    const liquidaciones = await FincaSemanaLiquidacion.findAll({ where: { fincaId: { [Op.in]: todasIds } }, attributes: ['fincaId', 'semanaId'], raw: true });
+    for (const g of grupos) {
+      const ids = new Set(g.idList);
+      const liquidadas = [...new Set(liquidaciones.filter((l) => ids.has(l.fincaId)).map((l) => idxById.get(l.semanaId)).filter((i) => i !== undefined && i <= hoyIdx))]
+        .sort((a, b) => b - a)
+        .slice(0, 5)
+        .reverse(); // de la más antigua a la más reciente, como en Estimaciones
+      const filas = liquidadas.map((li) => ({ liquidadaIdx: li, cintaIdx: li - 12 + 1 })).filter((f) => f.cintaIdx >= 0);
+      filas.forEach((f) => cintasIdxTodas.add(f.cintaIdx));
+      filasPorGrupo.set(g, filas);
+    }
+  }
+  // Aprovechamiento reciente de un grupo: promedio, en sus cintas liquidadas, de (procesado + recuse) ÷ embolsado — misma medida que el
+  // aprovechamiento de la proyección. null si no hay cintas liquidadas con embolse.
+  const PESO_APROVECHAMIENTO_RECIENTE = 0.5;
+  function aprovechamientoRecienteDe(g) {
+    const vals = (filasPorGrupo.get(g) || [])
+      .map(({ cintaIdx }) => {
+        const emb = embolseGrupo(g.idList, cintaIdx);
+        const cos = g.idList.reduce((a, fid) => a + (cosechadoCinta.get(`${fid}|${cintaIdx}`) || 0), 0);
+        return emb > 0 ? cos / emb : null;
+      })
+      .filter((v) => v != null);
+    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+  }
+
   const rows = [];
   for (const grupo of grupos) {
     const { rawRate: rateGrupo, pctNoCosechado: pctGrupoHist, cohortesCerradas, usoEstacional: usoEstacionalTasa } = tasasBlend(grupo.idList);
@@ -1166,17 +1199,25 @@ async function computeForecast(query, user, asOfDate = new Date()) {
 
     // Un solo escalar reescala toda la curva de edad — así "% no cosechado"
     // puede ser un único campo editable en vez de 3 columnas.
+    // Sin % manual, el aprovechamiento proyectado mezcla mitad el histórico y mitad el de las últimas 5 cintas liquidadas (patrón de corte),
+    // para que la proyección reaccione a lo reciente sin saltar por una sola semana.
+    const aprovechamientoHistoricoGrupo = 1 - pctNoCosechadoHistorico;
+    const aprovechamientoReciente = aprovechamientoRecienteDe(grupo);
+    const aprovechamientoMezcla =
+      aprovechamientoReciente != null
+        ? PESO_APROVECHAMIENTO_RECIENTE * aprovechamientoReciente + (1 - PESO_APROVECHAMIENTO_RECIENTE) * aprovechamientoHistoricoGrupo
+        : aprovechamientoHistoricoGrupo;
     const scaleFactor =
       pctNoCosechadoOverride != null
         ? (1 - pctNoCosechadoOverride) / Math.max(0.0001, 1 - pctNoCosechadoHistorico)
-        : 1;
+        : aprovechamientoMezcla / Math.max(0.0001, aprovechamientoHistoricoGrupo);
 
     // Aprovechamiento = (RECUSE+PROCESADO)/EMBOLSADO — mismo concepto que ya
     // usa el dashboard de Corbana. Para semanas proyectadas es el % efectivo
     // que se está aplicando (el override si hay uno, si no el histórico);
     // para semanas reales se muestra siempre el histórico, ya que el
     // override no cambia lo que ya ocurrió.
-    const aprovechamientoProyectado = pctNoCosechadoOverride != null ? 1 - pctNoCosechadoOverride : 1 - pctNoCosechadoHistorico;
+    const aprovechamientoProyectado = pctNoCosechadoOverride != null ? 1 - pctNoCosechadoOverride : aprovechamientoMezcla;
     const aprovechamientoHistorico = 1 - pctNoCosechadoHistorico;
 
     for (let offset = 0; offset < semanasCalculo; offset++) {
@@ -1269,6 +1310,7 @@ async function computeForecast(query, user, asOfDate = new Date()) {
             : `Ratio: nivel de las últimas ${semanasRealesGrupo.length} semana(s) real(es) limpias (más peso a las recientes)`) +
           (usaFallbackGlobal ? ` · edades ${EDADES[0]}-${EDAD_MAX} sin historial propio suficiente, usando promedio global` : '') +
           (usoEstacionalTasa && !usaFallbackGlobal ? ' · aprovechamiento combinado con la misma temporada de años anteriores' : '') +
+          (!real && pctNoCosechadoOverride == null && aprovechamientoReciente != null ? ` · aprovechamiento: mitad histórico (${(aprovechamientoHistoricoGrupo * 100).toFixed(1)}%) y mitad últimas cintas liquidadas (${(aprovechamientoReciente * 100).toFixed(1)}%)` : '') +
           (real ? '' : detalleOrigen(aportes)) +
           (cajasCiLow != null ? ` · IC 90%: ${Math.round(cajasCiLow).toLocaleString('es')}–${Math.round(cajasCiHigh).toLocaleString('es')} cajas` : '');
 
@@ -1362,26 +1404,11 @@ async function computeForecast(query, user, asOfDate = new Date()) {
 
   const seriesAnuales = Object.fromEntries(grupos.map((g) => [g.uuid ?? 'GLOBAL', serieAnualDe(g.idList)]));
 
-  // Patrón de corte (como en Estimaciones): una fila por cada una de las últimas 5 SEMANAS LIQUIDADAS (la finca ya terminó de registrar sus
-  // movimientos de esa semana). Cada fila es la cinta que cumplió 12 semanas en esa semana liquidada; se sigue su historia completa. Por cinta,
-  // el % de lo procesado que se cortó en cada edad y el aprovechamiento (procesado ÷ procesado + repique + recuse). Con varias fincas en un
-  // grupo, se toman las últimas 5 semanas liquidadas por alguna de ellas.
+  // Patrón de corte (como en Estimaciones): una fila por cada una de las últimas 5 SEMANAS LIQUIDADAS (las cintas se calcularon antes del
+  // loop de grupos). Por cinta, el % de lo procesado que se cortó en cada edad y el aprovechamiento (procesado ÷ procesado + repique + recuse).
   const patronCorte = {};
   {
     const todasIds = [...new Set(grupos.flatMap((g) => g.idList))];
-    const liquidaciones = await FincaSemanaLiquidacion.findAll({ where: { fincaId: { [Op.in]: todasIds } }, attributes: ['fincaId', 'semanaId'], raw: true });
-    const filasPorGrupo = new Map(); // grupo -> [{ liquidadaIdx, cintaIdx }]
-    const cintasIdxTodas = new Set();
-    for (const g of grupos) {
-      const ids = new Set(g.idList);
-      const liquidadas = [...new Set(liquidaciones.filter((l) => ids.has(l.fincaId)).map((l) => idxById.get(l.semanaId)).filter((i) => i !== undefined))]
-        .sort((a, b) => b - a)
-        .slice(0, 5)
-        .reverse(); // de la más antigua a la más reciente, como en Estimaciones
-      const filas = liquidadas.map((li) => ({ liquidadaIdx: li, cintaIdx: li - 12 + 1 })).filter((f) => f.cintaIdx >= 0);
-      filas.forEach((f) => cintasIdxTodas.add(f.cintaIdx));
-      filasPorGrupo.set(g, filas);
-    }
     const movs = cintasIdxTodas.size
       ? await RacimoMovimiento.findAll({
           where: { fincaId: { [Op.in]: todasIds }, semanaEmbolseId: { [Op.in]: [...cintasIdxTodas].map((i) => semanas[i].id) }, tipo: { [Op.in]: ['PROCESADO', 'REPIQUE', 'RECUSE'] } },
