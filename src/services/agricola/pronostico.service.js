@@ -942,8 +942,11 @@ async function computeForecast(query, user, asOfDate = new Date()) {
   // los datos ya cargados (la ventana trae ~10 años de historia), sin consultas nuevas.
   const idxAnioSemana = new Map(semanas.map((sm, i) => [`${sm.anio}-${sm.numeroSemana}`, i]));
   const edadesRegistro = new Map(); // `${fincaId}|${registroIdx}` -> { 8..12: racimos cosechados de esa edad }
+  const cosechadoCinta = new Map(); // `${fincaId}|${embolseIdx}` -> racimos cosechados (procesado + recuse) de esa cinta, edades 8-12
   for (const [fid, lista] of cohortePorFinca) {
     for (const c of lista) {
+      const kc = `${fid}|${c.embolseIdx}`;
+      cosechadoCinta.set(kc, (cosechadoCinta.get(kc) || 0) + Number(c.total || 0));
       const k = `${fid}|${c.embolseIdx + c.edad - 1}`;
       const e = edadesRegistro.get(k) || {};
       e[c.edad] = (e[c.edad] || 0) + Number(c.total || 0);
@@ -959,11 +962,16 @@ async function computeForecast(query, user, asOfDate = new Date()) {
     const { r, c } = cosechadoYCajasCruzados(idList, i);
     const edades = {};
     for (const edad of EDADES) edades[edad] = idList.reduce((a, fid) => a + (edadesRegistro.get(`${fid}|${i}`)?.[edad] || 0), 0);
+    // Aprovechamiento de la cinta embolsada en la semana i: (procesado + recuse) ÷ embolsado. Solo con la cinta cerrada (ya pasó la edad
+    // máxima de cosecha); antes estaría a medias.
+    const embolsado = embolseGrupo(idList, i);
+    const cosechadoDeCinta = idList.reduce((a, fid) => a + (cosechadoCinta.get(`${fid}|${i}`) || 0), 0);
     return {
       hectareas: haGrupo(idList, i),
       racimos,
       cajas: Math.round(cajasT * 100) / 100,
       ratio: r > 0 && c > 0 ? Math.round((c / r) * 10000) / 10000 : null,
+      aprovechamiento: esCerrada(i) && embolsado > 0 ? Math.round((cosechadoDeCinta / embolsado) * 10000) / 10000 : null,
       edades,
     };
   }
