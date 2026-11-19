@@ -42,6 +42,17 @@ export const updateComprobanteAspersionSchema = Joi.object({
     humedadRelativaFinal: Joi.number().min(0).max(100).allow(null),
     horaInicio: Joi.string().pattern(/^([01]\d|2[0-3]):[0-5]\d$/).allow(null, ''),
     horaFinal: Joi.string().pattern(/^([01]\d|2[0-3]):[0-5]\d$/).allow(null, ''),
+    // Datos del reporte operacional de fumigación.
+    tipoEquipo: Joi.string().trim().max(150).allow(null, ''),
+    alturaVuelo: Joi.string().trim().max(50).allow(null, ''),
+    anchoDeposicion: Joi.number().min(0).max(1000).allow(null),
+    concentracionIa: Joi.number().min(0).max(100000).allow(null),
+    personaAutoriza: Joi.string().trim().max(150).allow(null, ''),
+    tiempoReentrada: Joi.number().min(0).max(1000).allow(null),
+    tiempoCarencia: Joi.number().min(0).max(10000).allow(null),
+    manipuladores: Joi.array()
+      .items(Joi.object({ nombre: Joi.string().trim().max(150).required(), documento: Joi.string().trim().max(30).allow(null, '') }))
+      .max(20),
   }).min(1),
   params: Joi.object({ uuid: uuidParam }),
   query: Joi.object({}),

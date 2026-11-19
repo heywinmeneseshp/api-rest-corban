@@ -52,6 +52,16 @@ ComprobanteAspersion.init(
     anuladoEn: { type: DataTypes.DATE, allowNull: true, field: 'anulado_en' },
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
     updatedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'updated_by' },
+    // Datos del reporte operacional de fumigación (se completan en el borrador).
+    tipoEquipo: { type: DataTypes.STRING(150), allowNull: true, field: 'tipo_equipo' },
+    alturaVuelo: { type: DataTypes.STRING(50), allowNull: true, field: 'altura_vuelo' },
+    anchoDeposicion: { type: DataTypes.DECIMAL(6, 2), allowNull: true, field: 'ancho_deposicion' },
+    concentracionIa: { type: DataTypes.DECIMAL(8, 2), allowNull: true, field: 'concentracion_ia' },
+    personaAutoriza: { type: DataTypes.STRING(150), allowNull: true, field: 'persona_autoriza' },
+    tiempoReentrada: { type: DataTypes.DECIMAL(5, 1), allowNull: true, defaultValue: 4, field: 'tiempo_reentrada' },
+    tiempoCarencia: { type: DataTypes.DECIMAL(5, 1), allowNull: true, defaultValue: 0, field: 'tiempo_carencia' },
+    // Manipuladores de plaguicidas: [{ nombre, documento }].
+    manipuladores: { type: DataTypes.JSON, allowNull: true },
     deletedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'deleted_by' },
   },
   {

@@ -19,6 +19,7 @@ import { claveCargo } from '../seguridad/cargo.service.js';
 import { mailService } from '../sistema/mail.service.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { pushService } from '../sistema/push.service.js';
+import { configuracionRepository } from '../../repositories/sistema/configuracion.repository.js';
 import { PERMISSIONS as PERMISOS_PUSH } from '../../constants/permissions.constants.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { generarCorrelativo } from '../../utils/correlativo.js';
@@ -141,6 +142,7 @@ function aDto(comprobante, principalArticuloId, { puedeRegenerar = false } = {})
     nombre: c.articulo?.nombre || '—',
     codigo: c.articulo?.codigo || null,
     esPrincipal: principalArticuloId !== null && principalArticuloId !== undefined && c.articuloId === principalArticuloId,
+    ingredientesActivos: (c.articulo?.ingredientesActivos || []).map((ia) => ia.nombre),
     cantidad: c.cantidad !== null && c.cantidad !== undefined ? Number(c.cantidad) : null,
     esAdicional: Boolean(c.esAdicional),
     unidad: c.unidad ? { nombre: c.unidad.nombre, simbolo: c.unidad.simbolo } : null,
@@ -271,6 +273,14 @@ const CAMPOS_APLICACION = [
   'horaInicio',
   'horaFinal',
   'volumenAplicacionHa',
+  'tipoEquipo',
+  'alturaVuelo',
+  'anchoDeposicion',
+  'concentracionIa',
+  'personaAutoriza',
+  'tiempoReentrada',
+  'tiempoCarencia',
+  'manipuladores',
   'ejecutadoPorId',
   'ejecutadoEn',
 ];
@@ -375,7 +385,16 @@ export const comprobanteAspersionService = {
       const vigente = await comprobanteAspersionRepository.activeForAspersion(comprobante.aspersionProgramacionId);
       puedeRegenerar = !vigente;
     }
-    return aDto(comprobante, principales.get(comprobante.aspersion?.mezclaId) ?? null, { puedeRegenerar });
+    const dto = aDto(comprobante, principales.get(comprobante.aspersion?.mezclaId) ?? null, { puedeRegenerar });
+    // Ubicación de la finca (vereda, municipio y departamento) de los Datos ICA (Sanidad Vegetal → Informe ICA).
+    try {
+      const cfg = await configuracionRepository.findByClave('informe_ica_fincas');
+      const datos = cfg?.valor ? JSON.parse(cfg.valor)[dto.aspersion?.finca?.uuid] : null;
+      dto.ubicacionFinca = datos ? { vereda: datos.vereda || '', municipio: datos.municipio || '', departamento: datos.departamento || '' } : null;
+    } catch {
+      dto.ubicacionFinca = null;
+    }
+    return dto;
   },
 
   async update(uuid, payload, actorId, user) {
@@ -387,6 +406,10 @@ export const comprobanteAspersionService = {
     if (payload.medio !== undefined) data.medio = payload.medio || null;
     // Los datos de la ejecución (hectáreas, galones, aeronave, clima y horario) no se editan en el borrador.
     if (payload.observaciones !== undefined) data.observaciones = payload.observaciones?.trim() || null;
+    // Datos del reporte operacional de fumigación.
+    for (const k of ['tipoEquipo', 'alturaVuelo', 'personaAutoriza']) if (payload[k] !== undefined) data[k] = payload[k]?.trim() || null;
+    for (const k of ['anchoDeposicion', 'concentracionIa', 'tiempoReentrada', 'tiempoCarencia']) if (payload[k] !== undefined) data[k] = payload[k] === null || payload[k] === '' ? null : Number(payload[k]);
+    if (payload.manipuladores !== undefined) data.manipuladores = (payload.manipuladores || []).filter((m) => m.nombre?.trim()).map((m) => ({ nombre: m.nombre.trim(), documento: m.documento?.trim() || '' }));
 
     await sequelize.transaction(async (transaction) => {
       const medio = data.medio !== undefined ? data.medio : comprobante.medio;

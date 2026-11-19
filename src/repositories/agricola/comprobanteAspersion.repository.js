@@ -15,6 +15,7 @@ import {
   ComprobanteAspersionParticipante,
   ComprobanteAspersionParte,
   ComprobanteAspersionKml,
+  IngredienteActivo,
 } from '../../database/associations.js';
 
 const USUARIO_ATTRS = ['uuid', 'usuario', 'nombre', 'apellido', 'cargo'];
@@ -25,7 +26,7 @@ const aspersionInclude = (aspersionWhere, { conInsumos = false } = {}) => ({
   required: true,
   where: aspersionWhere,
   include: [
-    { model: Finca, as: 'finca', attributes: ['uuid', 'nombre', 'codigo', ...(conInsumos ? ['perimetro'] : [])] },
+    { model: Finca, as: 'finca', attributes: ['uuid', 'nombre', 'codigo', ...(conInsumos ? ['perimetro', 'latitud', 'longitud'] : [])] },
     { model: Semana, as: 'semana', attributes: ['uuid', 'codigo', 'numeroSemana', 'anio'] },
     { model: Almacen, as: 'almacen', attributes: ['uuid', 'nombre', 'codigo'] },
     {
@@ -48,7 +49,13 @@ const aspersionInclude = (aspersionWhere, { conInsumos = false } = {}) => ({
             model: AspersionProgramacionComponente,
             as: 'componentes',
             include: [
-              { model: Articulo, as: 'articulo', attributes: ['id', 'uuid', 'nombre', 'codigo'] },
+              {
+                model: Articulo,
+                as: 'articulo',
+                attributes: ['id', 'uuid', 'nombre', 'codigo'],
+                // Ingrediente activo de cada insumo (reporte operacional).
+                include: [{ model: IngredienteActivo, as: 'ingredientesActivos', attributes: ['nombre'], through: { attributes: [] }, required: false }],
+              },
               { model: UnidadMedida, as: 'unidad', attributes: ['uuid', 'nombre', 'simbolo'] },
             ],
           },
