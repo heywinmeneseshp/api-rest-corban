@@ -337,9 +337,7 @@ export const mezclaService = {
       // por nombre en absoluto, o que bloquearía un segundo borrador sin
       // nombre todavía (MySQL sí permite varios NULL en un UNIQUE, la app
       // no debe ser más estricta que la base).
-      if (payload.nombre) {
-        await assertSinDuplicado(Mezcla, { nombre: payload.nombre }, t, 'Ya existe una mezcla con ese nombre');
-      }
+      // El nombre comercial puede repetirse (el que identifica la mezcla es el interno).
 
       // El código lo genera el sistema (correlativo MEZ-0001, mismo patrón
       // que usan Elaboraciones/Proformas/Órdenes) — el operador de
@@ -465,9 +463,7 @@ export const mezclaService = {
     const precioVentaFinal = payload.precioVenta !== undefined ? payload.precioVenta : mezcla.precioVenta;
 
     return sequelize.transaction(async (t) => {
-      if (payload.nombre) {
-        await assertSinDuplicado(Mezcla, { nombre: payload.nombre }, t, 'Ya existe una mezcla con ese nombre', mezcla.id);
-      }
+      // El nombre comercial puede repetirse (el que identifica la mezcla es el interno).
       if (payload.codigo) {
         await assertSinDuplicado(Mezcla, { codigo: payload.codigo }, t, 'Ya existe una mezcla con ese código', mezcla.id);
       }
@@ -1253,9 +1249,7 @@ export const mezclaService = {
     // comercial.
     const codigo = await generarCorrelativo(Mezcla, { prefijo: 'MEZ', columna: 'codigo', padding: 4 });
     // Se valida ANTES de crear el artículo para no dejar uno huérfano si el nombre comercial ya existe.
-    if (payload.articuloNombre && (await Mezcla.findOne({ where: { nombre: payload.articuloNombre } }))) {
-      throw ApiError.conflict('Ya existe una mezcla con ese nombre');
-    }
+    // El nombre comercial puede repetirse (el que identifica la mezcla es el nombre interno, único).
 
     // Nombre del artículo elaborado: el que se escriba al crear la mezcla o, por defecto, el consecutivo ("Mezcla MEZ-0001").
     const nombreElaborado = payload.articuloElaboradoNombre || `Mezcla ${codigo}`;
