@@ -23,6 +23,7 @@ const componenteSchema = Joi.object({
   esPrincipal: Joi.boolean(),
   // Insumos secundarios (varios por receta).
   esSecundario: Joi.boolean(),
+  mostrarEnComprobante: Joi.boolean(),
   // Dosis de referencia del renglón (manda sobre la del artículo; null =
   // usar la del artículo). Van juntas (ambas o ninguna).
   dosisPorHectarea: Joi.number().positive().allow(null),
@@ -87,7 +88,9 @@ export const createMezclaSchema = Joi.object({
 export const updateMezclaSchema = Joi.object({
   body: Joi.object({
     codigo: Joi.string().trim().max(50).allow(null, ''),
-    nombre: Joi.string().trim().max(150),
+    nombre: Joi.string().trim().max(255),
+    tipoAgricultura: Joi.string().valid('ORGANICA', 'CONVENCIONAL').allow(null),
+    formulacion: Joi.string().valid('EMULSION', 'SOLUCION', 'SUSPENSION').allow(null),
     // Nombre interno del artículo elaborado (distinto al nombre comercial de la mezcla).
     articuloNombre: Joi.string().trim().max(150),
     descripcion: Joi.string().allow(null, '').max(1000),
@@ -296,7 +299,9 @@ export const crearElaboradoSchema = Joi.object({
 // elaboración), no al definir la receta.
 export const crearDirectaSchema = Joi.object({
   body: Joi.object({
-    articuloNombre: Joi.string().trim().max(150).required(),
+    articuloNombre: Joi.string().trim().max(255).required(),
+    tipoAgricultura: Joi.string().valid('ORGANICA', 'CONVENCIONAL').allow(null),
+    formulacion: Joi.string().valid('EMULSION', 'SOLUCION', 'SUSPENSION').allow(null),
     // Nombre del artículo elaborado (interno). Opcional: sin él se nombra "Mezcla MEZ-000N".
     articuloElaboradoNombre: Joi.string().trim().max(150).allow(null, ''),
     articuloCodigo: Joi.string().trim().max(50).allow(null, ''),

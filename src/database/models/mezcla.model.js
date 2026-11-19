@@ -12,7 +12,11 @@ Mezcla.init(
     // asignan más adelante (ver mezcla.service.js#create/finalizar). MySQL
     // permite múltiples NULL en una columna UNIQUE, así que varios
     // borradores sin nombre todavía no chocan entre sí.
-    nombre: { type: DataTypes.STRING(150), allowNull: true, unique: true },
+    nombre: { type: DataTypes.STRING(255), allowNull: true, unique: true },
+    // ORGANICA | CONVENCIONAL
+    tipoAgricultura: { type: DataTypes.STRING(15), allowNull: true, field: 'tipo_agricultura' },
+    // EMULSION | SOLUCION | SUSPENSION (va en el nombre: «... EN EMULSION A 6 GAL/HA»)
+    formulacion: { type: DataTypes.STRING(15), allowNull: true },
     descripcion: { type: DataTypes.TEXT, allowNull: true },
     articuloElaboradoId: { type: DataTypes.INTEGER, allowNull: true, field: 'articulo_elaborado_id' },
     unidadRendimientoId: { type: DataTypes.INTEGER, allowNull: true, field: 'unidad_rendimiento_id' },
