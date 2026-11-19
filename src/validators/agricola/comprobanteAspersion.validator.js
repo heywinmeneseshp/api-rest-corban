@@ -51,7 +51,7 @@ export const updateComprobanteAspersionSchema = Joi.object({
     tiempoReentrada: Joi.number().min(0).max(1000).allow(null),
     tiempoCarencia: Joi.number().min(0).max(10000).allow(null),
     manipuladores: Joi.array()
-      .items(Joi.object({ colaboradorUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null), nombre: Joi.string().trim().max(150).required(), documento: Joi.string().trim().max(30).allow(null, '') }))
+      .items(Joi.object({ manipuladorUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null), colaboradorUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null), nombre: Joi.string().trim().max(150).required(), documento: Joi.string().trim().max(30).allow(null, '') }))
       .max(20),
   }).min(1),
   params: Joi.object({ uuid: uuidParam }),

@@ -417,7 +417,7 @@ export const comprobanteAspersionService = {
     // Datos del reporte operacional de fumigación.
     for (const k of ['tipoEquipo', 'alturaVuelo', 'personaAutoriza']) if (payload[k] !== undefined) data[k] = payload[k]?.trim() || null;
     for (const k of ['anchoDeposicion', 'concentracionIa', 'tiempoReentrada', 'tiempoCarencia']) if (payload[k] !== undefined) data[k] = payload[k] === null || payload[k] === '' ? null : Number(payload[k]);
-    if (payload.manipuladores !== undefined) data.manipuladores = (payload.manipuladores || []).filter((m) => m.nombre?.trim()).map((m) => ({ colaboradorUuid: m.colaboradorUuid || null, nombre: m.nombre.trim(), documento: m.documento?.trim() || '' }));
+    if (payload.manipuladores !== undefined) data.manipuladores = (payload.manipuladores || []).filter((m) => m.nombre?.trim()).map((m) => ({ manipuladorUuid: m.manipuladorUuid || null, nombre: m.nombre.trim(), documento: m.documento?.trim() || '' }));
 
     await sequelize.transaction(async (transaction) => {
       const medio = data.medio !== undefined ? data.medio : comprobante.medio;

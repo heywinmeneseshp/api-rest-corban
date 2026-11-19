@@ -67,6 +67,7 @@ import pistaRoutes from './routes/agricola/pista.routes.js';
 import cargoRoutes from './routes/seguridad/cargo.routes.js';
 import comprobanteAspersionRoutes from './routes/agricola/comprobanteAspersion.routes.js';
 import informeIcaRoutes from './routes/agricola/informeIca.routes.js';
+import manipuladorPlaguicidaRoutes from './routes/agricola/manipuladorPlaguicida.routes.js';
 import ingredienteActivoRoutes from './routes/agricola/ingredienteActivo.routes.js';
 import fracLimiteRoutes from './routes/agricola/fracLimite.routes.js';
 import ingredienteActivoInsumoRoutes from './routes/agricola/ingredienteActivoInsumo.routes.js';
@@ -184,6 +185,7 @@ router.use('/pistas', pistaRoutes);
 router.use('/cargos', cargoRoutes);
 router.use('/comprobantes-aspersion', comprobanteAspersionRoutes);
 router.use('/sanidad-vegetal/informe-ica', informeIcaRoutes);
+router.use('/sanidad-vegetal/manipuladores', manipuladorPlaguicidaRoutes);
 // El router de /insumos debe montarse ANTES que el genérico de
 // /ingredientes-activos — si no, `GET /:uuid` de ese último matchea
 // "insumos" como si fuera un uuid y nunca llega acá.
