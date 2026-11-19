@@ -38,6 +38,11 @@ export const productoController = {
     ApiResponse.send(res, { message: 'Combos activos de Logística obtenidos correctamente', data: resultado });
   }),
 
+  clientesBanarica: asyncHandler(async (req, res) => {
+    const mapa = await productoService.fetchBanaricaClientes();
+    ApiResponse.send(res, { message: 'Clientes de Logística', data: [...new Set(mapa.values())].sort((a, b) => a.localeCompare(b, 'es')) });
+  }),
+
   syncClientesBanarica: asyncHandler(async (req, res) => {
     const resultado = await productoService.sincronizarClientesDesdeBanarica(req.user?.id);
     ApiResponse.send(res, { message: 'Clientes de los productos traídos de Logística', data: resultado });

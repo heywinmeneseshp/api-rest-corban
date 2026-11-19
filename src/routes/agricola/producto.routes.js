@@ -69,6 +69,8 @@ router.get(
  *       200: { description: OK }
  */
 // Trae de Logística el cliente de cada combo y lo asigna al producto (Maestros → Productos).
+// Listado de clientes de Logística (para elegirlos en el producto). Antes de '/:uuid'.
+router.get('/clientes-banarica', auth, productoController.clientesBanarica);
 router.post('/sync-clientes-banarica', auth, permission(PERMISSIONS.PRODUCTO_CREAR), productoController.syncClientesBanarica);
 
 router.post(
