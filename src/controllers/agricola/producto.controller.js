@@ -38,6 +38,11 @@ export const productoController = {
     ApiResponse.send(res, { message: 'Combos activos de Logística obtenidos correctamente', data: resultado });
   }),
 
+  syncClientesBanarica: asyncHandler(async (req, res) => {
+    const resultado = await productoService.sincronizarClientesDesdeBanarica(req.user?.id);
+    ApiResponse.send(res, { message: 'Clientes de los productos traídos de Logística', data: resultado });
+  }),
+
   syncBanarica: asyncHandler(async (req, res) => {
     const resultado = await productoService.syncFromBanarica(req.user?.id, req.body.consecutivos);
     ApiResponse.send(res, { message: 'Sincronización con Logística completada', data: resultado });

@@ -68,6 +68,9 @@ router.get(
  *     responses:
  *       200: { description: OK }
  */
+// Trae de Logística el cliente de cada combo y lo asigna al producto (Maestros → Productos).
+router.post('/sync-clientes-banarica', auth, permission(PERMISSIONS.PRODUCTO_CREAR), productoController.syncClientesBanarica);
+
 router.post(
   '/sync-banarica',
   auth,

@@ -1,3 +1,4 @@
+import { Producto } from '../../database/associations.js';
 import { productoRepository } from '../../repositories/agricola/producto.repository.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
@@ -84,6 +85,48 @@ export const productoService = {
     }
 
     return combos.filter((c) => !c.isBlock);
+  },
+
+  // Clientes de Logística (id -> código, p. ej. "AFC"; si no tiene código, su razón social).
+  async fetchBanaricaClientes() {
+    const [baseUrl, apiKey] = await Promise.all([configuracionService.getBanaricaApiUrl(), configuracionService.getBanaricaApiKey()]);
+    try {
+      const response = await fetch(`${baseUrl.replace(/\/$/, '')}/api/v1/clientes/`, { headers: apiKey ? { api: apiKey } : {}, signal: AbortSignal.timeout(15000) });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const lista = await response.json();
+      return new Map((Array.isArray(lista) ? lista : []).map((c) => [Number(c.id), String(c.cod || c.razon_social || '').trim()]).filter(([, n]) => n));
+    } catch (error) {
+      logger.error('Error al consultar clientes de Logística', { message: error.message });
+      throw ApiError.internal('No se pudo consultar los clientes en el API de Logística');
+    }
+  },
+
+  // Trae de Logística el cliente de cada combo (combos.id_cliente) y lo deja en el producto de Corbana que le corresponde (por código =
+  // consecutivo, o por nombre). Solo cambia la lista de clientes; no toca pesos ni cajas.
+  async sincronizarClientesDesdeBanarica(actorId) {
+    const [combos, clientes] = await Promise.all([this.fetchActiveBanaricaCombos(), this.fetchBanaricaClientes()]);
+    let actualizados = 0;
+    let sinProducto = 0;
+    let sinCliente = 0;
+    for (const combo of combos) {
+      const cliente = clientes.get(Number(combo.id_cliente));
+      if (!cliente) {
+        sinCliente += 1;
+        continue;
+      }
+      const nombre = String(combo.nombre || '').trim();
+      const codigo = combo.consecutivo !== null && combo.consecutivo !== undefined ? String(combo.consecutivo) : null;
+      const producto = (codigo ? await Producto.findOne({ where: { codigo } }) : null) || (nombre ? await productoRepository.findByNombre(nombre) : null);
+      if (!producto) {
+        sinProducto += 1;
+        continue;
+      }
+      const actuales = producto.clientes || [];
+      if (actuales.length === 1 && actuales[0] === cliente) continue;
+      await productoRepository.update(producto, { clientes: [cliente], updatedBy: actorId });
+      actualizados += 1;
+    }
+    return { combos: combos.length, productosActualizados: actualizados, combosSinProductoEnCorbana: sinProducto, combosSinCliente: sinCliente };
   },
 
   // Vista previa: lista los combos activos de Logística indicando si cada
