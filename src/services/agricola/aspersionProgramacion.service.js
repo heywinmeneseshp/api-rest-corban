@@ -560,6 +560,13 @@ async function filaInsumoAdicional(extra, actorId, { transaction } = {}) {
   return { articuloId: articulo.id, unidadId, cantidadCalculada: Number(extra.cantidad), cantidad: Number(extra.cantidad), esAdicional: true, createdBy: actorId };
 }
 
+// Una finca ORGÁNICA no puede recibir una mezcla CONVENCIONAL.
+function assertMezclaParaFinca(mezcla, finca) {
+  if (finca?.tipoAgricultura === 'ORGANICA' && mezcla?.tipoAgricultura === 'CONVENCIONAL') {
+    throw ApiError.badRequest(`La finca ${finca.nombre} es orgánica: no se le puede programar la mezcla convencional «${mezcla.nombre || mezcla.codigo}»`);
+  }
+}
+
 export const aspersionProgramacionService = {
   async list(query, user) {
     const { page, limit, offset } = getPagination(query);
@@ -685,6 +692,7 @@ export const aspersionProgramacionService = {
     const almacen = await resolveAlmacen(payload.almacenUuid);
     assertAlmacenPermitido(user, almacen.id);
     const mezcla = await resolveMezclaConDosis(payload.mezclaUuid);
+    assertMezclaParaFinca(mezcla, finca);
 
     const hectareas = Number(payload.hectareas);
     const partes = validarPartes(payload.partes, hectareas, payload.fecha);
@@ -909,6 +917,12 @@ export const aspersionProgramacionService = {
     if (payload.mezclaUuid) {
       mezcla = await resolveMezclaConDosis(payload.mezclaUuid);
       data.mezclaId = mezcla.id;
+    }
+    // Finca orgánica: no se le programa una mezcla convencional (se revisa con la finca y la mezcla que quedarían).
+    if (payload.fincaUuid || payload.mezclaUuid) {
+      const fincaFinal = await Finca.findByPk(data.fincaId ?? aspersion.fincaId, { attributes: ['nombre', 'tipoAgricultura'] });
+      const mezclaFinal = mezcla || (await Mezcla.findByPk(aspersion.mezclaId, { attributes: ['nombre', 'tipoAgricultura'], paranoid: false }));
+      assertMezclaParaFinca(mezclaFinal, fincaFinal);
     }
 
     if (payload.fecha) {

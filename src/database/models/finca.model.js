@@ -19,6 +19,8 @@ Finca.init(
     // seguimiento de labores, racimos, precipitación, etc. Se excluyen de
     // esos selectores vía fincaRepository/finca.service `soloOperativas`.
     esExterna: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: 'es_externa' },
+    // ORGANICA | CONVENCIONAL: a una finca orgánica no se le programan mezclas convencionales.
+    tipoAgricultura: { type: DataTypes.STRING(15), allowNull: false, defaultValue: 'CONVENCIONAL', field: 'tipo_agricultura' },
     // false = no se puede tomar asistencia en esta finca (no sale en la app de marcación).
     permiteAsistencia: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true, field: 'permite_asistencia' },
     // Overrides de % aplicado por edad (8-12) en el estimado de corte de
