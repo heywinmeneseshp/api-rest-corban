@@ -21,6 +21,8 @@ MezclaComponente.init(
     // utils/ordenReceta.js).
     orden: { type: DataTypes.INTEGER, allowNull: true },
     esPrincipal: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: 'es_principal' },
+    // Insumo secundario (puede haber varios; nunca el principal): su información también sale en el comprobante de aspersión.
+    esSecundario: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: 'es_secundario' },
     // Dosis relativa: si se configura, la cantidad de este insumo es el
     // X% de la cantidad de OTRO artículo de la misma receta (ej. HIPOTENSOR
     // SYS = 1% del ACEITE BANOLE) — ver utils/dosisRelativa.js. La columna

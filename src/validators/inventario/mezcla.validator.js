@@ -21,6 +21,8 @@ const componenteSchema = Joi.object({
   // componente por versión debería venir en true (el service se encarga
   // de dejar solo uno).
   esPrincipal: Joi.boolean(),
+  // Insumos secundarios (varios por receta).
+  esSecundario: Joi.boolean(),
   // Dosis de referencia del renglón (manda sobre la del artículo; null =
   // usar la del artículo). Van juntas (ambas o ninguna).
   dosisPorHectarea: Joi.number().positive().allow(null),

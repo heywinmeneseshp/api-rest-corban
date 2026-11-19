@@ -114,6 +114,17 @@ async function mapaPrincipales(mezclaIds) {
   return new Map(versiones.map((v) => [v.mezclaId, v.componentes?.[0]?.articuloId ?? null]));
 }
 
+// articuloIds de los insumos SECUNDARIOS de la receta activa de cada mezcla.
+async function mapaSecundarios(mezclaIds) {
+  const ids = [...new Set(mezclaIds.filter(Boolean))];
+  if (!ids.length) return new Map();
+  const versiones = await MezclaVersion.findAll({
+    where: { mezclaId: ids, activa: true },
+    include: [{ model: MezclaComponente, as: 'componentes', where: { esSecundario: true }, required: false, attributes: ['articuloId'] }],
+  });
+  return new Map(versiones.map((v) => [v.mezclaId, new Set((v.componentes || []).map((c) => c.articuloId))]));
+}
+
 // El PDF del comprobante muestra solo los NOMBRES de los insumos (pedido explícito); el detalle en pantalla también muestra
 // las cantidades definitivas: `cantidad` (lo que se descontó del inventario al ejecutar).
 // `aspersion.componentes` no sale en la respuesta; solo `insumos`.
@@ -122,7 +133,7 @@ async function mapaPrincipales(mezclaIds) {
 // Día en hora de Bogotá.
 const diaBogota = (d) => new Date(new Date(d).getTime() - 5 * 3600 * 1000).toISOString().slice(0, 10);
 
-function aDto(comprobante, principalArticuloId, { puedeRegenerar = false } = {}) {
+function aDto(comprobante, principalArticuloId, { puedeRegenerar = false, secundarios = null } = {}) {
   const json = comprobante.toJSON();
   // Con varias partes, las cantidades son la suma de lo ejecutado en todas (por insumo y unidad).
   const partes = [...(json.partes || [])].sort((a, b) => (a.fecha === b.fecha ? a.id - b.id : a.fecha < b.fecha ? -1 : 1));
@@ -144,6 +155,7 @@ function aDto(comprobante, principalArticuloId, { puedeRegenerar = false } = {})
     nombre: c.articulo?.nombre || '—',
     codigo: c.articulo?.codigo || null,
     esPrincipal: principalArticuloId !== null && principalArticuloId !== undefined && c.articuloId === principalArticuloId,
+    esSecundario: Boolean(secundarios?.has(c.articuloId)) && !(principalArticuloId !== null && principalArticuloId !== undefined && c.articuloId === principalArticuloId),
     ingredientesActivos: (c.articulo?.ingredientesActivos || []).map((ia) => ia.nombre),
     // Dosis por hectárea configurada en el insumo (Inventarios → Artículos), no la de la mezcla.
     dosisPorHectarea: c.articulo?.dosisPorHectarea !== null && c.articulo?.dosisPorHectarea !== undefined ? Number(c.articulo.dosisPorHectarea) : null,
@@ -391,7 +403,8 @@ export const comprobanteAspersionService = {
       const vigente = await comprobanteAspersionRepository.activeForAspersion(comprobante.aspersionProgramacionId);
       puedeRegenerar = !vigente;
     }
-    const dto = aDto(comprobante, principales.get(comprobante.aspersion?.mezclaId) ?? null, { puedeRegenerar });
+    const secundarios = (await mapaSecundarios([comprobante.aspersion?.mezclaId])).get(comprobante.aspersion?.mezclaId) || null;
+    const dto = aDto(comprobante, principales.get(comprobante.aspersion?.mezclaId) ?? null, { puedeRegenerar, secundarios });
     // Ubicación de la finca (vereda, municipio y departamento) de los Datos ICA (Sanidad Vegetal → Informe ICA).
     try {
       const cfg = await configuracionRepository.findByClave('informe_ica_fincas');
