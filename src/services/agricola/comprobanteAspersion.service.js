@@ -440,6 +440,11 @@ export const comprobanteAspersionService = {
     if (payload.observaciones !== undefined) data.observaciones = payload.observaciones?.trim() || null;
     // Con dron, la aeronave se elige de los drones de Inventarios → Equipos.
     if (payload.aeronave !== undefined) data.aeronave = payload.aeronave?.trim() || null;
+    // Datos de la ejecución: solo se completan los que quedaron vacíos al ejecutar.
+    for (const k of ['galonesTotales', 'volumenAplicacionHa', 'velocidadViento', 'temperaturaInicial', 'temperaturaFinal', 'humedadRelativaFinal', 'horaInicio', 'horaFinal']) {
+      const actual = comprobante[k];
+      if (payload[k] !== undefined && payload[k] !== null && payload[k] !== '' && (actual === null || actual === undefined || actual === '')) data[k] = payload[k];
+    }
     // Datos del reporte operacional de fumigación.
     for (const k of ['tipoEquipo', 'alturaVuelo', 'personaAutoriza']) if (payload[k] !== undefined) data[k] = payload[k]?.trim() || null;
     for (const k of ['anchoDeposicion', 'concentracionIa', 'tiempoReentrada', 'tiempoCarencia']) if (payload[k] !== undefined) data[k] = payload[k] === null || payload[k] === '' ? null : Number(payload[k]);
