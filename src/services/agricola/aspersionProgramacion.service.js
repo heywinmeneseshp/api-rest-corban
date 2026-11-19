@@ -28,6 +28,7 @@ import { correosDePista } from './pista.service.js';
 import { mailService } from '../sistema/mail.service.js';
 import { configuracionService } from '../sistema/configuracion.service.js';
 import { ROLES } from '../../constants/roles.constants.js';
+import { PERMISSIONS } from '../../constants/permissions.constants.js';
 import { resolverDestinatarios } from '../../utils/resolverDestinatarios.js';
 import { assertAlmacenPermitido, getAlmacenIdsPermitidas } from '../../utils/almacenScope.js';
 import { parseBulkFile } from '../../utils/bulkFileParser.js';
@@ -1246,8 +1247,11 @@ export const aspersionProgramacionService = {
     if (!aspersion.componentes?.length) {
       throw ApiError.badRequest('Esta aspersión no tiene insumos guardados — vuelve a programarla');
     }
-    // Flujo: Programada → Revisada → Enviada → Ejecutada. Solo se ejecuta con el aviso ya enviado.
-    if (!aspersion.correoEnviadoEn) {
+    // Flujo: Programada → Revisada → Enviada → Ejecutada. Solo se ejecuta con el aviso ya enviado, salvo los roles con el permiso
+    // «ejecutar sin aviso» (p. ej. Director de Sanidad). El administrador siempre puede.
+    const sinAvisoPermitido =
+      (user?.roles || []).includes(ROLES.ADMINISTRADOR) || (user?.permissions || []).includes(PERMISSIONS.SANIDAD_ASPERSIONES_EJECUTAR_SIN_AVISO);
+    if (!aspersion.correoEnviadoEn && !sinAvisoPermitido) {
       throw ApiError.badRequest(
         aspersion.revisadoPorId
           ? 'Primero envía el aviso de esta aspersión; después se puede ejecutar'

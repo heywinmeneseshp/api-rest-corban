@@ -200,6 +200,7 @@ export const PERMISOS_CATALOGO = [
           especial('sanidad_vegetal.aspersiones.ejecutar', 'Ejecutar aspersión (descuenta del inventario)', { sensible: true }),
           especial('sanidad_vegetal.aspersiones.revertir', 'Revertir una ejecución: devuelve los insumos al inventario y anula el comprobante en borrador', { sensible: true }),
           especial('sanidad_vegetal.aspersiones.enviar_correo', 'Enviar el aviso de aspersión por correo'),
+          especial('sanidad_vegetal.aspersiones.ejecutar_sin_aviso', 'Ejecutar sin haber enviado el aviso por correo'),
           especial('sanidad_vegetal.aspersiones.revisar', 'Marcar aspersiones como revisadas (su firma va en el aviso)'),
         ],
       },
