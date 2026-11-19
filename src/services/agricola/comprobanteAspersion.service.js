@@ -352,6 +352,7 @@ export const comprobanteAspersionService = {
       fechaDesde: query.fechaDesde,
       fechaHasta: query.fechaHasta,
       almacenIdsPermitidos: getAlmacenIdsPermitidas(user),
+      eliminados: query.eliminados === true || query.eliminados === 'true',
     });
     const principales = await mapaPrincipales(rows.map((r) => r.aspersion?.mezcla?.id));
     // Un anulado se puede regenerar mientras su aspersión no tenga comprobante vigente.
@@ -649,6 +650,19 @@ export const comprobanteAspersionService = {
       await ComprobanteAspersion.destroy({ where: { id: comprobante.id }, transaction });
     });
     return { uuid: comprobante.uuid, numero: comprobante.numero };
+  },
+
+  // Restaura un comprobante eliminado (deshace el borrado lógico). No se permite si su aspersión ya tiene otro comprobante vigente.
+  async restaurar(uuid, actorId, user) {
+    const c = await ComprobanteAspersion.findOne({ where: { uuid }, paranoid: false, include: [{ model: AspersionProgramacion, as: 'aspersion', attributes: ['id', 'almacenId'] }] });
+    const permitidos = getAlmacenIdsPermitidas(user);
+    if (!c || (permitidos !== null && !permitidos.includes(c.aspersion?.almacenId))) throw ApiError.notFound('Comprobante de aspersión no encontrado');
+    if (!c.deletedAt) throw ApiError.badRequest('El comprobante no está eliminado');
+    const vigente = await ComprobanteAspersion.findOne({ where: { aspersionProgramacionId: c.aspersionProgramacionId, estado: { [Op.ne]: 'ANULADO' }, id: { [Op.ne]: c.id } }, attributes: ['numero'] });
+    if (vigente && c.estado !== 'ANULADO') throw ApiError.badRequest(`La aspersión ya tiene el comprobante ${vigente.numero} vigente: anúlalo o elimínalo antes de restaurar este`);
+    await c.restore();
+    await ComprobanteAspersion.update({ deletedBy: null, updatedBy: actorId }, { where: { id: c.id } });
+    return this.getByUuid(uuid, user);
   },
 
   // Crea un BORRADOR nuevo con los mismos datos de la aplicación del comprobante

@@ -20,6 +20,7 @@ export const listComprobanteAspersionSchema = Joi.object({
     search: Joi.string().allow('', null),
     fechaDesde: Joi.date().iso(),
     fechaHasta: Joi.date().iso(),
+    eliminados: Joi.boolean(),
   }),
 });
 

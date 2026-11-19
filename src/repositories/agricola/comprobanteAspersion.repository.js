@@ -74,8 +74,10 @@ const PARTICIPANTES_INCLUDE = {
 };
 
 export const comprobanteAspersionRepository = {
-  async findAndCountAll({ limit, offset, estado, fincaUuid, semanaUuid, search, fechaDesde, fechaHasta, almacenIdsPermitidos }) {
+  // `eliminados`: lista SOLO los comprobantes eliminados (borrado lógico), para restaurarlos.
+  async findAndCountAll({ limit, offset, estado, fincaUuid, semanaUuid, search, fechaDesde, fechaHasta, almacenIdsPermitidos, eliminados = false }) {
     const where = {};
+    if (eliminados) where.deletedAt = { [Op.ne]: null };
     if (estado) where.estado = estado;
     if (fechaDesde || fechaHasta) {
       where.ejecutadoEn = {};
@@ -110,7 +112,8 @@ export const comprobanteAspersionRepository = {
       where,
       limit,
       offset,
-      order: [['ejecutadoEn', 'DESC'], ['id', 'DESC']],
+      order: eliminados ? [['deletedAt', 'DESC'], ['id', 'DESC']] : [['ejecutadoEn', 'DESC'], ['id', 'DESC']],
+      ...(eliminados ? { paranoid: false } : {}),
       attributes: { exclude: ['kml', 'kmlGeometria'] },
       include: [aspersionInclude(aspersionWhere), ...USUARIOS_INCLUDE, { model: ComprobanteAspersionKml, as: 'kmls', attributes: ['uuid', 'nombre', 'subidoEn'] }],
       distinct: true,
