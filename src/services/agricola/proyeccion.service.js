@@ -817,6 +817,7 @@ const mapEscenario = (e, areas, productos) => ({
     codigo: x.producto?.codigo,
     nombre: x.producto?.nombre,
     pesoNeto: x.producto?.pesoNeto === null || x.producto?.pesoNeto === undefined ? null : Number(x.producto.pesoNeto),
+    clientes: x.producto?.clientes || [],
     // Cajas por contenedor: las propias del escenario si las hay, o las del catálogo (cajas por palet × palets por contenedor).
     cajasCatalogo: cajasDeContenedor(x.producto),
     cajasContenedor: x.cajasContenedor === null || x.cajasContenedor === undefined ? null : Number(x.cajasContenedor),
@@ -835,7 +836,7 @@ const cargarEscenario = async (uuid) => {
     where: { uuid },
     include: [
       { model: ProyeccionArea, as: 'areas', include: [{ model: Finca, as: 'finca', attributes: ['uuid', 'nombre'] }, { model: Semana, as: 'semana', attributes: ['uuid', 'codigo'] }] },
-      { model: ProyeccionProducto, as: 'productos', include: [{ model: Producto, as: 'producto', attributes: ['id', 'uuid', 'codigo', 'nombre', 'pesoNeto', 'cajasPorPalet', 'cantidadPalets', 'cajasPorMinipalet', 'cantidadMinipalets'] }] },
+      { model: ProyeccionProducto, as: 'productos', include: [{ model: Producto, as: 'producto', attributes: ['id', 'uuid', 'codigo', 'nombre', 'pesoNeto', 'cajasPorPalet', 'cantidadPalets', 'cajasPorMinipalet', 'cantidadMinipalets', 'clientes'] }] },
     ],
   });
   if (!e) throw ApiError.notFound('Escenario no encontrado');
@@ -846,7 +847,7 @@ const cargarEscenario = async (uuid) => {
 async function validarItemsProductos(items) {
   const uuids = items.map((x) => x.productoUuid);
   if (new Set(uuids).size !== uuids.length) throw ApiError.badRequest('Hay un producto repetido en el reparto');
-  const productos = uuids.length ? await Producto.findAll({ where: { uuid: { [Op.in]: uuids } }, attributes: ['id', 'uuid', 'nombre', 'pesoNeto', 'cajasPorPalet', 'cantidadPalets', 'cajasPorMinipalet', 'cantidadMinipalets'] }) : [];
+  const productos = uuids.length ? await Producto.findAll({ where: { uuid: { [Op.in]: uuids } }, attributes: ['id', 'uuid', 'nombre', 'pesoNeto', 'cajasPorPalet', 'cantidadPalets', 'cajasPorMinipalet', 'cantidadMinipalets', 'clientes'] }) : [];
   const porUuid = new Map(productos.map((x) => [x.uuid, x]));
   for (const it of items) {
     const prod = porUuid.get(it.productoUuid);
@@ -893,7 +894,7 @@ async function validarItemsProductos(items) {
 const CLAVE_PRODUCTOS_SEMANAL = 'pronostico_productos';
 async function mapearItemsProductos(items) {
   const uuids = items.map((x) => x.productoUuid);
-  const productos = uuids.length ? await Producto.findAll({ where: { uuid: { [Op.in]: uuids } }, attributes: ['id', 'uuid', 'codigo', 'nombre', 'pesoNeto', 'cajasPorPalet', 'cantidadPalets', 'cajasPorMinipalet', 'cantidadMinipalets'] }) : [];
+  const productos = uuids.length ? await Producto.findAll({ where: { uuid: { [Op.in]: uuids } }, attributes: ['id', 'uuid', 'codigo', 'nombre', 'pesoNeto', 'cajasPorPalet', 'cantidadPalets', 'cajasPorMinipalet', 'cantidadMinipalets', 'clientes'] }) : [];
   const porUuid = new Map(productos.map((x) => [x.uuid, x]));
   return items
     .filter((it) => porUuid.has(it.productoUuid))
@@ -906,6 +907,7 @@ async function mapearItemsProductos(items) {
         codigo: prod.codigo,
         nombre: prod.nombre,
         pesoNeto: prod.pesoNeto === null || prod.pesoNeto === undefined ? null : Number(prod.pesoNeto),
+        clientes: prod.clientes || [],
         cajasCatalogo: cajasDeContenedor(prod),
         cajasContenedor: propio,
         cajasPorContenedor: propio === null ? cajasDeContenedor(prod) : propio,
@@ -969,7 +971,7 @@ export const proyeccionService = {
     if (Array.isArray(items)) return { origen: 'propia', escenario: null, productos: await mapearItemsProductos(items) };
     const anioActual = Number(new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 4));
     const escenarios = await ProyeccionEscenario.findAll({
-      include: [{ model: ProyeccionProducto, as: 'productos', required: true, include: [{ model: Producto, as: 'producto', attributes: ['id', 'uuid', 'codigo', 'nombre', 'pesoNeto', 'cajasPorPalet', 'cantidadPalets', 'cajasPorMinipalet', 'cantidadMinipalets'] }] }],
+      include: [{ model: ProyeccionProducto, as: 'productos', required: true, include: [{ model: Producto, as: 'producto', attributes: ['id', 'uuid', 'codigo', 'nombre', 'pesoNeto', 'cajasPorPalet', 'cantidadPalets', 'cajasPorMinipalet', 'cantidadMinipalets', 'clientes'] }] }],
       order: [['updatedAt', 'DESC']],
     });
     const e = escenarios.find((x) => x.anio === anioActual) || escenarios[0];

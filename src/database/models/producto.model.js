@@ -21,6 +21,20 @@ Producto.init(
     cajasPorMinipalet: { type: DataTypes.INTEGER, allowNull: true, field: 'cajas_por_minipalet' },
     cantidadPalets: { type: DataTypes.INTEGER, allowNull: true, field: 'cantidad_palets' },
     cantidadMinipalets: { type: DataTypes.INTEGER, allowNull: true, field: 'cantidad_minipalets' },
+    // Clientes del producto (lista de nombres, como en Logística).
+    clientes: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      get() {
+        const v = this.getDataValue('clientes');
+        if (!v) return [];
+        try {
+          return Array.isArray(v) ? v : JSON.parse(v);
+        } catch {
+          return [];
+        }
+      },
+    },
     estado: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
     updatedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'updated_by' },

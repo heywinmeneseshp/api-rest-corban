@@ -30,6 +30,7 @@ export const productoService = {
       cajasPorMinipalet: payload.cajasPorMinipalet ?? null,
       cantidadPalets: payload.cantidadPalets ?? null,
       cantidadMinipalets: payload.cantidadMinipalets ?? null,
+      clientes: payload.clientes ? [...new Set(payload.clientes.map((c) => c.trim()).filter(Boolean))] : [],
       estado: payload.estado ?? true,
       createdBy: actorId,
     });
@@ -45,7 +46,9 @@ export const productoService = {
       }
     }
 
-    return productoRepository.update(producto, { ...payload, updatedBy: actorId });
+    const datos = { ...payload, updatedBy: actorId };
+    if (payload.clientes) datos.clientes = [...new Set(payload.clientes.map((c) => c.trim()).filter(Boolean))];
+    return productoRepository.update(producto, datos);
   },
 
   async deleteProducto(uuid, actorId) {

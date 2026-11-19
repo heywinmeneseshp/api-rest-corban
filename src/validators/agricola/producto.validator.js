@@ -27,6 +27,7 @@ const camposProducto = {
   cajasPorMinipalet: Joi.number().integer().min(0).allow(null),
   cantidadPalets: Joi.number().integer().min(0).allow(null),
   cantidadMinipalets: Joi.number().integer().min(0).allow(null),
+  clientes: Joi.array().items(Joi.string().trim().min(1).max(100)).max(20),
   estado: Joi.boolean(),
 };
 
