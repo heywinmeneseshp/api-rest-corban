@@ -560,6 +560,35 @@ async function filaInsumoAdicional(extra, actorId, { transaction } = {}) {
   return { articuloId: articulo.id, unidadId, cantidadCalculada: Number(extra.cantidad), cantidad: Number(extra.cantidad), esAdicional: true, createdBy: actorId };
 }
 
+// El insumo principal y los secundarios de la mezcla deben tener configuradas la concentración (g/L) y la dosis por hectárea
+// (Sanidad Vegetal → Insumos): salen en el comprobante de aspersión. Si falta alguna, no se programa y se dice cuál.
+async function assertInsumosConfigurados(mezcla) {
+  if (!mezcla?.id) return;
+  const version = await MezclaVersion.findOne({
+    where: { mezclaId: mezcla.id, activa: true },
+    include: [
+      {
+        model: MezclaComponente,
+        as: 'componentes',
+        required: false,
+        where: { [Op.or]: [{ esPrincipal: true }, { esSecundario: true }] },
+        include: [{ model: Articulo, as: 'articulo', attributes: ['nombre', 'concentracionIa', 'dosisPorHectarea'] }],
+      },
+    ],
+  });
+  const faltantes = (version?.componentes || [])
+    .map((c) => {
+      const falta = [];
+      if (c.articulo?.concentracionIa === null || c.articulo?.concentracionIa === undefined) falta.push('concentración (g/L)');
+      if (c.articulo?.dosisPorHectarea === null || c.articulo?.dosisPorHectarea === undefined) falta.push('dosis por hectárea');
+      return falta.length ? `${c.articulo?.nombre || 'Insumo'} (${c.esPrincipal ? 'principal' : 'secundario'}): falta ${falta.join(' y ')}` : null;
+    })
+    .filter(Boolean);
+  if (faltantes.length) {
+    throw ApiError.badRequest(`No se puede programar con la mezcla «${mezcla.nombre || mezcla.codigo}». Configura en Sanidad Vegetal → Insumos: ${faltantes.join('; ')}.`);
+  }
+}
+
 // Una finca ORGÁNICA no puede recibir una mezcla CONVENCIONAL.
 function assertMezclaParaFinca(mezcla, finca) {
   if (finca?.tipoAgricultura === 'ORGANICA' && mezcla?.tipoAgricultura === 'CONVENCIONAL') {
@@ -693,6 +722,7 @@ export const aspersionProgramacionService = {
     assertAlmacenPermitido(user, almacen.id);
     const mezcla = await resolveMezclaConDosis(payload.mezclaUuid);
     assertMezclaParaFinca(mezcla, finca);
+    await assertInsumosConfigurados(mezcla);
 
     const hectareas = Number(payload.hectareas);
     const partes = validarPartes(payload.partes, hectareas, payload.fecha);
@@ -917,6 +947,7 @@ export const aspersionProgramacionService = {
     if (payload.mezclaUuid) {
       mezcla = await resolveMezclaConDosis(payload.mezclaUuid);
       data.mezclaId = mezcla.id;
+      if (mezcla.id !== aspersion.mezclaId) await assertInsumosConfigurados(mezcla);
     }
     // Finca orgánica: no se le programa una mezcla convencional (se revisa con la finca y la mezcla que quedarían).
     if (payload.fincaUuid || payload.mezclaUuid) {
