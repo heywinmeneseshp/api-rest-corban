@@ -2,6 +2,8 @@ import { sequelize } from '../../database/connection.js';
 import { comprobanteAspersionRepository } from '../../repositories/agricola/comprobanteAspersion.repository.js';
 import { Op } from 'sequelize';
 import {
+  Equipo,
+  EquipoTipo,
   ComprobanteAspersionKml,
   ComprobanteAspersion,
   ComprobanteAspersionParticipante,
@@ -410,6 +412,8 @@ export const comprobanteAspersionService = {
     if (payload.medio !== undefined) data.medio = payload.medio || null;
     // Los datos de la ejecución (hectáreas, galones, aeronave, clima y horario) no se editan en el borrador.
     if (payload.observaciones !== undefined) data.observaciones = payload.observaciones?.trim() || null;
+    // Con dron, la aeronave se elige de los drones de Inventarios → Equipos.
+    if (payload.aeronave !== undefined) data.aeronave = payload.aeronave?.trim() || null;
     // Datos del reporte operacional de fumigación.
     for (const k of ['tipoEquipo', 'alturaVuelo', 'personaAutoriza']) if (payload[k] !== undefined) data[k] = payload[k]?.trim() || null;
     for (const k of ['anchoDeposicion', 'concentracionIa', 'tiempoReentrada', 'tiempoCarencia']) if (payload[k] !== undefined) data[k] = payload[k] === null || payload[k] === '' ? null : Number(payload[k]);
@@ -565,7 +569,14 @@ export const comprobanteAspersionService = {
       order: [['nombre', 'ASC'], ['apellido', 'ASC']],
     });
     const mapa = (c) => ({ uuid: c.uuid, nombre: nombreColaborador(c), cargo: c.cargo || null, documento: c.documento || null });
-    return { pilotos: activos.filter(esPilotoDeDron).map(mapa), asistentes: activos.map(mapa) };
+    // Drones de Inventarios → Equipos (tipo «Dron», no dados de baja): para elegir la aeronave del comprobante con dron.
+    const drones = await Equipo.findAll({
+      where: { estado: { [Op.ne]: 'DE_BAJA' } },
+      include: [{ model: EquipoTipo, as: 'tipo', where: { nombre: { [Op.like]: '%dron%' } }, attributes: [] }],
+      attributes: ['uuid', 'codigo', 'nombre'],
+      order: [['nombre', 'ASC']],
+    });
+    return { pilotos: activos.filter(esPilotoDeDron).map(mapa), asistentes: activos.map(mapa), drones: drones.map((d) => ({ uuid: d.uuid, codigo: d.codigo, nombre: d.nombre })) };
   },
 
   // Hectáreas asperjadas por colaborador: cada participante (piloto o asistente) suma las hectáreas aplicadas del comprobante.
