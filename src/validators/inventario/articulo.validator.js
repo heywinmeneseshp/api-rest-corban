@@ -3,7 +3,7 @@ import Joi from 'joi';
 export const createArticuloSchema = Joi.object({
   body: Joi.object({
     codigo: Joi.string().trim().max(20).allow(null, ''),
-    nombre: Joi.string().trim().max(150).required(),
+    nombre: Joi.string().trim().max(255).required(),
     descripcion: Joi.string().allow(null, '').max(1000),
     categoriaUuid: Joi.string().uuid().allow(null),
     unidadMedidaUuid: Joi.string().uuid().allow(null),
@@ -47,7 +47,7 @@ export const createArticuloSchema = Joi.object({
 export const updateArticuloSchema = Joi.object({
   body: Joi.object({
     codigo: Joi.string().trim().max(20).allow(null, ''),
-    nombre: Joi.string().trim().max(150),
+    nombre: Joi.string().trim().max(255),
     descripcion: Joi.string().allow(null, '').max(1000),
     categoriaUuid: Joi.string().uuid().allow(null),
     unidadMedidaUuid: Joi.string().uuid().allow(null),

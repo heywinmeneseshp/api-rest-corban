@@ -92,7 +92,7 @@ export const updateMezclaSchema = Joi.object({
     tipoAgricultura: Joi.string().valid('ORGANICA', 'CONVENCIONAL').allow(null),
     formulacion: Joi.string().valid('EMULSION', 'SOLUCION', 'SUSPENSION').allow(null),
     // Nombre interno del artículo elaborado (distinto al nombre comercial de la mezcla).
-    articuloNombre: Joi.string().trim().max(150),
+    articuloNombre: Joi.string().trim().max(255),
     descripcion: Joi.string().allow(null, '').max(1000),
     unidadRendimientoUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
     rendimiento: Joi.number().positive(),
@@ -303,7 +303,7 @@ export const crearDirectaSchema = Joi.object({
     tipoAgricultura: Joi.string().valid('ORGANICA', 'CONVENCIONAL').allow(null),
     formulacion: Joi.string().valid('EMULSION', 'SOLUCION', 'SUSPENSION').allow(null),
     // Nombre del artículo elaborado (interno). Opcional: sin él se nombra "Mezcla MEZ-000N".
-    articuloElaboradoNombre: Joi.string().trim().max(150).allow(null, ''),
+    articuloElaboradoNombre: Joi.string().trim().max(255).allow(null, ''),
     articuloCodigo: Joi.string().trim().max(50).allow(null, ''),
     articuloCategoriaUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
     articuloUnidadMedidaUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),

@@ -11,7 +11,7 @@ Articulo.init(
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     uuid: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, allowNull: false, unique: true },
     codigo: { type: DataTypes.STRING(20), allowNull: true },
-    nombre: { type: DataTypes.STRING(150), allowNull: false, unique: true },
+    nombre: { type: DataTypes.STRING(255), allowNull: false, unique: true },
     descripcion: { type: DataTypes.TEXT, allowNull: true },
     categoriaId: { type: DataTypes.INTEGER, allowNull: true, field: 'categoria_id' },
     unidadMedidaId: { type: DataTypes.INTEGER, allowNull: true, field: 'unidad_medida_id' },
