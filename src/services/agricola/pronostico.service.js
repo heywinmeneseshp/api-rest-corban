@@ -1521,6 +1521,21 @@ async function computeForecast(query, user, asOfDate = new Date()) {
 
   const seriesAnuales = Object.fromEntries(grupos.map((g) => [g.uuid ?? 'GLOBAL', serieAnualDe(g.idList)]));
 
+  // Participación de cada finca en las cajas reales de las últimas 8 semanas: con "Todas" la proyección no se separa por finca, y el reparto
+  // por producto la usa para estimar la fruta de cada finca (productos «toda la fruta de fincas»).
+  const participacionFincas = [];
+  if (esGlobal && hoyIdx >= 0) {
+    const ids = grupos[0].idList;
+    const porFinca = new Map(ids.map((fid) => [fid, 0]));
+    for (let i = Math.max(0, hoyIdx - 7); i <= hoyIdx; i++) for (const fid of ids) porFinca.set(fid, porFinca.get(fid) + cajas(fid, i));
+    const total = [...porFinca.values()].reduce((a, b) => a + b, 0);
+    if (total > 0) {
+      const info = new Map(fincas.map((f) => [f.id, f]));
+      for (const [fid, c] of porFinca) if (c > 0 && info.has(fid)) participacionFincas.push({ uuid: info.get(fid).uuid, nombre: info.get(fid).nombre, participacion: Math.round((c / total) * 1000000) / 1000000 });
+      participacionFincas.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+    }
+  }
+
   // Patrón de corte (como en Estimaciones): una fila por cada una de las últimas 5 SEMANAS LIQUIDADAS (las cintas se calcularon antes del
   // loop de grupos). Por cinta, el % de lo procesado que se cortó en cada edad y el aprovechamiento ((procesado + recusado) ÷ embolsado).
   const patronCorte = {};
@@ -1568,6 +1583,7 @@ async function computeForecast(query, user, asOfDate = new Date()) {
     seriesAnuales,
     patronCorte,
     estimacionPorFinca,
+    participacionFincas,
     meta: {
       simulacion: simulacion ? { fecha: query.simularDesde, semana: semanaInicio.codigo } : null,
       fincas: fincas.map((f) => ({ uuid: f.uuid, codigo: f.codigo, nombre: f.nombre })),
