@@ -2,6 +2,7 @@ import { sequelize } from '../../database/connection.js';
 import { comprobanteAspersionRepository } from '../../repositories/agricola/comprobanteAspersion.repository.js';
 import { Op } from 'sequelize';
 import {
+  ComprobanteAspersionKml,
   ComprobanteAspersion,
   ComprobanteAspersionParticipante,
   ComprobanteAspersionParte,
@@ -145,6 +146,13 @@ function aDto(comprobante, principalArticuloId, { puedeRegenerar = false } = {})
     unidad: c.unidad ? { nombre: c.unidad.nombre, simbolo: c.unidad.simbolo } : null,
   }));
   if (json.aspersion) delete json.aspersion.componentes;
+  // Recorridos (KML), en el orden en que se subieron. `kmlNombre` sigue indicando si tiene alguno (lo usan los avisos de «falta el KML»).
+  json.kmls = [...(json.kmls || [])]
+    .sort((a, b) => new Date(a.subidoEn) - new Date(b.subidoEn) || (a.id || 0) - (b.id || 0))
+    .map((k) => ({ uuid: k.uuid, nombre: k.nombre, subidoEn: k.subidoEn, ...(k.geometria !== undefined ? { geometria: k.geometria } : {}) }));
+  json.kmlNombre = json.kmls.length ? json.kmls.map((k) => k.nombre).join(', ') : null;
+  json.kmlSubidoEn = json.kmls.length ? json.kmls[json.kmls.length - 1].subidoEn : null;
+  delete json.kmlGeometria;
   json.puedeRegenerar = Boolean(puedeRegenerar);
   json.pilotoColaborador = json.pilotoColaborador ? { uuid: json.pilotoColaborador.uuid, nombre: nombreColaborador(json.pilotoColaborador) } : null;
   json.pilotoVisible = json.pilotoVisible ? { uuid: json.pilotoVisible.uuid, nombre: nombreColaborador(json.pilotoVisible) } : null;
@@ -408,7 +416,7 @@ export const comprobanteAspersionService = {
       throw ApiError.badRequest('Completa el piloto y las hectáreas aplicadas antes de emitir el comprobante');
     }
     // El recorrido (KML/KMZ) es obligatorio para aprobar: su mapa va en el PDF y el KMZ en el correo.
-    if (!comprobante.kmlNombre) {
+    if (!(comprobante.kmls || []).length) {
       throw ApiError.badRequest('Sube el recorrido (KML o KMZ) antes de aprobar el comprobante');
     }
     if (comprobante.medio === 'DRON' && !comprobante.pilotoColaboradorId) {
@@ -449,13 +457,17 @@ export const comprobanteAspersionService = {
     if (!limpia.lineas.length && !limpia.poligonos.length && !limpia.puntos.length) {
       throw ApiError.badRequest('El KML no tiene recorridos, polígonos ni puntos');
     }
-    await comprobanteAspersionRepository.update(comprobante, {
+    // Se AGREGA un recorrido más (el comprobante puede tener varios, uno por vuelo).
+    if ((comprobante.kmls || []).length >= 20) throw ApiError.badRequest('Un comprobante admite hasta 20 recorridos');
+    await ComprobanteAspersionKml.create({
+      comprobanteId: comprobante.id,
+      nombre: String(archivo.originalname || 'recorrido.kml').slice(0, 200),
       kml: texto,
-      kmlNombre: String(archivo.originalname || 'recorrido.kml').slice(0, 200),
-      kmlGeometria: limpia,
-      kmlSubidoEn: new Date(),
-      updatedBy: actorId,
+      geometria: limpia,
+      subidoEn: new Date(),
+      createdBy: actorId,
     });
+    await comprobanteAspersionRepository.update(comprobante, { updatedBy: actorId });
     // Notificación en la app móvil (sin esperar): se montó el recorrido del comprobante.
     pushService.enviarAPermiso(
       PERMISOS_PUSH.SANIDAD_COMPROBANTES_ASPERSION_NOTIFICAR,
@@ -469,10 +481,14 @@ export const comprobanteAspersionService = {
     return this.getByUuid(uuid, user);
   },
 
-  async quitarKml(uuid, actorId, user) {
+  // Quita un recorrido (`kmlUuid`) o, sin él, todos.
+  async quitarKml(uuid, actorId, user, kmlUuid = null) {
     const comprobante = await cargarOFallar(uuid, user);
     assertBorrador(comprobante);
-    await comprobanteAspersionRepository.update(comprobante, { kml: null, kmlNombre: null, kmlGeometria: null, kmlSubidoEn: null, updatedBy: actorId });
+    const where = { comprobanteId: comprobante.id, ...(kmlUuid ? { uuid: kmlUuid } : {}) };
+    const n = await ComprobanteAspersionKml.destroy({ where });
+    if (kmlUuid && !n) throw ApiError.notFound('Ese recorrido no está en el comprobante');
+    await comprobanteAspersionRepository.update(comprobante, { updatedBy: actorId });
     return this.getByUuid(uuid, user);
   },
 
@@ -502,11 +518,15 @@ export const comprobanteAspersionService = {
   },
 
   // Archivo KML original, para descargarlo.
-  async descargarKml(uuid, user) {
-    await cargarOFallar(uuid, user);
-    const c = await ComprobanteAspersion.findOne({ where: { uuid }, attributes: ['numero', 'kml', 'kmlNombre'] });
-    if (!c?.kml) throw ApiError.notFound('Este comprobante no tiene KML');
-    return { texto: c.kml, nombre: c.kmlNombre || `${c.numero}.kml` };
+  // Archivo KML original de un recorrido (`kmlUuid`) o, sin él, el primero que se subió.
+  async descargarKml(uuid, user, kmlUuid = null) {
+    const comprobante = await cargarOFallar(uuid, user);
+    const k = await ComprobanteAspersionKml.findOne({
+      where: { comprobanteId: comprobante.id, ...(kmlUuid ? { uuid: kmlUuid } : {}) },
+      order: [['subidoEn', 'ASC'], ['id', 'ASC']],
+    });
+    if (!k) throw ApiError.notFound('Este comprobante no tiene KML');
+    return { texto: k.kml, nombre: k.nombre || `${comprobante.numero}.kml` };
   },
 
   // Pilotos (colaboradores activos con cargo «Piloto de Dron») y asistentes (colaboradores activos) para elegir.
@@ -659,10 +679,15 @@ export const comprobanteAspersionService = {
 
       datos.pilotoColaboradorId = anulado.pilotoColaboradorId;
       datos.pilotoVisibleColaboradorId = anulado.pilotoVisibleColaboradorId;
-      // El recorrido (KML) también pasa al borrador nuevo.
-      const conKml = await ComprobanteAspersion.findByPk(anulado.id, { attributes: ['kml', 'kmlNombre', 'kmlGeometria', 'kmlSubidoEn'], transaction });
-      Object.assign(datos, { kml: conKml.kml, kmlNombre: conKml.kmlNombre, kmlGeometria: conKml.kmlGeometria, kmlSubidoEn: conKml.kmlSubidoEn });
       const creado = await comprobanteAspersionRepository.create(datos, { transaction });
+      // Los recorridos (KML) también pasan al borrador nuevo.
+      const kmls = await ComprobanteAspersionKml.findAll({ where: { comprobanteId: anulado.id }, transaction });
+      if (kmls.length) {
+        await ComprobanteAspersionKml.bulkCreate(
+          kmls.map((k) => ({ comprobanteId: creado.id, nombre: k.nombre, kml: k.kml, geometria: k.geometria, subidoEn: k.subidoEn, createdBy: actorId })),
+          { transaction },
+        );
+      }
       // El piloto y los asistentes pasan al borrador nuevo.
       const participantes = await ComprobanteAspersionParticipante.findAll({ where: { comprobanteId: anulado.id }, transaction });
       if (participantes.length) {

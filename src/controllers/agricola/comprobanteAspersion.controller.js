@@ -41,11 +41,11 @@ export const comprobanteAspersionController = {
   }),
 
   quitarKml: asyncHandler(async (req, res) => {
-    ApiResponse.send(res, { message: 'Recorrido (KML) quitado', data: await comprobanteAspersionService.quitarKml(req.params.uuid, req.user?.id, req.user) });
+    ApiResponse.send(res, { message: 'Recorrido (KML) quitado', data: await comprobanteAspersionService.quitarKml(req.params.uuid, req.user?.id, req.user, req.params.kmlUuid || null) });
   }),
 
   descargarKml: asyncHandler(async (req, res) => {
-    const { texto, nombre } = await comprobanteAspersionService.descargarKml(req.params.uuid, req.user);
+    const { texto, nombre } = await comprobanteAspersionService.descargarKml(req.params.uuid, req.user, req.params.kmlUuid || null);
     res.setHeader('Content-Type', 'application/vnd.google-earth.kml+xml; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${nombre.replace(/"/g, '')}"`);
     res.send(texto);

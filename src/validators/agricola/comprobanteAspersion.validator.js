@@ -66,3 +66,10 @@ export const reporteHectareasSchema = Joi.object({
     soloEmitidos: Joi.boolean(),
   }),
 });
+
+// Un recorrido (KML) puntual del comprobante.
+export const kmlComprobanteSchema = Joi.object({
+  body: Joi.object({}),
+  params: Joi.object({ uuid: uuidParam, kmlUuid: uuidParam }),
+  query: Joi.object({}),
+});

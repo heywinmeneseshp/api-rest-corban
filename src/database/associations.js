@@ -113,6 +113,7 @@ import { AspersionProgramacionComponente } from './models/aspersionProgramacionC
 import { ComprobanteAspersion } from './models/comprobanteAspersion.model.js';
 import { ComprobanteAspersionParticipante } from './models/comprobanteAspersionParticipante.model.js';
 import { ComprobanteAspersionParte } from './models/comprobanteAspersionParte.model.js';
+import { ComprobanteAspersionKml } from './models/comprobanteAspersionKml.model.js';
 import { AsistenciaAvisoJornada } from './models/asistenciaAvisoJornada.model.js';
 import { AsistenciaAvisoSuperior } from './models/asistenciaAvisoSuperior.model.js';
 import { AsistenciaNovedad } from './models/asistenciaNovedad.model.js';
@@ -859,6 +860,8 @@ export const setupAssociations = () => {
   ComprobanteAspersion.belongsTo(Colaborador, { foreignKey: 'pilotoVisibleColaboradorId', as: 'pilotoVisible' });
   ComprobanteAspersion.hasMany(ComprobanteAspersionParticipante, { foreignKey: 'comprobanteId', as: 'participantes' });
   ComprobanteAspersion.hasMany(ComprobanteAspersionParte, { foreignKey: 'comprobanteId', as: 'partes' });
+  ComprobanteAspersion.hasMany(ComprobanteAspersionKml, { foreignKey: 'comprobanteId', as: 'kmls' });
+  ComprobanteAspersionKml.belongsTo(ComprobanteAspersion, { foreignKey: 'comprobanteId', as: 'comprobante' });
   ComprobanteAspersionParte.belongsTo(AspersionProgramacion, { foreignKey: 'aspersionProgramacionId', as: 'aspersion' });
   ComprobanteAspersionParte.belongsTo(ComprobanteAspersion, { foreignKey: 'comprobanteId', as: 'comprobante' });
   AspersionCantidadAjuste.belongsTo(User, { foreignKey: 'usuarioId', as: 'usuario' });
@@ -993,6 +996,7 @@ export {
   ComprobanteAspersion,
   ComprobanteAspersionParticipante,
   ComprobanteAspersionParte,
+  ComprobanteAspersionKml,
   AspersionCantidadAjuste,
   AsistenciaAvisoJornada,
   AsistenciaAvisoSuperior,

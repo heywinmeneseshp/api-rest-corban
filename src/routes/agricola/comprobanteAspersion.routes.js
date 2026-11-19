@@ -9,6 +9,7 @@ import {
   anularComprobanteAspersionSchema,
   reporteHectareasSchema,
   getComprobanteAspersionSchema,
+  kmlComprobanteSchema,
   listComprobanteAspersionSchema,
   updateComprobanteAspersionSchema,
 } from '../../validators/agricola/comprobanteAspersion.validator.js';
@@ -37,6 +38,9 @@ router.put('/:uuid', auth, permission(PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION
 router.put('/:uuid/kml', auth, permission(PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_EDITAR), validate(getComprobanteAspersionSchema), uploadKmlComprobante, comprobanteAspersionController.subirKml);
 router.delete('/:uuid/kml', auth, permission(PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_EDITAR), validate(getComprobanteAspersionSchema), comprobanteAspersionController.quitarKml);
 router.get('/:uuid/kml', auth, permission(PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_VER), validate(getComprobanteAspersionSchema), comprobanteAspersionController.descargarKml);
+// Un recorrido puntual (el comprobante puede tener varios): descargarlo o quitarlo.
+router.get('/:uuid/kml/:kmlUuid', auth, permission(PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_VER), validate(kmlComprobanteSchema), comprobanteAspersionController.descargarKml);
+router.delete('/:uuid/kml/:kmlUuid', auth, permission(PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_EDITAR), validate(kmlComprobanteSchema), comprobanteAspersionController.quitarKml);
 // Enviar por correo el comprobante ya emitido (PDF con el mapa + KMZ del recorrido).
 router.post('/:uuid/correo', auth, permission(PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_EMITIR), validate(getComprobanteAspersionSchema), uploadCorreoComprobante, comprobanteAspersionController.enviarCorreo);
 router.post('/:uuid/emitir', auth, permission(PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_EMITIR), validate(getComprobanteAspersionSchema), comprobanteAspersionController.emitir);

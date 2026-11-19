@@ -14,6 +14,7 @@ import {
   Colaborador,
   ComprobanteAspersionParticipante,
   ComprobanteAspersionParte,
+  ComprobanteAspersionKml,
 } from '../../database/associations.js';
 
 const USUARIO_ATTRS = ['uuid', 'usuario', 'nombre', 'apellido', 'cargo'];
@@ -111,7 +112,7 @@ export const comprobanteAspersionRepository = {
       offset,
       order: [['ejecutadoEn', 'DESC'], ['id', 'DESC']],
       attributes: { exclude: ['kml', 'kmlGeometria'] },
-      include: [aspersionInclude(aspersionWhere), ...USUARIOS_INCLUDE],
+      include: [aspersionInclude(aspersionWhere), ...USUARIOS_INCLUDE, { model: ComprobanteAspersionKml, as: 'kmls', attributes: ['uuid', 'nombre', 'subidoEn'] }],
       distinct: true,
     });
   },
@@ -121,6 +122,8 @@ export const comprobanteAspersionRepository = {
       where: { uuid },
       attributes: { exclude: ['kml'] },
       include: [
+        // Recorridos (sin el archivo original, que se descarga aparte).
+        { model: ComprobanteAspersionKml, as: 'kmls', attributes: ['id', 'uuid', 'nombre', 'geometria', 'subidoEn'] },
         aspersionInclude(undefined, { conInsumos: true }),
         ...USUARIOS_INCLUDE,
         PARTICIPANTES_INCLUDE,
