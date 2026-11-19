@@ -52,7 +52,7 @@ const aspersionInclude = (aspersionWhere, { conInsumos = false } = {}) => ({
               {
                 model: Articulo,
                 as: 'articulo',
-                attributes: ['id', 'uuid', 'nombre', 'codigo', 'dosisPorHectarea'],
+                attributes: ['id', 'uuid', 'nombre', 'codigo', 'dosisPorHectarea', 'concentracionIa'],
                 // Ingrediente activo y dosis por hectárea configurada en el insumo (reporte operacional).
                 include: [
                   { model: IngredienteActivo, as: 'ingredientesActivos', attributes: ['nombre'], through: { attributes: [] }, required: false },

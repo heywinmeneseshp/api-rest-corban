@@ -143,6 +143,7 @@ export const articuloService = {
           stockMinimo: payload.stockMinimo ?? 0,
           stockMaximo: payload.stockMaximo ?? null,
           dosisPorHectarea: payload.dosisPorHectarea ?? null,
+          concentracionIa: payload.concentracionIa ?? null,
           dosisUnidadId,
           estado: payload.estado ?? true,
           createdBy: actorId,
