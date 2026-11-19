@@ -428,6 +428,7 @@ export const PERMISSIONS = {
   SANIDAD_COMPROBANTES_ASPERSION_NOTIFICAR: 'sanidad_vegetal.comprobantes_aspersion.notificar',
   SANIDAD_COMPROBANTES_ASPERSION_EMITIR: 'sanidad_vegetal.comprobantes_aspersion.emitir',
   SANIDAD_COMPROBANTES_ASPERSION_ANULAR: 'sanidad_vegetal.comprobantes_aspersion.anular',
+  SANIDAD_COMPROBANTES_ASPERSION_ELIMINAR: 'sanidad_vegetal.comprobantes_aspersion.eliminar',
 
   MENU_INVENTARIOS_PLANES: 'menu.inventarios.planes',
   MENU_INVENTARIOS_PROGRAMACIONES: 'menu.inventarios.programaciones',
@@ -740,6 +741,7 @@ export const PERMISSIONS_SEED = [
   { codigo: PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_NOTIFICAR, nombre: 'Recibir notificaciones en la app móvil de comprobantes de aspersión (nuevo comprobante y KML)' },
   { codigo: PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_EMITIR, nombre: 'Emitir comprobantes de aspersión' },
   { codigo: PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_ANULAR, nombre: 'Anular comprobantes de aspersión y regenerar el borrador' },
+  { codigo: PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_ELIMINAR, nombre: 'Eliminar comprobantes de aspersión (la aspersión queda ejecutada)' },
   { codigo: PERMISSIONS.MENU_INVENTARIOS_PLANES, nombre: 'Ver submenú Planes de Mantenimiento (Inventarios)' },
   { codigo: PERMISSIONS.MENU_INVENTARIOS_PROGRAMACIONES, nombre: 'Ver submenú Programaciones de Mantenimiento (Inventarios)' },
   { codigo: PERMISSIONS.MENU_INVENTARIOS_ORDENES, nombre: 'Ver submenú Órdenes de Mantenimiento (Inventarios)' },

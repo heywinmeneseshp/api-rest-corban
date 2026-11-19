@@ -59,6 +59,11 @@ export const comprobanteAspersionController = {
     ApiResponse.send(res, { message: 'Hectáreas asperjadas por colaborador', data: await comprobanteAspersionService.reporteHectareas(req.query, req.user) });
   }),
 
+  eliminar: asyncHandler(async (req, res) => {
+    const data = await comprobanteAspersionService.eliminar(req.params.uuid, req.user?.id, req.user);
+    ApiResponse.send(res, { message: `Comprobante ${data.numero} eliminado`, data });
+  }),
+
   anular: asyncHandler(async (req, res) => {
     const comprobante = await comprobanteAspersionService.anular(req.params.uuid, req.body, req.user?.id, req.user);
     ApiResponse.send(res, { message: 'Comprobante de aspersión anulado correctamente', data: comprobante });

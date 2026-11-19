@@ -40,6 +40,7 @@ router.get('/:uuid/kml', auth, permission(PERMISSIONS.SANIDAD_COMPROBANTES_ASPER
 // Enviar por correo el comprobante ya emitido (PDF con el mapa + KMZ del recorrido).
 router.post('/:uuid/correo', auth, permission(PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_EMITIR), validate(getComprobanteAspersionSchema), uploadCorreoComprobante, comprobanteAspersionController.enviarCorreo);
 router.post('/:uuid/emitir', auth, permission(PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_EMITIR), validate(getComprobanteAspersionSchema), comprobanteAspersionController.emitir);
+router.delete('/:uuid', auth, permission(PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_ELIMINAR), validate(getComprobanteAspersionSchema), comprobanteAspersionController.eliminar);
 router.post('/:uuid/anular', auth, permission(PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_ANULAR), validate(anularComprobanteAspersionSchema), comprobanteAspersionController.anular);
 router.post('/:uuid/regenerar', auth, permission(PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_ANULAR), validate(getComprobanteAspersionSchema), comprobanteAspersionController.regenerar);
 

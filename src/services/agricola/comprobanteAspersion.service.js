@@ -619,6 +619,18 @@ export const comprobanteAspersionService = {
     return this.getByUuid(uuid, user);
   },
 
+  // Elimina el comprobante (borrado lógico). La aspersión queda EJECUTADA y el inventario ya descontado no se devuelve;
+  // las partes pendientes que se iban a sumar a este comprobante quedan sin vincular.
+  async eliminar(uuid, actorId, user) {
+    const comprobante = await cargarOFallar(uuid, user);
+    await sequelize.transaction(async (transaction) => {
+      await AspersionProgramacion.update({ comprobanteParcialId: null }, { where: { comprobanteParcialId: comprobante.id }, transaction });
+      await ComprobanteAspersion.update({ deletedBy: actorId }, { where: { id: comprobante.id }, transaction });
+      await ComprobanteAspersion.destroy({ where: { id: comprobante.id }, transaction });
+    });
+    return { uuid: comprobante.uuid, numero: comprobante.numero };
+  },
+
   // Crea un BORRADOR nuevo con los mismos datos de la aplicación del comprobante
   // anulado. La aspersión no se vuelve a ejecutar ni se descuenta inventario:
   // solo se recupera el documento que el borrado anterior dejaba sin forma de

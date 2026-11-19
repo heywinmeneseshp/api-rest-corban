@@ -216,6 +216,9 @@ export const PERMISOS_CATALOGO = [
             'Anular comprobantes (queda el registro con el motivo) y regenerar el borrador',
             { sensible: true },
           ),
+          especial('sanidad_vegetal.comprobantes_aspersion.eliminar', 'Eliminar comprobantes (la aspersión queda ejecutada y el inventario descontado)', {
+            sensible: true,
+          }),
         ],
       },
       {
