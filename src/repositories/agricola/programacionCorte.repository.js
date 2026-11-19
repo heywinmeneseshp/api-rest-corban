@@ -4,7 +4,7 @@ import { sequelize } from '../../database/connection.js';
 
 const listIncludes = [
   { model: Finca, as: 'finca', attributes: ['id', 'uuid', 'codigo', 'nombre'] },
-  { model: Semana, as: 'semana', attributes: ['id', 'uuid', 'codigo', 'anio', 'numeroSemana'] },
+  { model: Semana, as: 'semana', attributes: ['id', 'uuid', 'codigo', 'anio', 'numeroSemana', 'fechaInicio'] },
   { model: Producto, as: 'producto', attributes: ['id', 'uuid', 'codigo', 'nombre', 'pesoNeto'] },
 ];
 
