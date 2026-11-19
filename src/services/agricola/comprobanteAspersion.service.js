@@ -143,6 +143,9 @@ function aDto(comprobante, principalArticuloId, { puedeRegenerar = false } = {})
     codigo: c.articulo?.codigo || null,
     esPrincipal: principalArticuloId !== null && principalArticuloId !== undefined && c.articuloId === principalArticuloId,
     ingredientesActivos: (c.articulo?.ingredientesActivos || []).map((ia) => ia.nombre),
+    // Dosis por hectárea configurada en el insumo (Inventarios → Artículos), no la de la mezcla.
+    dosisPorHectarea: c.articulo?.dosisPorHectarea != null ? Number(c.articulo.dosisPorHectarea) : null,
+    dosisUnidad: c.articulo?.dosisUnidad ? { nombre: c.articulo.dosisUnidad.nombre, simbolo: c.articulo.dosisUnidad.simbolo } : null,
     cantidad: c.cantidad !== null && c.cantidad !== undefined ? Number(c.cantidad) : null,
     esAdicional: Boolean(c.esAdicional),
     unidad: c.unidad ? { nombre: c.unidad.nombre, simbolo: c.unidad.simbolo } : null,
