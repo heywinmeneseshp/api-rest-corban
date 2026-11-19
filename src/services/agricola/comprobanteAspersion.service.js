@@ -17,6 +17,8 @@ import {
 import { claveCargo } from '../seguridad/cargo.service.js';
 import { mailService } from '../sistema/mail.service.js';
 import { ApiError } from '../../utils/ApiError.js';
+import { pushService } from '../sistema/push.service.js';
+import { PERMISSIONS as PERMISOS_PUSH } from '../../constants/permissions.constants.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { generarCorrelativo } from '../../utils/correlativo.js';
 import { resolverFactorConversion } from '../../utils/unidadConversion.js';
@@ -454,6 +456,16 @@ export const comprobanteAspersionService = {
       kmlSubidoEn: new Date(),
       updatedBy: actorId,
     });
+    // Notificación en la app móvil (sin esperar): se montó el recorrido del comprobante.
+    pushService.enviarAPermiso(
+      PERMISOS_PUSH.SANIDAD_COMPROBANTES_ASPERSION_NOTIFICAR,
+      {
+        titulo: `KML cargado en ${comprobante.numero}`,
+        cuerpo: `Se montó el recorrido del comprobante ${comprobante.numero}${comprobante.aspersion?.finca?.nombre ? ` (${comprobante.aspersion.finca.nombre})` : ''}.`,
+        data: { tipo: 'COMPROBANTE_ASPERSION_KML', comprobanteUuid: comprobante.uuid },
+      },
+      { fincaId: comprobante.aspersion?.fincaId ?? null, excluirUserId: actorId },
+    );
     return this.getByUuid(uuid, user);
   },
 

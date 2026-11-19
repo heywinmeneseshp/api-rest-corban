@@ -76,6 +76,7 @@ import resetDatosRoutes from './routes/sistema/resetDatos.routes.js';
 import setupRoutes from './routes/sistema/setup.routes.js';
 import backupRoutes from './routes/sistema/backup.routes.js';
 import cronRoutes from './routes/sistema/cron.routes.js';
+import pushRoutes from './routes/sistema/push.routes.js';
 import comunicadoRoutes from './routes/sistema/comunicado.routes.js';
 import inventarioRoutes from './routes/inventario/index.js';
 
@@ -191,6 +192,7 @@ router.use('/ingredientes-activos', ingredienteActivoRoutes);
 router.use('/frac-limites', fracLimiteRoutes);
 
 router.use('/configuraciones', configuracionRoutes);
+router.use('/push', pushRoutes);
 router.use('/comunicados', comunicadoRoutes);
 router.use('/sistema', resetDatosRoutes);
 router.use('/sistema', setupRoutes);

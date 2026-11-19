@@ -210,6 +210,7 @@ export const PERMISOS_CATALOGO = [
         filas: [crud('sanidad_vegetal.comprobantes_aspersion', ['ver', 'editar'])],
         especiales: [
           especial('sanidad_vegetal.comprobantes_aspersion.emitir', 'Emitir comprobantes'),
+          especial('sanidad_vegetal.comprobantes_aspersion.notificar', 'Recibir notificaciones en la app móvil (nuevo comprobante y KML)'),
           especial(
             'sanidad_vegetal.comprobantes_aspersion.anular',
             'Anular comprobantes (queda el registro con el motivo) y regenerar el borrador',

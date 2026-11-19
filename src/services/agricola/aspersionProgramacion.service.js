@@ -29,6 +29,7 @@ import { mailService } from '../sistema/mail.service.js';
 import { configuracionService } from '../sistema/configuracion.service.js';
 import { ROLES } from '../../constants/roles.constants.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
+import { pushService } from '../sistema/push.service.js';
 import { resolverDestinatarios } from '../../utils/resolverDestinatarios.js';
 import { assertAlmacenPermitido, getAlmacenIdsPermitidas } from '../../utils/almacenScope.js';
 import { parseBulkFile } from '../../utils/bulkFileParser.js';
@@ -1260,7 +1261,7 @@ export const aspersionProgramacionService = {
     }
 
     try {
-      return await sequelize.transaction(async (t) => {
+      const resultado = await sequelize.transaction(async (t) => {
         let fresh = await aspersionProgramacionRepository.findByUuid(uuid, { transaction: t });
         if (fresh.estado !== 'PROGRAMADA') throw ApiError.conflict('Esta aspersión ya fue procesada');
 
@@ -1423,6 +1424,20 @@ export const aspersionProgramacionService = {
           parteRestante: parteRestante ? { uuid: parteRestante.uuid, numero: parteRestante.numero, fecha: parteRestante.fecha, hectareas: Number(parteRestante.hectareas) } : null,
         };
       });
+      // Notificación en la app móvil (sin esperar): nuevo comprobante de aspersión.
+      if (resultado?.comprobante) {
+        const a = resultado.aspersion;
+        pushService.enviarAPermiso(
+          PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_NOTIFICAR,
+          {
+            titulo: `Nuevo comprobante ${resultado.comprobante.numero}`,
+            cuerpo: `Se ejecutó la aspersión ${a?.numero || ''} en ${a?.finca?.nombre || 'la finca'}${a?.hectareas ? ` (${Number(a.hectareas)} ha)` : ''}.`,
+            data: { tipo: 'COMPROBANTE_ASPERSION', comprobanteUuid: resultado.comprobante.uuid },
+          },
+          { fincaId: a?.fincaId ?? null, excluirUserId: actorId },
+        );
+      }
+      return resultado;
     } catch (err) {
       if (err instanceof RequiereConfirmacionStockError) {
         return { requiereConfirmacion: true, advertencias: err.advertencias, aspersion: null };
