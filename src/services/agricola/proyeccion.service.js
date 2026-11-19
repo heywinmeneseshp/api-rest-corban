@@ -697,6 +697,21 @@ const cajasDeContenedor = (p) => Number(p?.cajasPorPalet || 0) * Number(p?.canti
 //   Modos por producto: CONTENEDORES (N contenedores por semana, con prioridad), PORCENTAJE (% de los kilos totales) y RESTO (lo que sobra).
 //   Cajas por contenedor = cajas por palet × palets por contenedor del producto. Si los kilos de la semana no alcanzan para los
 //   contenedores y porcentajes, se asigna en ese orden hasta agotarlos y la semana queda marcada como `faltante`.
+// Contenedores del modo MANUAL: { "<numeroSemana>": contenedores } (acepta el JSON como texto); solo valores > 0.
+export function leerSemanasManual(v) {
+  let o = v;
+  if (typeof o === 'string') {
+    try {
+      o = JSON.parse(o);
+    } catch {
+      o = null;
+    }
+  }
+  const out = {};
+  if (o && typeof o === 'object') for (const [k, n] of Object.entries(o)) if (Number(n) > 0 && Number(k) >= 1 && Number(k) <= 53) out[String(Number(k))] = Number(n);
+  return out;
+}
+
 // Un producto por contenedores aplica solo en las semanas que le tocan: cada N semanas desde la semana `desdeSemana` (N = 2: una sí y otra no).
 export const aplicaEnSemana = (p, numeroSemana) => {
   const cada = Math.max(1, Number(p.cadaSemanas || 1));
@@ -731,6 +746,7 @@ export function repartirKilos(kg, lista, numeroSemana, kgPorFinca = {}) {
     cajas[p.uuid] = p.pesoNeto > 0 ? kgReal / p.pesoNeto : null;
   };
   for (const p of lista.filter((x) => x.modo === 'CONTENEDORES')) asignar(p, aplicaEnSemana(p, numeroSemana) ? Number(p.contenedores || 0) * Number(p.cajasPorContenedor || 0) * p.pesoNeto : 0);
+  for (const p of lista.filter((x) => x.modo === 'MANUAL')) asignar(p, Number(p.semanasManual?.[String(Number(numeroSemana))] || 0) * Number(p.cajasPorContenedor || 0) * p.pesoNeto);
   for (const p of lista.filter((x) => x.modo === 'PORCENTAJE')) asignar(p, (kg * Number(p.porcentaje || 0)) / 100);
   const resto = lista.find((x) => x.modo === 'RESTO');
   if (resto) {
@@ -756,6 +772,7 @@ export function repartoPorProducto(res, productos, tasa) {
     cadaSemanas: Number(p.cadaSemanas || 1),
     desdeSemana: Number(p.desdeSemana || 1),
     fincaUuids: p.fincaUuids || [],
+    semanasManual: p.modo === 'MANUAL' ? leerSemanasManual(p.semanasManual) : {},
   }));
   // Kilos por semana y finca (para los productos FINCA).
   const kgFinca = new Map();
@@ -828,6 +845,7 @@ const mapEscenario = (e, areas, productos) => ({
     porcentaje: x.porcentaje === null || x.porcentaje === undefined ? null : Number(x.porcentaje),
     contenedores: x.contenedores === null || x.contenedores === undefined ? null : Number(x.contenedores),
     fincaUuids: x.modo === 'FINCA' ? leerFincas(x.fincas) : [],
+    semanasManual: x.modo === 'MANUAL' ? leerSemanasManual(x.semanasManual) : {},
   })),
 });
 
@@ -855,6 +873,10 @@ async function validarItemsProductos(items) {
     if (!(Number(prod.pesoNeto) > 0)) throw ApiError.badRequest(`El producto "${prod.nombre}" no tiene peso neto: configúralo en Maestros → Productos`);
     const modo = it.modo || 'PORCENTAJE';
     if (modo === 'PORCENTAJE' && !(Number(it.porcentaje) > 0)) throw ApiError.badRequest(`Escribe el % de los kilos de "${prod.nombre}"`);
+    if (modo === 'MANUAL') {
+      if (!Object.keys(leerSemanasManual(it.semanasManual)).length) throw ApiError.badRequest(`Escribe los contenedores de al menos una semana de "${prod.nombre}"`);
+      if (!(Number(it.cajasContenedor) > 0) && !(cajasDeContenedor(prod) > 0)) throw ApiError.badRequest(`El producto "${prod.nombre}" no tiene cajas por palet y palets por contenedor: configúralos en Maestros → Productos o escribe las cajas por contenedor`);
+    }
     if (modo === 'CONTENEDORES') {
       if (!(Number(it.contenedores) > 0)) throw ApiError.badRequest(`Escribe cuántos contenedores por semana de "${prod.nombre}"`);
       if (!(Number(it.cajasContenedor) > 0) && !(cajasDeContenedor(prod) > 0)) throw ApiError.badRequest(`El producto "${prod.nombre}" no tiene cajas por palet y palets por contenedor: configúralos en Maestros → Productos o escribe las cajas por contenedor`);
@@ -881,7 +903,7 @@ async function validarItemsProductos(items) {
   const hayResto = modos.includes('RESTO');
   if (modos.length > 0 && !hayResto) {
     // Sin «resto» todo el reparto debe ser por porcentaje y sumar 100.
-    if (modos.includes('CONTENEDORES')) throw ApiError.badRequest('Con contenedores fijos agrega un producto «resto» para lo que sobre');
+    if (modos.includes('CONTENEDORES') || modos.includes('MANUAL')) throw ApiError.badRequest('Con contenedores fijos o manuales agrega un producto «resto» para lo que sobre');
     if (fincasUsadas.size) throw ApiError.badRequest('Con fincas dedicadas a un producto agrega un producto «resto» para la fruta de las demás fincas');
     if (Math.abs(suma - 100) > 0.01) throw ApiError.badRequest(`Los porcentajes deben sumar 100 % (suman ${r2b(suma)} %)`);
   }
@@ -917,6 +939,7 @@ async function mapearItemsProductos(items) {
         porcentaje: it.porcentaje === null || it.porcentaje === undefined || it.porcentaje === '' ? null : Number(it.porcentaje),
         contenedores: it.contenedores === null || it.contenedores === undefined || it.contenedores === '' ? null : Number(it.contenedores),
         fincaUuids: modo === 'FINCA' ? it.fincaUuids || [] : [],
+        semanasManual: modo === 'MANUAL' ? leerSemanasManual(it.semanasManual) : {},
       };
     });
 }
@@ -990,6 +1013,7 @@ export const proyeccionService = {
       cadaSemanas: it.cadaSemanas || 1,
       desdeSemana: it.desdeSemana || 1,
       fincaUuids: it.modo === 'FINCA' ? it.fincaUuids || [] : [],
+      semanasManual: it.modo === 'MANUAL' ? leerSemanasManual(it.semanasManual) : null,
     }));
     await configuracionRepository.upsert(CLAVE_PRODUCTOS_SEMANAL, JSON.stringify(limpios), actorId);
     return this.productosSemanal();
@@ -1185,8 +1209,8 @@ export const proyeccionService = {
         await ProyeccionProducto.bulkCreate(
           items.map((it, orden) => {
             const modo = it.modo || 'PORCENTAJE';
-            const conContenedor = modo === 'CONTENEDORES' || modo === 'FINCA';
-            return { escenarioId: e.id, productoId: porUuid.get(it.productoUuid).id, modo, porcentaje: modo === 'PORCENTAJE' ? it.porcentaje : null, contenedores: modo === 'CONTENEDORES' ? it.contenedores : null, cajasContenedor: conContenedor ? it.cajasContenedor ?? null : null, cadaSemanas: modo === 'CONTENEDORES' ? it.cadaSemanas || 1 : 1, desdeSemana: modo === 'CONTENEDORES' ? it.desdeSemana || 1 : 1, fincas: modo === 'FINCA' ? it.fincaUuids : null, orden, createdBy: actorId };
+            const conContenedor = modo === 'CONTENEDORES' || modo === 'FINCA' || modo === 'MANUAL';
+            return { escenarioId: e.id, productoId: porUuid.get(it.productoUuid).id, modo, porcentaje: modo === 'PORCENTAJE' ? it.porcentaje : null, contenedores: modo === 'CONTENEDORES' ? it.contenedores : null, cajasContenedor: conContenedor ? it.cajasContenedor ?? null : null, cadaSemanas: modo === 'CONTENEDORES' ? it.cadaSemanas || 1 : 1, desdeSemana: modo === 'CONTENEDORES' ? it.desdeSemana || 1 : 1, fincas: modo === 'FINCA' ? it.fincaUuids : null, semanasManual: modo === 'MANUAL' ? leerSemanasManual(it.semanasManual) : null, orden, createdBy: actorId };
           }),
           { transaction },
         );
@@ -1225,7 +1249,9 @@ export const proyeccionService = {
     const detalleProducto = (p) =>
       p.modo === 'CONTENEDORES'
         ? `${p.contenedores} cont.${p.cadaSemanas > 1 ? ` cada ${p.cadaSemanas} sem. desde S${p.desdeSemana}` : '/sem.'}`
-        : p.modo === 'RESTO'
+        : p.modo === 'MANUAL'
+          ? `manual: ${Object.entries(p.semanasManual || {}).map(([s, n]) => `S${s}: ${n}`).join(', ')}`
+          : p.modo === 'RESTO'
           ? 'resto'
           : p.modo === 'FINCA'
             ? `fincas: ${p.fincaUuids.map((u) => nombreFinca.get(u) || '?').join(', ')}`

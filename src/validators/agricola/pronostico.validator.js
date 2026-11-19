@@ -52,13 +52,15 @@ export const guardarProductosSemanalSchema = Joi.object({
       .items(
         Joi.object({
           productoUuid: Joi.string().guid({ version: 'uuidv4' }).required(),
-          modo: Joi.string().valid('PORCENTAJE', 'RESTO', 'CONTENEDORES', 'FINCA').default('PORCENTAJE'),
+          modo: Joi.string().valid('PORCENTAJE', 'RESTO', 'CONTENEDORES', 'FINCA', 'MANUAL').default('PORCENTAJE'),
           porcentaje: Joi.number().min(0).max(100).allow(null),
           contenedores: Joi.number().min(0).allow(null),
           cajasContenedor: Joi.number().min(0).allow(null),
           cadaSemanas: Joi.number().integer().min(1).max(52).default(1),
           desdeSemana: Joi.number().integer().min(1).max(53).default(1),
           fincaUuids: Joi.array().items(Joi.string().guid({ version: 'uuidv4' })).default([]),
+
+          semanasManual: Joi.object().pattern(Joi.string().pattern(/^\d{1,2}$/), Joi.number().min(0).max(1000)).allow(null),
         }),
       )
       .max(50)

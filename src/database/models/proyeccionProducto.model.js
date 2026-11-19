@@ -11,7 +11,8 @@ ProyeccionProducto.init(
     escenarioId: { type: DataTypes.INTEGER, allowNull: false, field: 'escenario_id' },
     productoId: { type: DataTypes.INTEGER, allowNull: false, field: 'producto_id' },
     // PORCENTAJE (% de los kilos) | CONTENEDORES (N contenedores por semana) | RESTO (lo que sobra) |
-    // FINCA (la fruta de las fincas de `fincas`, en contenedores completos; lo que sobra va al reparto general)
+    // FINCA (la fruta de las fincas de `fincas`, en contenedores completos; lo que sobra va al reparto general) |
+    // MANUAL (contenedores escritos a mano para cada semana, en `semanasManual`)
     modo: { type: DataTypes.STRING(15), allowNull: false, defaultValue: 'PORCENTAJE' },
     porcentaje: { type: DataTypes.DECIMAL(5, 2), allowNull: true },
     contenedores: { type: DataTypes.DECIMAL(8, 2), allowNull: true },
@@ -22,6 +23,8 @@ ProyeccionProducto.init(
     desdeSemana: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1, field: 'desde_semana' },
     // Solo modo FINCA: uuids de las fincas cuya fruta va a este producto.
     fincas: { type: DataTypes.JSON, allowNull: true },
+    // Solo modo MANUAL: contenedores de cada semana del año, { "<numeroSemana>": contenedores } (semanas sin valor = 0).
+    semanasManual: { type: DataTypes.JSON, allowNull: true, field: 'semanas_manual' },
     // Posición del producto en la tabla (0 = primero).
     orden: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
