@@ -35,6 +35,7 @@ export const PARAMS_POR_DEFECTO = {
   pctNoCosechadoPorFinca: {}, // { fincaUuid: pct } (tiene prioridad sobre el global)
   ratioManual: {}, // { fincaUuid: { codigoSemana: ratio } } ratio (cajas por racimo) fijado a mano en semanas proyectadas
   embPorHaManual: {}, // { fincaUuid: { codigoSemana: embolses por ha } } fijado a mano en semanas proyectadas o con el embolse incompleto
+  fincasPromedioGlobal: [], // fincaUuids que proyectan con los promedios globales (embolse/ha, ratio y tasas) por tener históricos errados
 };
 
 const r2 = (n) => Math.round(n * 100) / 100;
@@ -105,6 +106,7 @@ export function normalizarParams(params = {}) {
     pctNoCosechadoPorFinca: porFinca,
     ratioManual,
     embPorHaManual,
+    fincasPromedioGlobal: Array.isArray(params.fincasPromedioGlobal) ? [...new Set(params.fincasPromedioGlobal.filter((u) => typeof u === 'string'))] : [],
   };
 }
 
@@ -366,8 +368,11 @@ export async function calcularProyeccion({ anio, params, areas }, user, { fincaU
       }
     }
     if (todos.length === 0) fincasSinHistorial.push(f.nombre);
+    // Finca marcada «usar promedios globales» (históricos errados): embolse/ha, ratio y tasas de todas las fincas.
+    const promedioGlobal = p.fincasPromedioGlobal.includes(f.uuid);
     // Si la finca no tiene historial de esa semana del año (o ninguno), usa el histórico global de las fincas con registros.
     const statSemana = (w) => {
+      if (promedioGlobal) return statGlobalSemana(w) || statGlobal;
       const vals = [];
       for (const [k, arr] of porSemanaAnio) if (distanciaSemana(k, w) <= TOLERANCIA_SEMANA) vals.push(...arr);
       return estadisticas(vals) || statGlobalSemana(w) || statGlobal;
@@ -375,6 +380,7 @@ export async function calcularProyeccion({ anio, params, areas }, user, { fincaU
 
     // Ratio cajas/racimo por semana del año.
     const ratioSemana = (w) => {
+      if (promedioGlobal) return ratioGlobalSemana(w) ?? ratioGlobal;
       let c = 0;
       let k = 0;
       for (let i = 0; i < semanas.length; i++) {
@@ -386,7 +392,7 @@ export async function calcularProyeccion({ anio, params, areas }, user, { fincaU
 
     // Tasas por edad (propias si hay cohortes suficientes; si no, las globales) y override de % no cosechado.
     const propias = calcularTasas([id], { emb, cohortes, hoyIdx });
-    const usaGlobal = propias.cohortesCerradas < MIN_COHORTES_FINCA;
+    const usaGlobal = promedioGlobal || propias.cohortesCerradas < MIN_COHORTES_FINCA;
     const base = usaGlobal ? tasasGlobal : propias;
     const aprovechamientoHistorico = base.suma;
     const pctOverride = p.pctNoCosechadoPorFinca[f.uuid] ?? p.pctNoCosechado;

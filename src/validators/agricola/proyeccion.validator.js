@@ -15,6 +15,8 @@ const paramsSchema = Joi.object({
   ratioManual: Joi.object().pattern(uuid, Joi.object().pattern(Joi.string().max(20), Joi.number().min(0.0001).max(5).allow(null, ''))),
   // Embolses por hectárea fijados a mano: { fincaUuid: { 'S46-2026': 150 } } para semanas proyectadas o con el embolse aún incompleto.
   embPorHaManual: Joi.object().pattern(uuid, Joi.object().pattern(Joi.string().max(20), Joi.number().min(0.1).max(5000).allow(null, ''))),
+  // Fincas que proyectan con los promedios globales (sus históricos están errados).
+  fincasPromedioGlobal: Joi.array().items(uuid).max(200),
 });
 
 const vacio = { body: Joi.object({}), params: Joi.object({}), query: Joi.object({}) };
