@@ -33,6 +33,8 @@ router.get(
   comprobanteAspersionController.reporteHectareas,
 );
 router.get('/:uuid', auth, permission(PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_VER), validate(getComprobanteAspersionSchema), comprobanteAspersionController.getByUuid);
+// PDF del comprobante generado en el servidor (para la app móvil; la web lo arma en el navegador, con los mapas).
+router.get('/:uuid/pdf', auth, permission(PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_VER), validate(getComprobanteAspersionSchema), comprobanteAspersionController.pdf);
 router.put('/:uuid', auth, permission(PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_EDITAR), validate(updateComprobanteAspersionSchema), comprobanteAspersionController.update);
 // Recorrido (KML) del borrador: subir, quitar y descargar el original.
 router.put('/:uuid/kml', auth, permission(PERMISSIONS.SANIDAD_COMPROBANTES_ASPERSION_EDITAR), validate(getComprobanteAspersionSchema), uploadKmlComprobante, comprobanteAspersionController.subirKml);

@@ -69,6 +69,15 @@ export const comprobanteAspersionController = {
     ApiResponse.send(res, { message: `Comprobante ${data.numero} eliminado`, data });
   }),
 
+  pdf: asyncHandler(async (req, res) => {
+    const { generarComprobanteAspersionPdf } = await import('../../utils/comprobanteAspersionPdf.js');
+    const c = await comprobanteAspersionService.getByUuid(req.params.uuid, req.user);
+    const buffer = Buffer.from(generarComprobanteAspersionPdf(c).output('arraybuffer'));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="Comprobante-Aspersion-${c.numero}.pdf"`);
+    res.send(buffer);
+  }),
+
   anular: asyncHandler(async (req, res) => {
     const comprobante = await comprobanteAspersionService.anular(req.params.uuid, req.body, req.user?.id, req.user);
     ApiResponse.send(res, { message: 'Comprobante de aspersión anulado correctamente', data: comprobante });
