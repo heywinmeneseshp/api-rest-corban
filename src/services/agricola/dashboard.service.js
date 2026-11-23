@@ -514,6 +514,15 @@ export const dashboardService = {
     });
     const fincaRepicadosMap = new Map(fincasRepicados.map((r) => [r.fincaId, Number(r.total)]));
 
+    // Embolses de la semana (racimos embolsados con cinta de esa semana).
+    const fincasEmbolsados = await RacimoMovimiento.findAll({
+      where: { tipo: 'EMBOLSE', semanaEmbolseId: ultimaSemana.id, ...fwScope },
+      attributes: ['fincaId', [fn('SUM', col('cantidad')), 'total']],
+      group: ['fincaId'],
+      raw: true,
+    });
+    const fincaEmbolsadosMap = new Map(fincasEmbolsados.map((r) => [r.fincaId, Number(r.total)]));
+
     // Solo para el `ratio` de fincasActivas de abajo (8-12 semanas) — NO se
     // usa para `recusados`/`procesados`/`aprovechamientoPct`, que siguen
     // usando los mapas de arriba sin filtrar por edad.
@@ -637,6 +646,7 @@ export const dashboardService = {
         esExterna: !!f.esExterna,
         seleccionada: fincaIds.length === 0 || fincaIds.includes(f.id),
         cajas: cajasFinca,
+        embolsados: fincaEmbolsadosMap.get(f.id) || 0,
         repicados: fincaRepicadosMap.get(f.id) || 0,
         recusados,
         procesados,
