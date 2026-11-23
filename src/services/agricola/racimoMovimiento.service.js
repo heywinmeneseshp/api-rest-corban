@@ -320,10 +320,17 @@ export const racimoMovimientoService = {
     const semana = await findSemanaByUuidOrFail(query.semanaUuid);
     const tipo = query.tipo;
 
+    // Opcional: una sola finca (con su grupo, como en los demás listados).
+    let fincaIds = getFincaIdsPermitidas(user);
+    if (query.fincaUuid) {
+      const finca = await findFincaByUuidOrFail(query.fincaUuid);
+      assertFincaPermitida(user, finca.id);
+      fincaIds = await expandirFincaIds([finca.id]);
+    }
     const rows = await racimoMovimientoRepository.findAllForExport({
       semanaRegistroId: semana.id,
       tipo,
-      fincaIds: getFincaIdsPermitidas(user),
+      fincaIds,
     });
 
     const pad2 = (v) => String(v ?? '').trim().padStart(2, '0');

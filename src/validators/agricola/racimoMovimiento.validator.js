@@ -194,6 +194,8 @@ export const exportarReporteSemanalSchema = Joi.object({
   query: Joi.object({
     semanaUuid: uuidRef.required(),
     tipo: Joi.string().valid(...TIPOS).required(),
+    // Opcional: solo una finca (sin ella, todas las permitidas).
+    fincaUuid: uuidRef,
   }),
 });
 
