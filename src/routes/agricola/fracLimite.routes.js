@@ -42,10 +42,10 @@ const codigoSchema = Joi.object({ body: Joi.object({ codigo: Joi.string().trim()
 const grupoSchema = Joi.object({ body: Joi.object({ nombre: Joi.string().trim().max(150).required(), fracCodigo: Joi.string().trim().max(10).required() }), params: vacio, query: vacio });
 const grupoUpdateSchema = Joi.object({
   body: Joi.object({ nombre: Joi.string().trim().max(150), fracCodigo: Joi.string().trim().max(10) }).min(1),
-  params: Joi.object({ uuid: Joi.string().guid({ version: 'uuidv4' }).required() }),
+  params: Joi.object({ uuid: Joi.string().guid().required() }),
   query: vacio,
 });
-const grupoDeleteSchema = Joi.object({ body: vacio, params: Joi.object({ uuid: Joi.string().guid({ version: 'uuidv4' }).required() }), query: vacio });
+const grupoDeleteSchema = Joi.object({ body: vacio, params: Joi.object({ uuid: Joi.string().guid().required() }), query: vacio });
 const codigoDeleteSchema = Joi.object({ body: vacio, params: Joi.object({ codigo: Joi.string().trim().max(10).required() }), query: vacio });
 
 router.post('/', auth, permission(PERMISSIONS.INGREDIENTE_ACTIVO_CREAR), validate(codigoSchema), asyncHandler(async (req, res) => {

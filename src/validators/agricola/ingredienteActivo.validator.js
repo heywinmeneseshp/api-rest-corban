@@ -27,7 +27,7 @@ export const createIngredienteActivoSchema = Joi.object({
     nombre: Joi.string().trim().min(2).max(150).required(),
     descripcion: Joi.string().max(255).allow('', null),
     // Grupo químico del catálogo (que a su vez define el código FRAC y el modo de acción).
-    grupoQuimicoUuid: Joi.string().guid({ version: 'uuidv4' }).allow('', null),
+    grupoQuimicoUuid: Joi.string().guid().allow('', null), // cualquier versión: los grupos químicos se crearon con UUID() de MySQL (v1)
     estado: Joi.boolean(),
   }),
   params: Joi.object({}),
@@ -39,7 +39,7 @@ export const updateIngredienteActivoSchema = Joi.object({
     nombre: Joi.string().trim().min(2).max(150),
     descripcion: Joi.string().max(255).allow('', null),
     // Grupo químico del catálogo (que a su vez define el código FRAC y el modo de acción).
-    grupoQuimicoUuid: Joi.string().guid({ version: 'uuidv4' }).allow('', null),
+    grupoQuimicoUuid: Joi.string().guid().allow('', null), // cualquier versión: los grupos químicos se crearon con UUID() de MySQL (v1)
     estado: Joi.boolean(),
   }).min(1),
   params: Joi.object({ uuid: uuidParam }),
