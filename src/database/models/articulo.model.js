@@ -26,8 +26,8 @@ Articulo.init(
     // mezcla, ver mezcla.model.js#dosisPorHectarea).
     dosisPorHectarea: { type: DataTypes.DECIMAL(12, 4), allowNull: true, field: 'dosis_por_hectarea' },
     dosisUnidadId: { type: DataTypes.INTEGER, allowNull: true, field: 'dosis_unidad_id' },
-    // Concentración del ingrediente activo, en gramos por litro (insumos de Sanidad Vegetal; sale en el comprobante de aspersión).
-    concentracionIa: { type: DataTypes.DECIMAL(10, 2), allowNull: true, field: 'concentracion_ia' },
+    // Concentración del insumo, texto libre (p. ej. «880 g/L»): sale en el comprobante de aspersión.
+    concentracionIa: { type: DataTypes.STRING(100), allowNull: true, field: 'concentracion_ia' },
     estado: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
     createdBy: { type: DataTypes.INTEGER, allowNull: true, field: 'created_by' },
     updatedBy: { type: DataTypes.INTEGER, allowNull: true, field: 'updated_by' },

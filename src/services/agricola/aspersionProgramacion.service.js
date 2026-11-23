@@ -579,7 +579,7 @@ async function assertInsumosConfigurados(mezcla) {
   const faltantes = (version?.componentes || [])
     .map((c) => {
       const falta = [];
-      if (c.articulo?.concentracionIa === null || c.articulo?.concentracionIa === undefined) falta.push('concentración (g/L)');
+      if (!String(c.articulo?.concentracionIa ?? '').trim()) falta.push('concentración');
       if (c.articulo?.dosisPorHectarea === null || c.articulo?.dosisPorHectarea === undefined) falta.push('dosis por hectárea');
       return falta.length ? `${c.articulo?.nombre || 'Insumo'} (${c.esPrincipal ? 'principal' : 'secundario'}): falta ${falta.join(' y ')}` : null;
     })

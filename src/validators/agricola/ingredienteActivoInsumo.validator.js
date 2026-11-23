@@ -18,7 +18,7 @@ export const createInsumoSchema = Joi.object({
     stockMinimo: Joi.number().min(0).allow(null).default(0),
     stockMaximo: Joi.number().min(0).allow(null),
     dosisPorHectarea: Joi.number().min(0).allow(null),
-    concentracionIa: Joi.number().min(0).max(100000).allow(null),
+    concentracionIa: Joi.string().trim().max(100).allow(null, ''),
     dosisUnidadUuid: Joi.string()
       .uuid()
       .allow(null)
@@ -49,7 +49,7 @@ export const updateInsumoSchema = Joi.object({
     stockMinimo: Joi.number().min(0).allow(null),
     stockMaximo: Joi.number().min(0).allow(null),
     dosisPorHectarea: Joi.number().min(0).allow(null),
-    concentracionIa: Joi.number().min(0).max(100000).allow(null),
+    concentracionIa: Joi.string().trim().max(100).allow(null, ''),
     dosisUnidadUuid: Joi.string()
       .uuid()
       .allow(null)

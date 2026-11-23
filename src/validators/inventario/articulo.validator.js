@@ -20,7 +20,7 @@ export const createArticuloSchema = Joi.object({
     // calcular "Dosis real"/"% sobre dosis" sin ella, ver
     // mezcla.repository.js/aspersionProgramacion.service.js).
     dosisPorHectarea: Joi.number().min(0).allow(null),
-    concentracionIa: Joi.number().min(0).max(100000).allow(null),
+    concentracionIa: Joi.string().trim().max(100).allow(null, ''),
     dosisUnidadUuid: Joi.string()
       .uuid()
       .allow(null)
@@ -60,7 +60,7 @@ export const updateArticuloSchema = Joi.object({
     // dispara si ESTA petición trae dosisPorHectarea como número; si no la
     // toca (edición parcial de otro campo), no exige nada de dosis.
     dosisPorHectarea: Joi.number().min(0).allow(null),
-    concentracionIa: Joi.number().min(0).max(100000).allow(null),
+    concentracionIa: Joi.string().trim().max(100).allow(null, ''),
     dosisUnidadUuid: Joi.string()
       .uuid()
       .allow(null)
