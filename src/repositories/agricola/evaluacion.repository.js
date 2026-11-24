@@ -100,8 +100,14 @@ export const evaluacionRepository = {
   // Evaluaciones con sus asociaciones (incluida la semana) para promedios
   // por semana. `anio`/`semanaId` filtran por la semana (año, o una semana
   // puntual); `fincaId`/`fincaIds` filtran por ubicación.
-  async findAllPorSemana({ fincaId, fincaIds, anio, semanaId, loteId }) {
-    const includes = buildIncludes({ fincaId, fincaIds, loteId }).map((inc) => {
+  // `solo`: alias de los datos de evaluación a traer (ej. ['sumaBruta']); las gráficas piden solo el suyo y así no cargan
+  // las demás tablas de todo el año (era lo que las hacía lentas). Con `solo`, solo vienen las evaluaciones que lo tienen.
+  async findAllPorSemana({ fincaId, fincaIds, anio, semanaId, loteId, solo }) {
+    const DATOS = ['infeccion', 'conteoHojas', 'emisionFoliar', 'sumaBruta', 'usuario', 'tipoEvaluacion'];
+    const base = buildIncludes({ fincaId, fincaIds, loteId })
+      .filter((inc) => !solo || !DATOS.includes(inc.as) || solo.includes(inc.as))
+      .map((inc) => (solo && solo.includes(inc.as) ? { ...inc, required: true } : inc));
+    const includes = base.map((inc) => {
       if (inc.as === 'semana') {
         return {
           model: Semana,
@@ -114,6 +120,7 @@ export const evaluacionRepository = {
         return {
           model: ConteoHojas,
           as: 'conteoHojas',
+          required: inc.required,
           include: [
             {
               model: Semana,

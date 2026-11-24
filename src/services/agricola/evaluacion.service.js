@@ -196,6 +196,7 @@ export const evaluacionService = {
     const evaluaciones = await evaluacionRepository.findAllPorSemana({
       fincaIds,
       anio,
+      solo: ['sumaBruta'],
     });
 
     const conSuma = evaluaciones.filter((ev) => ev.sumaBruta && ev.planta?.lote);
@@ -243,6 +244,7 @@ export const evaluacionService = {
     const evaluaciones = await evaluacionRepository.findAllPorSemana({
       fincaIds,
       anio,
+      solo: ['sumaBruta'],
     });
 
     const conSuma = evaluaciones.filter((ev) => ev.sumaBruta && ev.semana);
@@ -288,6 +290,7 @@ export const evaluacionService = {
     const evaluaciones = await evaluacionRepository.findAllPorSemana({
       fincaIds,
       anio,
+      solo: ['conteoHojas'],
     });
 
     const porSemana = new Map();
@@ -340,6 +343,7 @@ export const evaluacionService = {
     const evaluaciones = await evaluacionRepository.findAllPorSemana({
       fincaIds,
       anio,
+      solo: ['infeccion'],
     });
 
     const porSemana = new Map();
