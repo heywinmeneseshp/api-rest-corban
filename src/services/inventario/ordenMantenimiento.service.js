@@ -1,13 +1,13 @@
 import { sequelize } from '../../database/connection.js';
 import { ordenMantenimientoRepository } from '../../repositories/inventario/ordenMantenimiento.repository.js';
-import { Equipo, PlanMantenimiento, ProgramacionMantenimiento, Almacen, User, Articulo, OrdenDetalle, OrdenManoObra, OrdenServicio, MovimientoInventario, Proveedor } from '../../database/associations.js';
+import { Equipo, LecturaEquipo, PlanMantenimiento, ProgramacionMantenimiento, Almacen, User, Articulo, OrdenDetalle, OrdenManoObra, OrdenServicio, MovimientoInventario, Proveedor } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { assertStockSuficiente, registrarMovimientoEnCache } from './stock.helper.js';
 import { generarCorrelativo } from '../../utils/correlativo.js';
 import { OrdenMantenimiento } from '../../database/associations.js';
 import { assertAlmacenPermitido, getAlmacenIdsPermitidas } from '../../utils/almacenScope.js';
-import { esPlanPorLectura, reiniciarCicloLectura } from './lecturaEquipo.service.js';
+import { esPlanPorLectura, reiniciarCicloLectura, campoDeUnidad } from './lecturaEquipo.service.js';
 import { copiarDePlantilla } from './ordenChecklist.service.js';
 
 async function resolveProveedor(uuid) {
@@ -428,7 +428,7 @@ export const ordenMantenimientoService = {
           {
             documento,
             tipo: 'SALIDA',
-            fecha: orden.fechaCierre || new Date().toISOString().slice(0, 10),
+            fecha: payload.fechaEjecucion || orden.fechaCierre || new Date().toISOString().slice(0, 10),
             almacenId: almacen.id,
             articuloId: articulo.id,
             cantidad,
@@ -446,7 +446,36 @@ export const ordenMantenimientoService = {
 
       // La programación que originó la orden queda COMPLETADA, y si hay plan con periodicidad por tiempo (días/meses) se agenda la
       // siguiente desde hoy. Las periodicidades por horas/kilómetros/horómetro dependen de lecturas del equipo y se programan a mano.
-      const hoyIso = new Date().toISOString().slice(0, 10);
+      // `fechaEjecucion`: el día en que se hizo el mantenimiento (al ejecutar desde un plan o una programación); por defecto, hoy.
+      const hoyIso = payload.fechaEjecucion || new Date().toISOString().slice(0, 10);
+      // Lectura del tablero al ejecutar un plan por km / horas: queda en la orden y en el historial del equipo, y el ciclo
+      // del plan vuelve a empezar desde ella.
+      if (payload.lectura !== undefined && payload.lectura !== null && payload.lectura !== '' && orden.planId) {
+        const planL = await PlanMantenimiento.findByPk(orden.planId, { transaction: t });
+        const campo = planL ? campoDeUnidad(planL.periodicidadUnidad) : null;
+        if (campo) {
+          const valor = Number(payload.lectura);
+          if (!Number.isFinite(valor) || valor < 0) throw ApiError.badRequest('La lectura debe ser un número mayor o igual a 0');
+          const eq = await Equipo.findByPk(orden.equipoId, { transaction: t });
+          const actual = eq?.[campo] !== null && eq?.[campo] !== undefined ? Number(eq[campo]) : null;
+          if (actual !== null && valor < actual) {
+            throw ApiError.badRequest(`La lectura (${valor}) es menor que la última registrada del equipo (${actual}). Revisa el tablero.`);
+          }
+          await LecturaEquipo.create(
+            {
+              equipoId: orden.equipoId,
+              fechaHora: new Date(`${hoyIso}T12:00:00-05:00`),
+              [campo]: valor,
+              usuarioId: actorId,
+              origen: 'WEB',
+              nota: `Mantenimiento ${orden.numero}`,
+            },
+            { transaction: t },
+          );
+          await eq.update({ [campo]: valor }, { transaction: t });
+          await orden.update(campo === 'kilometraje' ? { lecturaKm: valor } : { lecturaHoras: valor }, { transaction: t });
+        }
+      }
       if (orden.programacionId) {
         await ProgramacionMantenimiento.update(
           { estado: 'COMPLETADA', fechaEjecucion: hoyIso, updatedBy: actorId },
@@ -490,7 +519,7 @@ export const ordenMantenimientoService = {
       await orden.update(
         {
           estado: 'CERRADA',
-          fechaCierre: new Date().toISOString().slice(0, 10),
+          fechaCierre: hoyIso,
           observaciones: payload.observaciones ? `${orden.observaciones || ''}\n${payload.observaciones}`.trim() : orden.observaciones,
           updatedBy: actorId,
         },

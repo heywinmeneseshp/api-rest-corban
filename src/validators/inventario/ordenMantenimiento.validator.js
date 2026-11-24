@@ -101,6 +101,9 @@ export const cerrarOrdenSchema = Joi.object({
   body: Joi.object({
     almacenUuid: Joi.string().guid({ version: 'uuidv4' }).allow(null, ''),
     observaciones: Joi.string().allow(null, '').max(1000),
+    // Al ejecutar: fecha en que se hizo y lectura del tablero (km u horas, según el plan).
+    fechaEjecucion: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).allow(null, ''),
+    lectura: Joi.number().min(0).allow(null, ''),
   }),
   params: Joi.object({ uuid: uuidParam }),
   query: Joi.object({}),
