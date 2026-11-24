@@ -23,6 +23,15 @@ import {
   exportarReporteSemanalSchema,
 } from '../../validators/agricola/racimoMovimiento.validator.js';
 
+// Reportes → Producción: basta con tener la pantalla (no hace falta el permiso de datos de Racimos).
+const PRODUCCION_MOVIMIENTOS = [PERMISSIONS.RACIMO_MOVIMIENTO_VER, PERMISSIONS.MENU_RACIMOS_MOVIMIENTOS_SEMANA];
+const PRODUCCION_GRAFICOS = [
+  PERMISSIONS.RACIMO_MOVIMIENTO_VER,
+  PERMISSIONS.MENU_RACIMOS_MOVIMIENTOS_SEMANA,
+  PERMISSIONS.MENU_RACIMOS_REPORTE_EMBOLSES,
+  PERMISSIONS.MENU_RACIMOS_REPORTE_REPIQUES,
+];
+
 const router = Router();
 
 /**
@@ -162,7 +171,7 @@ router.get(
 router.get(
   '/reporte-escalera',
   auth,
-  permission(PERMISSIONS.RACIMO_MOVIMIENTO_VER),
+  permission(...PRODUCCION_MOVIMIENTOS),
   validate(reporteEscaleraSchema),
   racimoMovimientoController.reporteEscalera,
 );
@@ -170,7 +179,7 @@ router.get(
 router.get(
   '/reporte-movimientos-semana',
   auth,
-  permission(PERMISSIONS.RACIMO_MOVIMIENTO_VER),
+  permission(...PRODUCCION_MOVIMIENTOS),
   validate(reporteMovimientosSemanaSchema),
   racimoMovimientoController.reporteMovimientosSemana,
 );
@@ -188,7 +197,7 @@ router.get(
 router.get(
   '/reporte-embolses',
   auth,
-  permission(PERMISSIONS.RACIMO_MOVIMIENTO_VER),
+  permission(...PRODUCCION_GRAFICOS),
   validate(reporteEmbolsesSchema),
   racimoMovimientoController.reporteEmbolses,
 );
