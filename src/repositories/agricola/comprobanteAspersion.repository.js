@@ -38,6 +38,8 @@ const aspersionInclude = (aspersionWhere, { conInsumos = false } = {}) => ({
       include: [
         { model: UnidadMedida, as: 'unidadRendimiento', attributes: ['uuid', 'nombre', 'simbolo'] },
         { model: UnidadMedida, as: 'dosisPorHectareaUnidad', attributes: ['uuid', 'nombre', 'simbolo'] },
+        // Nombre interno de la mezcla (artículo elaborado): lo muestra el listado de la app móvil.
+        { model: Articulo, as: 'articuloElaborado', attributes: ['uuid', 'nombre', 'codigo'], paranoid: false },
       ],
     },
     { model: User, as: 'usuario', attributes: USUARIO_ATTRS },
