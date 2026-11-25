@@ -28,6 +28,8 @@ const iso = (d) => String(d).slice(0, 10);
 // Mes de una semana = el de su jueves (mismo criterio que la proyección).
 function mesDeSemana(s) {
   const d = new Date(`${iso(s.fechaInicio)}T12:00:00Z`);
+  // En 2027 la semana que empieza en junio (la 26) cuenta en junio: cierra el primer semestre.
+  if (d.getUTCFullYear() === 2027 && d.getUTCMonth() === 5) return { anio: d.getUTCFullYear(), mes: 6 };
   const jueves = new Date(d.getTime() + ((4 - d.getUTCDay() + 7) % 7) * 86400000);
   return { anio: jueves.getUTCFullYear(), mes: jueves.getUTCMonth() + 1 };
 }

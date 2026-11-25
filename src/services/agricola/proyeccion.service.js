@@ -601,7 +601,11 @@ export async function calcularProyeccion({ anio, params, areas }, user, { fincaU
     for (const c of campos) t[c] = r2(rows.reduce((a, r) => a + r[c], 0));
     return t;
   });
-  const mesDe = (fecha) => new Date(new Date(`${fecha}T00:00:00Z`).getTime() + 3 * MS_DIA).getUTCMonth() + 1; // mes del jueves de la semana
+  // Mes de la semana: el de su jueves, salvo en 2027 la que empieza en junio (la semana 26), que cuenta en junio: cierra el primer semestre.
+  const mesDe = (fecha) => {
+    const lunes = new Date(`${String(fecha).slice(0, 10)}T00:00:00Z`);
+    return lunes.getUTCFullYear() === 2027 && lunes.getUTCMonth() === 5 ? 6 : new Date(lunes.getTime() + 3 * MS_DIA).getUTCMonth() + 1;
+  };
   const porMes = [];
   for (let m = 1; m <= 12; m++) {
     const semanasMes = porSemana.filter((s) => mesDe(s.fechaInicio) === m);
