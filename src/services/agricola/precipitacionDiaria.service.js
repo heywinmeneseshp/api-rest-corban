@@ -454,6 +454,22 @@ export const precipitacionDiariaService = {
     return resultado;
   },
 
+  // Aprueba varias de una vez (dato de la finca en ambas tablas), en una sola petición: la app lo usa en «Aprobar todo».
+  // Las que fallen (o no sean de las fincas del usuario) se reportan sin cortar las demás.
+  async aprobarVarias(uuids, actorId, actorNombre, user = null) {
+    let aprobadas = 0;
+    const fallas = [];
+    for (const uuid of [...new Set(uuids || [])]) {
+      try {
+        await this.resolverInconsistencia(uuid, 'precipitacion_diaria', actorId, actorNombre, undefined, user);
+        aprobadas += 1;
+      } catch (error) {
+        fallas.push({ uuid, mensaje: error.message });
+      }
+    }
+    return { aprobadas, fallas };
+  },
+
   // Resuelve una inconsistencia puntual: el usuario elige cuál de los dos
   // valores es el correcto y ESE overwrite explícito es el único momento en
   // que estas dos tablas se escriben cruzadas entre sí.

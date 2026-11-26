@@ -62,6 +62,11 @@ export const precipitacionDiariaController = {
     ApiResponse.send(res, { message: 'Inconsistencias obtenidas correctamente', data: result });
   }),
 
+  aprobarVarias: asyncHandler(async (req, res) => {
+    const data = await precipitacionDiariaService.aprobarVarias(req.body.uuids, req.user?.id, req.user?.usuario, req.user);
+    ApiResponse.send(res, { message: `${data.aprobadas} precipitaciones aprobadas`, data });
+  }),
+
   resolverInconsistencia: asyncHandler(async (req, res) => {
     const result = await precipitacionDiariaService.resolverInconsistencia(
       req.params.uuid,

@@ -10,6 +10,7 @@ import {
   uuidParamSchema,
   registrarSchema,
   resolverInconsistenciaSchema,
+  aprobarVariasSchema,
 } from '../../validators/agricola/precipitacionDiaria.validator.js';
 
 const router = Router();
@@ -72,6 +73,14 @@ router.get(
   auth,
   permission(PERMISSIONS.PRECIPITACION_DIARIA_VER),
   precipitacionDiariaController.listInconsistencias,
+);
+// Aprobar varias de una vez (dato de la finca en ambas tablas): mismo permiso que resolver una.
+router.put(
+  '/inconsistencias/aprobar-varias',
+  auth,
+  permission(PERMISSIONS.PRECIPITACION_DIARIA_SINCRONIZAR),
+  validate(aprobarVariasSchema),
+  precipitacionDiariaController.aprobarVarias,
 );
 router.put(
   '/inconsistencias/:uuid',
