@@ -49,7 +49,11 @@ export const authController = {
   }),
 
   subirFirma: asyncHandler(async (req, res) => {
-    const user = await authService.subirFirma(req.user.id, req.file);
+    // PNG subido como archivo (web) o dibujado en la app y enviado como data URL en `firma`.
+    let archivo = req.file;
+    const m = !archivo && /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.firma || '').trim());
+    if (m) archivo = { buffer: Buffer.from(m[1], 'base64'), originalname: 'firma.png', mimetype: 'image/png' };
+    const user = await authService.subirFirma(req.user.id, archivo);
     ApiResponse.send(res, { message: 'Firma guardada correctamente', data: user });
   }),
 

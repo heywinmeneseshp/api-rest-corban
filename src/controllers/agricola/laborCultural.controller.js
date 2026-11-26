@@ -128,7 +128,7 @@ export const laborCulturalController = {
 
   async revisarConCredenciales(req, res, next) {
     try {
-      const result = await laborCulturalService.revisarConCredenciales(req.params.visitaUuid, req.body.usuario, req.body.password, req.user);
+      const result = await laborCulturalService.revisarConCredenciales(req.params.visitaUuid, req.body.usuario, req.body.password, req.user, req.body.firma);
       ApiResponse.send(res, { statusCode: HTTP_STATUS.OK, message: 'Visita aprobada', data: result });
     } catch (error) {
       next(error);

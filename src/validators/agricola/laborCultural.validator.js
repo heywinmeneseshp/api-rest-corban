@@ -5,6 +5,8 @@ export const revisarConCredencialesSchema = Joi.object({
   body: Joi.object({
     usuario: Joi.string().trim().max(100).required(),
     password: Joi.string().max(200).required(),
+    // Firma (data URL PNG) del revisor, solo la primera vez que aprueba.
+    firma: Joi.string().max(1500000).allow(null, ''),
   }),
   params: Joi.object({
     visitaUuid: Joi.string().uuid().required(),

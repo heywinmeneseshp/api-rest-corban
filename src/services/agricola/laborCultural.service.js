@@ -9,6 +9,15 @@ import { cargarFotosLaborCultural, descargarArchivoDeDrive } from '../googleDriv
 import { Role, User, Finca } from '../../database/associations.js';
 import { mailService } from '../sistema/mail.service.js';
 import { userRepository } from '../../repositories/seguridad/user.repository.js';
+import { authService } from '../seguridad/auth.service.js';
+
+// Firma dibujada en la app (data URL PNG) -> Buffer; null si no viene o no es un PNG.
+function firmaDesdeDataUrl(dataUrl) {
+  const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || '').trim());
+  if (!m) return null;
+  const buffer = Buffer.from(m[1], 'base64');
+  return buffer.length > 100 && buffer.length < 1024 * 1024 ? buffer : null;
+}
 import { configuracionService } from '../sistema/configuracion.service.js';
 import { logger } from '../../utils/logger.js';
 
@@ -596,6 +605,7 @@ export const laborCulturalService = {
       usuarioNombre: primero.usuario_nombre,
       usuarioUuid: primero.usuario_uuid,
       usuarioCargo: primero.usuario_cargo,
+      revisadoPorUuid: primero.revisado_por_uuid,
       revisadoPorNombre: primero.revisado_por_nombre,
       revisadoPorCargo: primero.revisado_por_cargo,
       revisadoEn: primero.revisado_en,
@@ -761,13 +771,23 @@ export const laborCulturalService = {
   // Aprobación desde la tablet de campo: la revisa (aprueba) un usuario distinto al que tiene la sesión abierta, escribiendo su
   // usuario y su contraseña. Se valida la contraseña y que su rol pueda revisar (mismo criterio que marcarRevisada); la visita
   // queda revisada a su nombre.
-  async revisarConCredenciales(visitaUuid, usuario, password, usuarioTablet) {
+  // `firma` (data URL PNG): la primera vez que el revisor aprueba, si todavía no tiene firma en su perfil, se exige y se guarda.
+  async revisarConCredenciales(visitaUuid, usuario, password, usuarioTablet, firma = null) {
     const revisor = await userRepository.findByUsuarioWithPassword(String(usuario || '').trim());
     if (!revisor || !revisor.estado || !(await revisor.comparePassword(String(password || '')))) {
       throw ApiError.badRequest('Usuario o contraseña incorrectos');
     }
     if (usuarioTablet?.id && revisor.id === usuarioTablet.id) {
       throw ApiError.badRequest('La visita la debe aprobar un usuario distinto al que tiene la sesión abierta en la tablet');
+    }
+    if (!revisor.firmaDriveId) {
+      const buffer = firmaDesdeDataUrl(firma);
+      if (!buffer) {
+        throw ApiError.badRequest('Es la primera vez que apruebas: dibuja tu firma (quedará guardada en tu perfil)', [
+          { field: 'firma', message: 'FIRMA_REQUERIDA' },
+        ]);
+      }
+      await authService.subirFirma(revisor.id, { buffer, originalname: 'firma.png', mimetype: 'image/png' });
     }
     return this.marcarRevisada(visitaUuid, { id: revisor.id, uuid: revisor.uuid, roles: (revisor.roles || []).map((r) => r.nombre) });
   },
