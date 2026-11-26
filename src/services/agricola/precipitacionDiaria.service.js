@@ -106,8 +106,10 @@ const serializarRegistro = (r) => ({
 // restricción (Administrador, o petición de la app móvil — ver
 // auth.middleware.js). `precipitacion_diaria`/config exponen datos de finca
 // que un usuario restringido no debería ver.
+// En la app móvil la restricción de fincas se desactiva para todo (evaluar, programar, estación...), salvo aquí: en
+// Precipitación diaria cada usuario ve y aprueba solo sus fincas asignadas (ver auth.middleware: fincaIdsAsignadas).
 const fincaUuidsPermitidos = async (user) => {
-  const ids = getFincaIdsPermitidas(user);
+  const ids = getFincaIdsPermitidas(user && user.fincaIdsAsignadas !== undefined ? { ...user, fincaIds: user.fincaIdsAsignadas } : user);
   if (ids === null) return null;
   const fincas = await Finca.findAll({ where: { id: { [Op.in]: ids } }, attributes: ['uuid'], raw: true });
   return fincas.map((f) => f.uuid);
