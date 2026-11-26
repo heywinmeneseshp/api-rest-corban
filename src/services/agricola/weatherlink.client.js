@@ -33,6 +33,13 @@ export const weatherlinkClient = {
     return get(estacion, `/current/${stationId}`);
   },
 
+  // Datos de la estación (nombre, latitud, longitud…): para el pronóstico del clima en su ubicación.
+  async estacionInfo(estacion = 1) {
+    const { stationId } = await credenciales(estacion);
+    const data = await get(estacion, `/stations/${stationId}`);
+    return data?.stations?.[0] || null;
+  },
+
   // Registros archivados (cada `recording_interval` minutos) entre dos
   // timestamps Unix — la API limita cada request a un máximo de 24h
   // (86400s), así que quien llama debe trocear rangos más largos.

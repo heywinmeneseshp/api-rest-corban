@@ -1,3 +1,4 @@
+import { pronosticoEstacionService } from '../../services/agricola/pronosticoEstacion.service.js';
 import { estacionMeteorologicaService } from '../../services/agricola/estacionMeteorologica.service.js';
 import { estacionRegistroService } from '../../services/agricola/estacionRegistro.service.js';
 import { climaComparativaService } from '../../services/agricola/climaComparativa.service.js';
@@ -27,6 +28,10 @@ export const estacionMeteorologicaController = {
     ApiResponse.send(res, { message: 'Prueba de conexión realizada', data: await estacionRegistroService.probar(Number(req.params.id)) });
   }),
 
+  pronostico: asyncHandler(async (req, res) => {
+    const data = await pronosticoEstacionService.obtener(req.query.estacion);
+    ApiResponse.send(res, { message: 'Pronóstico obtenido correctamente', data });
+  }),
   actual: asyncHandler(async (req, res) => {
     const data = await estacionMeteorologicaService.obtenerActual(req.query.estacion);
     ApiResponse.send(res, { message: 'Condiciones actuales obtenidas correctamente', data });

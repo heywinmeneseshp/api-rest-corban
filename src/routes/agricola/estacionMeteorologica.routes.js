@@ -64,6 +64,8 @@ router.get(
   estacionMeteorologicaController.openMeteoListar,
 );
 router.get('/actual', auth, permission(PERMISSIONS.ESTACION_METEOROLOGICA_VER), estacionMeteorologicaController.actual);
+// Pronóstico (Open-Meteo) en la ubicación de la estación: próximas 24 h cada 3 h y 7 días.
+router.get('/pronostico', auth, permission(PERMISSIONS.ESTACION_METEOROLOGICA_VER), estacionMeteorologicaController.pronostico);
 router.get(
   '/historico',
   auth,
