@@ -1,3 +1,4 @@
+import { estacionesPorFinca, lluviaEstacionDeFinca, aplicarLluviaEstacion } from './lluviaEstacion.service.js';
 import crypto from 'crypto';
 import { Op } from 'sequelize';
 import { sequelize } from '../../database/connection.js';
@@ -215,6 +216,7 @@ export const precipitacionDiariaService = {
     };
 
     const resultados = [];
+    const mapaEstaciones = await estacionesPorFinca();
     for (const r of registros) {
       if (!r.fincaUuid || !r.fecha || r.mm === undefined || r.mm === null) {
         throw ApiError.badRequest('Cada registro requiere fincaUuid, fecha y mm');
@@ -269,7 +271,10 @@ export const precipitacionDiariaService = {
           coincideClima: coincide,
         });
       }
-      resultados.push({ fincaUuid: finca.uuid, fecha: r.fecha, mm: r.mm, coincideClima: coincide });
+      // Con estación conectada y dato de ese día, manda la estación (queda su valor en ambas tablas).
+      const deEstacion = (await lluviaEstacionDeFinca(finca.uuid, { desde: r.fecha, hasta: r.fecha }, mapaEstaciones)).get(r.fecha);
+      if (deEstacion !== undefined) await aplicarLluviaEstacion(finca.uuid, finca.nombre, r.fecha, deEstacion);
+      resultados.push({ fincaUuid: finca.uuid, fecha: r.fecha, mm: deEstacion ?? r.mm, coincideClima: deEstacion !== undefined ? true : coincide });
     }
 
     return resultados;
@@ -374,6 +379,7 @@ export const precipitacionDiariaService = {
     if (porFinca.size === 0) return [];
 
     const pendientesPorFinca = [];
+    const mapaEstaciones = await estacionesPorFinca();
     for (const { fincaUuid, fincaNombre, fechaInicio } of porFinca.values()) {
       const registrados = await PrecipitacionDiaria.findAll({
         where: { fincaUuid, fecha: { [Op.between]: [fechaInicio, ayer] } },
@@ -381,8 +387,10 @@ export const precipitacionDiariaService = {
         raw: true,
       });
       const registradasSet = new Set(registrados.map((r) => fechaAIso(r.fecha)));
+      // Los días que su estación meteorológica ya tiene la lluvia no se le piden a la finca (la estación es el dato oficial).
+      const deEstacion = await lluviaEstacionDeFinca(fincaUuid, { desde: fechaInicio, hasta: ayer }, mapaEstaciones);
 
-      const fechas = rangoFechas(fechaInicio, ayer).filter((f) => f !== hoy && !registradasSet.has(f));
+      const fechas = rangoFechas(fechaInicio, ayer).filter((f) => f !== hoy && !registradasSet.has(f) && !deEstacion.has(f));
       if (fechas.length > 0) {
         pendientesPorFinca.push({ fincaUuid, fincaNombre, fechas });
       }
@@ -437,8 +445,17 @@ export const precipitacionDiariaService = {
     });
 
     const resultado = [];
+    const mapaEstaciones = await estacionesPorFinca();
     for (const r of registros) {
       const fecha = fechaAIso(r.fecha);
+      // Finca con estación que tiene el dato de ese día: se resuelve sola con el valor de la estación (no se pregunta).
+      if (mapaEstaciones.has(r.fincaUuid)) {
+        const deEstacion = (await lluviaEstacionDeFinca(r.fincaUuid, { desde: fecha, hasta: fecha }, mapaEstaciones)).get(fecha);
+        if (deEstacion !== undefined) {
+          await aplicarLluviaEstacion(r.fincaUuid, r.finca?.nombre ?? r.fincaNombre, fecha, deEstacion);
+          continue;
+        }
+      }
       const registroClima = await climaService.getByFincaFecha(r.fincaUuid, fecha);
       resultado.push({
         uuid: r.uuid,
@@ -470,16 +487,31 @@ export const precipitacionDiariaService = {
     if (!visibles.length) return [];
     const fincas = await Finca.findAll({ where: { uuid: visibles }, attributes: ['uuid', 'nombre'], raw: true });
     const obligatorias = new Set(configs.map((c) => c.fincaUuid));
+    // Fincas con estación: su último día con lluvia de la estación también cuenta como dato.
+    const mapaEstaciones = await estacionesPorFinca();
+    const ultimaEstacion = new Map();
+    const estacionIds = [...new Set(visibles.filter((u) => mapaEstaciones.has(u)).map((u) => mapaEstaciones.get(u).estacionId))];
+    if (estacionIds.length) {
+      const filas = await sequelize.query(
+        'SELECT estacion, MAX(fecha) AS ultima FROM estacion_clima_diaria WHERE mm IS NOT NULL AND estacion IN (:ids) GROUP BY estacion',
+        { replacements: { ids: estacionIds }, type: 'SELECT' },
+      );
+      for (const f of filas) ultimaEstacion.set(Number(f.estacion), String(f.ultima instanceof Date ? f.ultima.toISOString() : f.ultima).slice(0, 10));
+    }
     const hoy = new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10);
     const dias = (f) => (f ? Math.round((new Date(`${hoy}T00:00:00Z`) - new Date(`${String(f).slice(0, 10)}T00:00:00Z`)) / 86400000) : null);
     return fincas
       .map((f) => {
         const u = ultimos.find((x) => x.fincaUuid === f.uuid);
-        const ultimaFecha = u?.ultimaFecha ? String(u.ultimaFecha).slice(0, 10) : null;
+        const deFinca = u?.ultimaFecha ? String(u.ultimaFecha).slice(0, 10) : null;
+        const est = mapaEstaciones.get(f.uuid);
+        const deEstacion = est ? ultimaEstacion.get(est.estacionId) || null : null;
+        const ultimaFecha = [deFinca, deEstacion].filter(Boolean).sort().pop() || null;
         return {
           fincaUuid: f.uuid,
           fincaNombre: f.nombre,
           obligatoria: obligatorias.has(f.uuid),
+          conEstacion: Boolean(est),
           ultimaFecha,
           ultimaCarga: u?.ultimaCarga || null,
           diasSinReportar: dias(ultimaFecha),

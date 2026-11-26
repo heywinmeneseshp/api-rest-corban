@@ -1,3 +1,4 @@
+import { aplicarEstacionEnFechas } from './lluviaEstacion.service.js';
 import { Op } from 'sequelize';
 import { EstacionClimaDiaria } from '../../database/associations.js';
 import { weatherlinkClient } from './weatherlink.client.js';
@@ -139,11 +140,10 @@ export const estacionMeteorologicaService = {
     };
 
     const existente = await EstacionClimaDiaria.findOne({ where: { fecha: fechaIso, estacion } });
-    if (existente) {
-      await existente.update(valores);
-      return existente;
-    }
-    return EstacionClimaDiaria.create({ fecha: fechaIso, estacion, ...valores });
+    const fila = existente ? await existente.update(valores) : await EstacionClimaDiaria.create({ fecha: fechaIso, estacion, ...valores });
+    // La lluvia de la estación es el dato oficial de las fincas que la usan: queda en Clima y en Precipitación diaria.
+    if (valores.mm !== null && valores.mm !== undefined) await aplicarEstacionEnFechas(estacion, [fechaIso]);
+    return fila;
   },
 
   // Llamado por el cron diario (ver cron.controller.js) — sincroniza el
