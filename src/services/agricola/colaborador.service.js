@@ -226,6 +226,12 @@ export const colaboradorService = {
     if (payload.cargo !== undefined) Object.assign(data, await resolverCargo(payload.cargo));
     if (payload.estado !== undefined) data.estado = payload.estado;
     if (payload.pilotoCertificado !== undefined) data.pilotoCertificado = payload.pilotoCertificado === true;
+    if (payload.fincasPrecipitacionUuids !== undefined) {
+      const fincas = payload.fincasPrecipitacionUuids.length
+        ? await Finca.findAll({ where: { uuid: payload.fincasPrecipitacionUuids }, attributes: ['id'], raw: true })
+        : [];
+      data.fincasPrecipitacion = fincas.length ? fincas.map((f) => f.id) : null;
+    }
     // Cambiar de módulo solo con el permiso general de colaboradores.
     if (payload.modulo !== undefined && MODULOS_COLABORADOR.includes(payload.modulo) && !soloModuloSanidad(user, 'editar')) data.modulo = payload.modulo;
     if (payload.fincaUuid !== undefined || payload.lugarUuid !== undefined) {

@@ -98,6 +98,8 @@ export const updateColaboradorSchema = Joi.object({
     pilotoCertificado: Joi.boolean(),
     modulo: Joi.string().valid('GENERAL', 'SANIDAD_VEGETAL'),
     labores: laboresSchema,
+    // Fincas de precipitación diaria (app móvil): uuids; vacía = todas.
+    fincasPrecipitacionUuids: Joi.array().items(uuidRef).max(200),
   }).min(1),
   params: Joi.object({ uuid: uuidParam }),
   query: Joi.object({}),

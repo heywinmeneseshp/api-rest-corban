@@ -2,9 +2,9 @@ import { estacionesPorFinca, lluviaEstacionDeFinca, aplicarLluviaEstacion } from
 import crypto from 'crypto';
 import { Op } from 'sequelize';
 import { sequelize } from '../../database/connection.js';
-import { Finca, Role, Semana, User, PrecipitacionDiariaConfig, PrecipitacionDiaria } from '../../database/associations.js';
+import { Finca, Role, Semana, User, PrecipitacionDiariaConfig, PrecipitacionDiaria, Colaborador } from '../../database/associations.js';
 import { ApiError } from '../../utils/ApiError.js';
-import { getFincaIdsPermitidas, expandirFincaUuids } from '../../utils/fincaScope.js';
+import { getFincaIdsPermitidas, expandirFincaUuids, expandirFincaIds } from '../../utils/fincaScope.js';
 import { climaService } from './clima.service.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
 
@@ -106,10 +106,26 @@ const serializarRegistro = (r) => ({
 // restricción (Administrador, o petición de la app móvil — ver
 // auth.middleware.js). `precipitacion_diaria`/config exponen datos de finca
 // que un usuario restringido no debería ver.
-// En la app móvil la restricción de fincas se desactiva para todo (evaluar, programar, estación...), salvo aquí: en
-// Precipitación diaria cada usuario ve y aprueba solo sus fincas asignadas (ver auth.middleware: fincaIdsAsignadas).
+// En la app móvil la restricción de fincas se desactiva para todo (evaluar, programar, estación...), salvo aquí.
+// En la app, las fincas salen del colaborador vinculado al usuario (Sanidad Vegetal → Colaboradores → «Fincas de precipitación
+// diaria»), no de las fincas asignadas en Maestros → Usuarios. Sin colaborador o sin fincas ahí = todas. Administrador: todas.
 const fincaUuidsPermitidos = async (user) => {
-  const ids = getFincaIdsPermitidas(user && user.fincaIdsAsignadas !== undefined ? { ...user, fincaIds: user.fincaIdsAsignadas } : user);
+  let ids;
+  if (user?.esApp) {
+    const esAdmin = (user.roles || []).includes('Administrador');
+    const colab = esAdmin || !user.id ? null : await Colaborador.findOne({ where: { userId: user.id }, attributes: ['fincasPrecipitacion'], raw: true });
+    let lista = colab?.fincasPrecipitacion;
+    if (typeof lista === 'string') {
+      try {
+        lista = JSON.parse(lista);
+      } catch {
+        lista = null;
+      }
+    }
+    ids = Array.isArray(lista) && lista.length ? await expandirFincaIds(lista.map(Number)) : null;
+  } else {
+    ids = getFincaIdsPermitidas(user);
+  }
   if (ids === null) return null;
   const fincas = await Finca.findAll({ where: { id: { [Op.in]: ids } }, attributes: ['uuid'], raw: true });
   return fincas.map((f) => f.uuid);

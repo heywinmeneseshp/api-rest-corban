@@ -50,8 +50,6 @@ export const auth = asyncHandler(async (req, _res, next) => {
     // dispositivos activos ya tienen la build con el header.
     const userAgent = req.headers['user-agent'] || '';
     if (req.headers['x-client-app'] === 'movil' || /^okhttp\//i.test(userAgent)) {
-      // Se guardan las fincas asignadas: Precipitación diaria sí las respeta en la app (ver y aprobar solo sus fincas).
-      req.user.fincaIdsAsignadas = req.user.fincaIds;
       req.user.fincaIds = null;
     }
     // Apps de campo (Corbana móvil y App Finca): se puede marcar asistencia en cualquier finca o lugar, aunque el usuario

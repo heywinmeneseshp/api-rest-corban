@@ -24,6 +24,8 @@ Colaborador.init(
     estado: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
     // Certificado como piloto de dron.
     pilotoCertificado: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: 'piloto_certificado' },
+    // Fincas cuya precipitación diaria revisa/aprueba en la app móvil (ids). Vacía o nula = todas.
+    fincasPrecipitacion: { type: DataTypes.JSON, allowNull: true, field: 'fincas_precipitacion' },
     // GENERAL (Maestros → Colaboradores) o SANIDAD_VEGETAL (creado desde Sanidad Vegetal → Colaboradores).
     modulo: { type: DataTypes.STRING(30), allowNull: false, defaultValue: 'GENERAL' },
     // Autorización del tratamiento del dato biométrico (huella facial) y usuario vinculado (marca en su propio celular).
