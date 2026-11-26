@@ -1,5 +1,17 @@
 import Joi from 'joi';
 
+// Aprobación desde la tablet con el usuario y la contraseña de quien revisa.
+export const revisarConCredencialesSchema = Joi.object({
+  body: Joi.object({
+    usuario: Joi.string().trim().max(100).required(),
+    password: Joi.string().max(200).required(),
+  }),
+  params: Joi.object({
+    visitaUuid: Joi.string().uuid().required(),
+  }),
+  query: Joi.object({}),
+});
+
 export const visitaUuidParamSchema = Joi.object({
   body: Joi.object({}),
   params: Joi.object({

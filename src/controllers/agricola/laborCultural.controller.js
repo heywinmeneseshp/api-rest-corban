@@ -125,6 +125,15 @@ export const laborCulturalController = {
     }
   },
 
+  async revisarConCredenciales(req, res, next) {
+    try {
+      const result = await laborCulturalService.revisarConCredenciales(req.params.visitaUuid, req.body.usuario, req.body.password, req.user);
+      ApiResponse.send(res, { statusCode: HTTP_STATUS.OK, message: 'Visita aprobada', data: result });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async marcarRevisada(req, res, next) {
     try {
       const result = await laborCulturalService.marcarRevisada(req.params.visitaUuid, req.user);

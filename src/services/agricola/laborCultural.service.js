@@ -8,6 +8,7 @@ import { ROLES } from '../../constants/roles.constants.js';
 import { cargarFotosLaborCultural, descargarArchivoDeDrive } from '../googleDrive/cargueFotosLabor.js';
 import { Role, User, Finca } from '../../database/associations.js';
 import { mailService } from '../sistema/mail.service.js';
+import { userRepository } from '../../repositories/seguridad/user.repository.js';
 import { configuracionService } from '../sistema/configuracion.service.js';
 import { logger } from '../../utils/logger.js';
 
@@ -738,6 +739,20 @@ export const laborCulturalService = {
   // es el mecanismo de permisos de siempre. Lo que queda grabado y firma en
   // el documento es el CARGO del revisor (no el rol), igual criterio que
   // create().
+  // Aprobación desde la tablet de campo: la revisa (aprueba) un usuario distinto al que tiene la sesión abierta, escribiendo su
+  // usuario y su contraseña. Se valida la contraseña y que su rol pueda revisar (mismo criterio que marcarRevisada); la visita
+  // queda revisada a su nombre.
+  async revisarConCredenciales(visitaUuid, usuario, password, usuarioTablet) {
+    const revisor = await userRepository.findByUsuarioWithPassword(String(usuario || '').trim());
+    if (!revisor || !revisor.estado || !(await revisor.comparePassword(String(password || '')))) {
+      throw ApiError.badRequest('Usuario o contraseña incorrectos');
+    }
+    if (usuarioTablet?.id && revisor.id === usuarioTablet.id) {
+      throw ApiError.badRequest('La visita la debe aprobar un usuario distinto al que tiene la sesión abierta en la tablet');
+    }
+    return this.marcarRevisada(visitaUuid, { id: revisor.id, uuid: revisor.uuid, roles: (revisor.roles || []).map((r) => r.nombre) });
+  },
+
   async marcarRevisada(visitaUuid, user) {
     await ensureTable();
 

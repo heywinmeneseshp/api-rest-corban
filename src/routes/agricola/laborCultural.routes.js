@@ -1,3 +1,4 @@
+import { authRateLimiter } from '../../middlewares/rateLimiter.middleware.js';
 import { Router } from 'express';
 import { auth } from '../../middlewares/auth.middleware.js';
 import { requireAdmin } from '../../middlewares/requireAdmin.middleware.js';
@@ -10,6 +11,7 @@ import {
   toggleRolRevisorSchema,
   uuidParamSchema,
   revisorCcSchema,
+  revisarConCredencialesSchema,
 } from '../../validators/agricola/laborCultural.validator.js';
 
 const router = Router();
@@ -46,6 +48,16 @@ router.delete('/visitas/:visitaUuid', auth, requireAdmin, laborCulturalControlle
 // el propio servicio valida si su rol está en la config activa (o es
 // Administrador) — mismo criterio que precipitacion_diaria (config por rol,
 // sin permiso granular dedicado).
+// Aprobación desde la tablet de campo: un usuario distinto al de la sesión escribe su usuario y contraseña. Con límite de
+// intentos, como el inicio de sesión.
+router.put(
+  '/visitas/:visitaUuid/revisar-con-credenciales',
+  authRateLimiter,
+  auth,
+  validate(revisarConCredencialesSchema),
+  laborCulturalController.revisarConCredenciales,
+);
+
 router.put(
   '/visitas/:visitaUuid/revisar',
   auth,
