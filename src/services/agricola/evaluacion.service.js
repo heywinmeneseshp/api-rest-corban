@@ -587,6 +587,9 @@ export const evaluacionService = {
     const conSuma = filtradas.filter((ev) => ev.sumaBruta);
     const hidratadas = await adjuntarTotales(conSuma.map((ev) => ev.sumaBruta));
     const totalPorSumaId = new Map(hidratadas.map((h) => [h.id, h.total]));
+    // Suma Bruta en hoja 3 y hoja 5 (mismo cálculo que la gráfica «Promedio de Suma Bruta por Hoja»), con las plantas filtradas.
+    const porHoja = conSuma.length ? await adjuntarValoresPorHoja(conSuma.map((ev) => ev.sumaBruta)) : [];
+    const sbHoja = (hoja) => (porHoja.length ? Number(Number(calcularIndicadorHoja(porHoja, hoja)).toFixed(2)) : null);
 
         // Árbol para el drill-down: finca → lote, con los conteos por tipo en
     // cada nivel. La finca llega anidada en planta -> lote -> finca; un
@@ -726,6 +729,8 @@ export const evaluacionService = {
         yls: nInfeccion > 0 ? Number((sumaYls / nInfeccion).toFixed(2)) : null,
         hojasTotales: nInfeccion > 0 ? Number((sumaHojasTotales / nInfeccion).toFixed(2)) : null,
         sumaBruta: nBruta > 0 ? Number((sumaBruta / nBruta).toFixed(2)) : null,
+        sumaBrutaH3: sbHoja(3),
+        sumaBrutaH5: sbHoja(5),
         hojasPorEdad: [...porEdad.values()]
           .map((e) => ({
             edad: e.edad,
