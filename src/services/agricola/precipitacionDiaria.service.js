@@ -462,13 +462,18 @@ export const precipitacionDiariaService = {
   // editar el mm de Clima ahí mismo antes de confirmar, en vez de aceptar a
   // ciegas el valor que ya tenía guardado — si no se manda, se usa el que
   // ya había en `clima`.
-  async resolverInconsistencia(uuid, fuente, actorId, actorNombre, mmClima) {
+  // `user`: solo puede resolver registros de sus fincas asignadas (mismo alcance que la lista).
+  async resolverInconsistencia(uuid, fuente, actorId, actorNombre, mmClima, user = null) {
     if (!['precipitacion_diaria', 'clima'].includes(fuente)) {
       throw ApiError.badRequest('fuente debe ser "precipitacion_diaria" o "clima"');
     }
 
     const registro = await PrecipitacionDiaria.findOne({ where: { uuid } });
     if (!registro) throw ApiError.notFound('Registro no encontrado');
+    if (user) {
+      const permitidos = await fincaUuidsPermitidos(user);
+      if (permitidos !== null && !permitidos.includes(registro.fincaUuid)) throw ApiError.notFound('Registro no encontrado');
+    }
 
     const fecha = fechaAIso(registro.fecha);
     const registroClima = await climaService.getByFincaFecha(registro.fincaUuid, fecha);

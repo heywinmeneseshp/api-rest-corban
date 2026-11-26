@@ -69,6 +69,7 @@ export const precipitacionDiariaController = {
       req.user?.id,
       req.user?.usuario,
       req.body.mm,
+      req.user,
     );
     ApiResponse.send(res, { message: 'Inconsistencia resuelta correctamente', data: result });
   }),
