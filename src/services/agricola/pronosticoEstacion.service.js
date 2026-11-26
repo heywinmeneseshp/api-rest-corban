@@ -4,13 +4,15 @@
 import { weatherlinkClient } from './weatherlink.client.js';
 import { estacionValida } from './estacionCredenciales.service.js';
 import { ApiError } from '../../utils/ApiError.js';
+import { Finca } from '../../database/associations.js';
 
 const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
 const CACHE_MS = 30 * 60 * 1000;
 const cache = new Map(); // estacion -> { en, data }
 const coordenadas = new Map(); // estacion -> { lat, lng, nombre }
 
-const r1 = (v) => (v === null || v === undefined || Number.isNaN(Number(v)) ? null : Math.round(Number(v) * 10) / 10);
+const r1 = (v) =>
+  v === null || v === undefined || Number.isNaN(Number(v)) ? null : Math.round(Number(v) * 10) / 10;
 const entero = (v) => (v === null || v === undefined ? null : Math.round(Number(v)));
 
 // Código WMO de Open-Meteo -> descripción corta y tipo de ícono para la app.
@@ -21,7 +23,8 @@ function descripcionWmo(codigo) {
   if (c === 3) return { texto: 'Nublado', icono: 'nubes' };
   if (c === 45 || c === 48) return { texto: 'Niebla', icono: 'niebla' };
   if (c >= 51 && c <= 57) return { texto: 'Llovizna', icono: 'llovizna' };
-  if ((c >= 61 && c <= 67) || (c >= 80 && c <= 82)) return { texto: c >= 65 || c === 82 ? 'Lluvia fuerte' : 'Lluvia', icono: 'lluvia' };
+  if ((c >= 61 && c <= 67) || (c >= 80 && c <= 82))
+    return { texto: c >= 65 || c === 82 ? 'Lluvia fuerte' : 'Lluvia', icono: 'lluvia' };
   if (c >= 95) return { texto: 'Tormenta', icono: 'tormenta' };
   return { texto: 'Variable', icono: 'nubes' };
 }
@@ -31,23 +34,55 @@ async function coordenadasDe(estacion) {
   const info = await weatherlinkClient.estacionInfo(estacion);
   const lat = Number(info?.latitude);
   const lng = Number(info?.longitude);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) throw ApiError.badRequest('La estación no tiene coordenadas registradas en WeatherLink');
+  if (!Number.isFinite(lat) || !Number.isFinite(lng))
+    throw ApiError.badRequest('La estación no tiene coordenadas registradas en WeatherLink');
   const c = { lat, lng, nombre: info?.station_name || null };
   coordenadas.set(estacion, c);
   return c;
 }
 
 export const pronosticoEstacionService = {
+  // Pronóstico de una finca (por sus coordenadas registradas): mismo formato que el de una estación.
+  async obtenerPorFinca(fincaUuid) {
+    const clave = `finca:${fincaUuid}`;
+    const guardado = cache.get(clave);
+    if (guardado && Date.now() - guardado.en < CACHE_MS) return guardado.data;
+    const finca = await Finca.findOne({
+      where: { uuid: fincaUuid },
+      attributes: ['id', 'nombre', 'latitud', 'longitud'],
+    });
+    if (!finca) throw ApiError.notFound('Finca no encontrada');
+    const lat = Number(finca.latitud);
+    const lng = Number(finca.longitud);
+    if (finca.latitud === null || !Number.isFinite(lat) || !Number.isFinite(lng))
+      throw ApiError.badRequest(`La finca ${finca.nombre} no tiene coordenadas registradas`);
+    const data = { finca: finca.nombre, ...(await pedirPronostico(lat, lng)) };
+    cache.set(clave, { en: Date.now(), data });
+    return data;
+  },
+
   async obtener(estacionParam = 1) {
     const estacion = await estacionValida(estacionParam);
     const guardado = cache.get(estacion);
     if (guardado && Date.now() - guardado.en < CACHE_MS) return guardado.data;
 
     const { lat, lng, nombre } = await coordenadasDe(estacion);
+    const data = { estacion, nombre, ...(await pedirPronostico(lat, lng)) };
+    cache.set(estacion, { en: Date.now(), data });
+    return data;
+  },
+};
+
+// Pide a Open-Meteo el pronóstico de un punto y lo arma: próximas 24 h cada 3 horas y 7 días.
+async function pedirPronostico(lat, lng) {
+  {
     const url = new URL(FORECAST_URL);
     url.searchParams.set('latitude', String(lat));
     url.searchParams.set('longitude', String(lng));
-    url.searchParams.set('hourly', 'temperature_2m,relative_humidity_2m,precipitation_probability,precipitation,weather_code');
+    url.searchParams.set(
+      'hourly',
+      'temperature_2m,relative_humidity_2m,precipitation_probability,precipitation,weather_code',
+    );
     url.searchParams.set(
       'daily',
       'weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,relative_humidity_2m_mean',
@@ -56,13 +91,17 @@ export const pronosticoEstacionService = {
     url.searchParams.set('timezone', 'America/Bogota');
     url.searchParams.set('wind_speed_unit', 'kmh');
     const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
-    if (!res.ok) throw ApiError.badRequest('No se pudo obtener el pronóstico (Open-Meteo no respondió)');
+    if (!res.ok)
+      throw ApiError.badRequest('No se pudo obtener el pronóstico (Open-Meteo no respondió)');
     const d = await res.json();
 
     // Próximas 24 h, cada 3 horas, desde la hora actual de Bogotá. La lluvia es la suma de las 3 horas del bloque.
     const h = d.hourly || {};
     const ahora = new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 13); // "YYYY-MM-DDTHH" en hora Bogotá
-    const inicio = Math.max(0, (h.time || []).findIndex((t) => t.slice(0, 13) >= ahora));
+    const inicio = Math.max(
+      0,
+      (h.time || []).findIndex((t) => t.slice(0, 13) >= ahora),
+    );
     const horas = [];
     for (let i = inicio; i < Math.min((h.time || []).length, inicio + 24); i += 3) {
       const bloque = [i, i + 1, i + 2].filter((k) => k < h.time.length);
@@ -70,7 +109,9 @@ export const pronosticoEstacionService = {
         hora: h.time[i],
         temperatura: r1(h.temperature_2m?.[i]),
         humedad: entero(h.relative_humidity_2m?.[i]),
-        probabilidadLluvia: entero(Math.max(...bloque.map((k) => h.precipitation_probability?.[k] ?? 0))),
+        probabilidadLluvia: entero(
+          Math.max(...bloque.map((k) => h.precipitation_probability?.[k] ?? 0)),
+        ),
         lluviaMm: r1(bloque.reduce((a, k) => a + (h.precipitation?.[k] ?? 0), 0)),
         ...descripcionWmo(h.weather_code?.[i]),
       });
@@ -88,10 +129,15 @@ export const pronosticoEstacionService = {
       ...descripcionWmo(dd.weather_code?.[i]),
     }));
 
-    const data = { estacion, nombre, latitud: lat, longitud: lng, fuente: 'Open-Meteo', generadoEn: new Date().toISOString(), horas, dias };
-    cache.set(estacion, { en: Date.now(), data });
-    return data;
-  },
-};
+    return {
+      latitud: lat,
+      longitud: lng,
+      fuente: 'Open-Meteo',
+      generadoEn: new Date().toISOString(),
+      horas,
+      dias,
+    };
+  }
+}
 
 export default pronosticoEstacionService;

@@ -29,7 +29,8 @@ export const estacionMeteorologicaController = {
   }),
 
   pronostico: asyncHandler(async (req, res) => {
-    const data = await pronosticoEstacionService.obtener(req.query.estacion);
+    // Por finca (`fincaUuid`) o por estación (`estacion`).
+    const data = req.query.fincaUuid ? await pronosticoEstacionService.obtenerPorFinca(String(req.query.fincaUuid)) : await pronosticoEstacionService.obtener(req.query.estacion);
     ApiResponse.send(res, { message: 'Pronóstico obtenido correctamente', data });
   }),
   actual: asyncHandler(async (req, res) => {
