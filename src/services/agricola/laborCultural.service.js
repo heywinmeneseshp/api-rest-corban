@@ -508,6 +508,9 @@ export const laborCulturalService = {
       where += ' AND fecha <= :fechaHasta';
       replacements.fechaHasta = query.fechaHasta;
     }
+    // Estado de revisión: APROBADA (ya revisada) o PENDIENTE (sin revisar).
+    if (query.estado === 'APROBADA') where += ' AND revisado_en IS NOT NULL';
+    if (query.estado === 'PENDIENTE') where += ' AND revisado_en IS NULL';
 
     const rows = await sequelize.query(
       `SELECT
@@ -523,7 +526,8 @@ export const laborCulturalService = {
          MIN(cumple_protocolo_foc_r4) AS cumpleProtocoloFocR4,
          MIN(cumple_protocolo_moko) AS cumpleProtocoloMoko,
          MIN(created_at) AS createdAt,
-         MAX(revisado_en) AS revisadoEn
+         MAX(revisado_en) AS revisadoEn,
+         MAX(revisado_por_nombre) AS revisadoPorNombre
        FROM ${TABLE}
        ${where}
        GROUP BY visita_uuid, finca_uuid, fecha
