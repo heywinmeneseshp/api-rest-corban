@@ -768,7 +768,7 @@ export const laborCulturalService = {
   // es el mecanismo de permisos de siempre. Lo que queda grabado y firma en
   // el documento es el CARGO del revisor (no el rol), igual criterio que
   // create().
-  // Aprobación desde la tablet de campo: la revisa (aprueba) un usuario distinto al que tiene la sesión abierta, escribiendo su
+  // Aprobación desde la tablet de campo: la revisa (aprueba) un usuario distinto a quien registró la visita, escribiendo su
   // usuario y su contraseña. Se valida la contraseña y que su rol pueda revisar (mismo criterio que marcarRevisada); la visita
   // queda revisada a su nombre.
   // `firma` (data URL PNG): la primera vez que el revisor aprueba, si todavía no tiene firma en su perfil, se exige y se guarda.
@@ -777,8 +777,15 @@ export const laborCulturalService = {
     if (!revisor || !revisor.estado || !(await revisor.comparePassword(String(password || '')))) {
       throw ApiError.badRequest('Usuario o contraseña incorrectos');
     }
-    if (usuarioTablet?.id && revisor.id === usuarioTablet.id) {
-      throw ApiError.badRequest('La visita la debe aprobar un usuario distinto al que tiene la sesión abierta en la tablet');
+    // Quien aprueba debe ser alguien distinto a quien registró la visita (puede ser el mismo de la sesión de la tablet).
+    void usuarioTablet;
+    const [visitaAutor] = await sequelize.query(`SELECT usuario_uuid FROM ${TABLE} WHERE visita_uuid = :visitaUuid LIMIT 1`, {
+      replacements: { visitaUuid },
+      type: 'SELECT',
+    });
+    if (!visitaAutor) throw ApiError.notFound('Visita no encontrada');
+    if (visitaAutor.usuario_uuid && visitaAutor.usuario_uuid === revisor.uuid) {
+      throw ApiError.badRequest('La visita la debe aprobar una persona distinta a quien la registró');
     }
     if (!revisor.firmaDriveId) {
       const buffer = firmaDesdeDataUrl(firma);
