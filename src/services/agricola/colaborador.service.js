@@ -301,6 +301,23 @@ export const colaboradorService = {
     return colaboradorRepository.findByUuid(uuid);
   },
 
+  // Editar el usuario del colaborador (pestaña Usuarios): usuario, correo y, si se indica, nueva contraseña. Nada de roles.
+  async editarUsuario(uuid, payload, actorId, actor = null) {
+    const colaborador = await this.getColaboradorByUuid(uuid, actor, 'editar');
+    if (!colaborador.userId) throw ApiError.badRequest('Este colaborador no tiene usuario');
+    const usuario = await User.findByPk(colaborador.userId, { include: [{ model: Role, as: 'roles', attributes: ['nombre'], through: { attributes: [] } }] });
+    if (!usuario) throw ApiError.notFound('Usuario no encontrado');
+    if ((usuario.roles || []).some((r) => r.nombre === ROLES.ADMINISTRADOR) && !(actor?.roles || []).includes(ROLES.ADMINISTRADOR)) {
+      throw ApiError.forbidden('Solo un Administrador puede editar a otro Administrador');
+    }
+    const data = {};
+    if (payload.usuario) data.usuario = payload.usuario;
+    if (payload.email) data.email = payload.email;
+    if (payload.password) data.password = payload.password;
+    await userService.updateUser(usuario.uuid, data, actorId);
+    return colaboradorRepository.findByUuid(uuid);
+  },
+
   async crearUsuario(uuid, payload, actorId, actor = null) {
     const colaborador = await this.getColaboradorByUuid(uuid, actor, 'editar');
     if (colaborador.userId) throw ApiError.conflict('El colaborador ya tiene un usuario');

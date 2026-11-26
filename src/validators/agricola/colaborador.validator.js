@@ -124,6 +124,16 @@ export const estadoUsuarioColaboradorSchema = Joi.object({
   query: Joi.object({}),
 });
 
+export const editarUsuarioDeColaboradorSchema = Joi.object({
+  body: Joi.object({
+    usuario: Joi.string().alphanum().min(3).max(50),
+    password: Joi.string().min(8).max(100).pattern(/^(?=.*[A-Za-z])(?=.*\d).+$/, 'letras y números').allow(''),
+    email: Joi.string().email().max(150),
+  }).min(1),
+  params: Joi.object({ uuid: uuidParam }),
+  query: Joi.object({}),
+});
+
 export const crearUsuarioDeColaboradorSchema = Joi.object({
   body: Joi.object({
     usuario: Joi.string().alphanum().min(3).max(50).required(),
