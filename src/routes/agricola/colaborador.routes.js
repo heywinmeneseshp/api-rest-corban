@@ -4,6 +4,7 @@ import { auth } from '../../middlewares/auth.middleware.js';
 import { permission } from '../../middlewares/permission.middleware.js';
 import { validate } from '../../middlewares/validate.middleware.js';
 import { PERMISSIONS } from '../../constants/permissions.constants.js';
+import { requireAdmin } from '../../middlewares/requireAdmin.middleware.js';
 import {
   listColaboradoresSchema,
   getColaboradorSchema,
@@ -13,6 +14,7 @@ import {
   updateColaboradorSchema,
   vincularUsuarioSchema,
   crearUsuarioDeColaboradorSchema,
+  rolUsuariosSchema,
 } from '../../validators/agricola/colaborador.validator.js';
 
 const router = Router();
@@ -64,11 +66,16 @@ router.put('/mio', auth, permission(...PUEDE_MI_FICHA), validate(actualizarMiFic
  *     responses:
  *       200: { description: OK }
  */
+// Rol de los usuarios creados desde Colaboradores: lo ve quien ve colaboradores; lo cambia solo el administrador.
+router.get('/config/rol-usuarios', auth, permission(PERMISSIONS.COLABORADOR_VER, PERMISSIONS.SV_COLABORADOR_VER), colaboradorController.getRolUsuarios);
+router.put('/config/rol-usuarios', auth, requireAdmin, validate(rolUsuariosSchema), colaboradorController.setRolUsuarios);
 router.get('/:uuid', auth, permission(PERMISSIONS.COLABORADOR_VER, PERMISSIONS.SV_COLABORADOR_VER), validate(getColaboradorSchema), colaboradorController.getByUuid);
 router.put('/:uuid', auth, permission(PERMISSIONS.COLABORADOR_EDITAR, PERMISSIONS.SV_COLABORADOR_EDITAR), validate(updateColaboradorSchema), colaboradorController.update);
 router.put('/:uuid/usuario', auth, permission(PERMISSIONS.COLABORADOR_EDITAR, PERMISSIONS.SV_COLABORADOR_EDITAR), permission(PERMISSIONS.MENU_MAESTROS_USUARIOS), validate(vincularUsuarioSchema), colaboradorController.vincularUsuario);
 router.delete('/:uuid/usuario', auth, permission(PERMISSIONS.COLABORADOR_EDITAR, PERMISSIONS.SV_COLABORADOR_EDITAR), validate(getColaboradorSchema), colaboradorController.desvincularUsuario);
-router.post('/:uuid/usuario', auth, permission(PERMISSIONS.COLABORADOR_EDITAR, PERMISSIONS.SV_COLABORADOR_EDITAR), permission(PERMISSIONS.MENU_MAESTROS_USUARIOS), validate(crearUsuarioDeColaboradorSchema), colaboradorController.crearUsuario);
+// Crear el usuario de un colaborador: basta con poder editar colaboradores; el usuario queda solo con el rol configurado por el
+// administrador (ver /config/rol-usuarios), así nadie reparte permisos por esta vía.
+router.post('/:uuid/usuario', auth, permission(PERMISSIONS.COLABORADOR_EDITAR, PERMISSIONS.SV_COLABORADOR_EDITAR), validate(crearUsuarioDeColaboradorSchema), colaboradorController.crearUsuario);
 router.delete('/:uuid', auth, permission(PERMISSIONS.COLABORADOR_ELIMINAR, PERMISSIONS.SV_COLABORADOR_ELIMINAR), validate(getColaboradorSchema), colaboradorController.remove);
 
 export default router;

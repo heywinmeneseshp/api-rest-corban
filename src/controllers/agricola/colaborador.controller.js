@@ -38,6 +38,14 @@ export const colaboradorController = {
     ApiResponse.send(res, { message: 'Usuario desvinculado correctamente', data });
   }),
 
+  getRolUsuarios: asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { message: 'Configuración obtenida correctamente', data: await colaboradorService.getRolUsuarios() });
+  }),
+
+  setRolUsuarios: asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { message: 'Rol guardado correctamente', data: await colaboradorService.setRolUsuarios(req.body.rolUuid, req.user?.id) });
+  }),
+
   crearUsuario: asyncHandler(async (req, res) => {
     const data = await colaboradorService.crearUsuario(req.params.uuid, req.body, req.user?.id, req.user);
     ApiResponse.send(res, { statusCode: HTTP_STATUS.CREATED, message: 'Usuario creado y vinculado correctamente', data });

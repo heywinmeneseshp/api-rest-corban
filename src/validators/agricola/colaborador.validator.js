@@ -110,6 +110,12 @@ export const vincularUsuarioSchema = Joi.object({
 });
 
 // Crea un usuario nuevo a partir del colaborador (nombre, apellido, correo y cargo salen de él).
+export const rolUsuariosSchema = Joi.object({
+  body: Joi.object({ rolUuid: Joi.string().guid().allow(null, '') }),
+  params: Joi.object({}),
+  query: Joi.object({}),
+});
+
 export const crearUsuarioDeColaboradorSchema = Joi.object({
   body: Joi.object({
     usuario: Joi.string().alphanum().min(3).max(50).required(),

@@ -3,7 +3,11 @@ import { laborRepository } from '../../repositories/agricola/labor.repository.js
 import { ApiError } from '../../utils/ApiError.js';
 import { getPagination, buildPaginationMeta } from '../../utils/pagination.js';
 import { Op, fn, col } from 'sequelize';
-import { Finca, ColaboradorRostro, User, Colaborador, AsistenciaLugar } from '../../database/associations.js';
+import { Finca, ColaboradorRostro, User, Colaborador, AsistenciaLugar, Role } from '../../database/associations.js';
+import { configuracionRepository } from '../../repositories/sistema/configuracion.repository.js';
+import { userRepository } from '../../repositories/seguridad/user.repository.js';
+
+const CLAVE_ROL_USUARIOS_COLABORADORES = 'colaboradores_rol_usuarios';
 import { sequelize } from '../../database/connection.js';
 import { userService } from '../seguridad/user.service.js';
 import { assertFincaPermitida, getFincaIdsPermitidas, getLugarIdsPermitidas, condicionUbicaciones } from '../../utils/fincaScope.js';
@@ -255,9 +259,30 @@ export const colaboradorService = {
   },
 
   // Crea un usuario del sistema a partir del colaborador y los deja vinculados.
+  // Rol con el que se crean los usuarios desde Colaboradores (lo configura el administrador). Sin rol configurado no se pueden crear.
+  async getRolUsuarios() {
+    const config = await configuracionRepository.findByClave(CLAVE_ROL_USUARIOS_COLABORADORES);
+    if (!config?.valor) return { rol: null };
+    const rol = await Role.findOne({ where: { uuid: config.valor }, attributes: ['uuid', 'nombre'] });
+    return { rol: rol ? { uuid: rol.uuid, nombre: rol.nombre } : null };
+  },
+
+  async setRolUsuarios(rolUuid, actorId) {
+    if (rolUuid) {
+      const rol = await Role.findOne({ where: { uuid: rolUuid }, attributes: ['id'] });
+      if (!rol) throw ApiError.notFound('Rol no encontrado');
+    }
+    await configuracionRepository.upsert(CLAVE_ROL_USUARIOS_COLABORADORES, rolUuid || '', actorId);
+    return this.getRolUsuarios();
+  },
+
   async crearUsuario(uuid, payload, actorId, actor = null) {
     const colaborador = await this.getColaboradorByUuid(uuid, actor, 'editar');
     if (colaborador.userId) throw ApiError.conflict('El colaborador ya tiene un usuario');
+    // El usuario se crea siempre con el rol que configuró el administrador (ni más ni menos).
+    const { rol: rolConfigurado } = await this.getRolUsuarios();
+    if (!rolConfigurado) throw ApiError.badRequest('El administrador todavía no ha configurado el rol para los usuarios creados desde Colaboradores');
+    const rolUsuario = await Role.findOne({ where: { uuid: rolConfigurado.uuid }, attributes: ['id'] });
     const email = payload.email || colaborador.email;
     if (!email) throw ApiError.badRequest('El colaborador no tiene correo: indica uno para crear el usuario');
     if (!colaborador.apellido) throw ApiError.badRequest('El colaborador no tiene apellido: edítalo antes de crear su usuario');
@@ -274,6 +299,7 @@ export const colaboradorService = {
       actorId,
     );
     const creado = await User.findOne({ where: { usuario: user.usuario }, attributes: ['id'] });
+    await userRepository.setRoles(creado.id, [rolUsuario.id], actorId);
     await colaboradorRepository.update(colaborador, { userId: creado.id, updatedBy: actorId });
     return colaboradorRepository.findByUuid(uuid);
   },
