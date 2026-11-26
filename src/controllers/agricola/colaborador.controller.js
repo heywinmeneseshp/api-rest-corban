@@ -46,6 +46,11 @@ export const colaboradorController = {
     ApiResponse.send(res, { message: 'Rol guardado correctamente', data: await colaboradorService.setRolUsuarios(req.body.rolUuid, req.user?.id) });
   }),
 
+  cambiarEstadoUsuario: asyncHandler(async (req, res) => {
+    const data = await colaboradorService.cambiarEstadoUsuario(req.params.uuid, req.body.estado, req.user?.id, req.user);
+    ApiResponse.send(res, { message: req.body.estado ? 'Usuario activado' : 'Usuario desactivado', data });
+  }),
+
   crearUsuario: asyncHandler(async (req, res) => {
     const data = await colaboradorService.crearUsuario(req.params.uuid, req.body, req.user?.id, req.user);
     ApiResponse.send(res, { statusCode: HTTP_STATUS.CREATED, message: 'Usuario creado y vinculado correctamente', data });

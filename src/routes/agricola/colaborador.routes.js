@@ -15,6 +15,7 @@ import {
   vincularUsuarioSchema,
   crearUsuarioDeColaboradorSchema,
   rolUsuariosSchema,
+  estadoUsuarioColaboradorSchema,
 } from '../../validators/agricola/colaborador.validator.js';
 
 const router = Router();
@@ -75,6 +76,8 @@ router.put('/:uuid/usuario', auth, permission(PERMISSIONS.COLABORADOR_EDITAR, PE
 router.delete('/:uuid/usuario', auth, permission(PERMISSIONS.COLABORADOR_EDITAR, PERMISSIONS.SV_COLABORADOR_EDITAR), validate(getColaboradorSchema), colaboradorController.desvincularUsuario);
 // Crear el usuario de un colaborador: basta con poder editar colaboradores; el usuario queda solo con el rol configurado por el
 // administrador (ver /config/rol-usuarios), así nadie reparte permisos por esta vía.
+// Activar / desactivar el usuario del colaborador (pestaña Usuarios): basta con poder editar colaboradores.
+router.put('/:uuid/usuario/estado', auth, permission(PERMISSIONS.COLABORADOR_EDITAR, PERMISSIONS.SV_COLABORADOR_EDITAR), validate(estadoUsuarioColaboradorSchema), colaboradorController.cambiarEstadoUsuario);
 router.post('/:uuid/usuario', auth, permission(PERMISSIONS.COLABORADOR_EDITAR, PERMISSIONS.SV_COLABORADOR_EDITAR), validate(crearUsuarioDeColaboradorSchema), colaboradorController.crearUsuario);
 router.delete('/:uuid', auth, permission(PERMISSIONS.COLABORADOR_ELIMINAR, PERMISSIONS.SV_COLABORADOR_ELIMINAR), validate(getColaboradorSchema), colaboradorController.remove);
 

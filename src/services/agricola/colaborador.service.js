@@ -6,6 +6,7 @@ import { Op, fn, col } from 'sequelize';
 import { Finca, ColaboradorRostro, User, Colaborador, AsistenciaLugar, Role } from '../../database/associations.js';
 import { configuracionRepository } from '../../repositories/sistema/configuracion.repository.js';
 import { userRepository } from '../../repositories/seguridad/user.repository.js';
+import { authRepository } from '../../repositories/seguridad/auth.repository.js';
 
 const CLAVE_ROL_USUARIOS_COLABORADORES = 'colaboradores_rol_usuarios';
 import { sequelize } from '../../database/connection.js';
@@ -283,6 +284,21 @@ export const colaboradorService = {
     }
     await configuracionRepository.upsert(CLAVE_ROL_USUARIOS_COLABORADORES, rolUuid || '', actorId);
     return this.getRolUsuarios();
+  },
+
+  // Activar o desactivar el usuario vinculado a un colaborador (pestaña Usuarios de Colaboradores). Basta con poder editar
+  // colaboradores y que esté en su alcance; no se puede desactivar a sí mismo ni a un Administrador. Al desactivarlo se
+  // cierran sus sesiones (no puede seguir usando la app ni la web).
+  async cambiarEstadoUsuario(uuid, estado, actorId, actor = null) {
+    const colaborador = await this.getColaboradorByUuid(uuid, actor, 'editar');
+    if (!colaborador.userId) throw ApiError.badRequest('Este colaborador no tiene usuario');
+    const usuario = await User.findByPk(colaborador.userId, { include: [{ model: Role, as: 'roles', attributes: ['nombre'], through: { attributes: [] } }] });
+    if (!usuario) throw ApiError.notFound('Usuario no encontrado');
+    if (!estado && actor?.id && usuario.id === actor.id) throw ApiError.badRequest('No puedes desactivar tu propio usuario');
+    if (!estado && (usuario.roles || []).some((r) => r.nombre === ROLES.ADMINISTRADOR)) throw ApiError.badRequest('No se puede desactivar a un Administrador desde aquí');
+    await usuario.update({ estado: Boolean(estado), updatedBy: actorId ?? null });
+    if (!estado) await authRepository.revokeAllForUser(usuario.id);
+    return colaboradorRepository.findByUuid(uuid);
   },
 
   async crearUsuario(uuid, payload, actorId, actor = null) {

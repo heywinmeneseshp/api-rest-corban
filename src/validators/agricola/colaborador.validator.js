@@ -118,6 +118,12 @@ export const rolUsuariosSchema = Joi.object({
   query: Joi.object({}),
 });
 
+export const estadoUsuarioColaboradorSchema = Joi.object({
+  body: Joi.object({ estado: Joi.boolean().required() }),
+  params: Joi.object({ uuid: uuidParam }),
+  query: Joi.object({}),
+});
+
 export const crearUsuarioDeColaboradorSchema = Joi.object({
   body: Joi.object({
     usuario: Joi.string().alphanum().min(3).max(50).required(),
