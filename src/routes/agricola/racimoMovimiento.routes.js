@@ -153,7 +153,8 @@ router.post(
 router.get(
   '/reporte-saldos',
   auth,
-  permission(PERMISSIONS.RACIMO_MOVIMIENTO_VER),
+  // Racimos → Saldos × Lotes y Cintas: basta con tener la pantalla; el reporte ya se limita a las fincas asignadas del usuario.
+  permission(PERMISSIONS.RACIMO_MOVIMIENTO_VER, PERMISSIONS.MENU_RACIMOS_SALDOS_LOTES_CINTAS),
   validate(reporteSaldosSchema),
   racimoMovimientoController.reporteSaldos,
 );
