@@ -1,3 +1,4 @@
+import { asegurarFirmaUsuario } from '../../utils/firmaDataUrl.js';
 import { sequelize } from '../../database/connection.js';
 import { comprobanteAspersionRepository } from '../../repositories/agricola/comprobanteAspersion.repository.js';
 import { Op } from 'sequelize';
@@ -479,7 +480,8 @@ export const comprobanteAspersionService = {
     return this.getByUuid(uuid, user);
   },
 
-  async emitir(uuid, actorId, user) {
+  // `firma` (data URL PNG): la primera vez que quien aprueba lo hace sin firma en su perfil, se exige y se guarda ahí.
+  async emitir(uuid, actorId, user, firma = null) {
     const comprobante = await cargarOFallar(uuid, user);
     assertBorrador(comprobante);
     const pendiente = await AspersionProgramacion.findOne({ where: { comprobanteParcialId: comprobante.id, estado: 'PROGRAMADA' }, attributes: ['numero', 'fecha'] });
@@ -496,6 +498,8 @@ export const comprobanteAspersionService = {
     if (comprobante.medio === 'DRON' && !comprobante.pilotoColaboradorId) {
       throw ApiError.badRequest('Con dron, elige el piloto del listado de colaboradores antes de emitir el comprobante');
     }
+    // Firma de quien aprueba (al final de las validaciones, para no pedirla si de todos modos no se puede aprobar).
+    await asegurarFirmaUsuario(actorId, firma);
     // Al aprobar se confirma el piloto del PDF con la certificación vigente.
     const pilotoOriginal = comprobante.pilotoColaboradorId ? await Colaborador.findByPk(comprobante.pilotoColaboradorId) : null;
     await comprobanteAspersionRepository.update(comprobante, {

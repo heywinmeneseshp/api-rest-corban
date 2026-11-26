@@ -10,14 +10,8 @@ import { Role, User, Finca } from '../../database/associations.js';
 import { mailService } from '../sistema/mail.service.js';
 import { userRepository } from '../../repositories/seguridad/user.repository.js';
 import { authService } from '../seguridad/auth.service.js';
+import { firmaDesdeDataUrl } from '../../utils/firmaDataUrl.js';
 
-// Firma dibujada en la app (data URL PNG) -> Buffer; null si no viene o no es un PNG.
-function firmaDesdeDataUrl(dataUrl) {
-  const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || '').trim());
-  if (!m) return null;
-  const buffer = Buffer.from(m[1], 'base64');
-  return buffer.length > 100 && buffer.length < 1024 * 1024 ? buffer : null;
-}
 import { configuracionService } from '../sistema/configuracion.service.js';
 import { logger } from '../../utils/logger.js';
 

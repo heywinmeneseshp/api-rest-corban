@@ -19,7 +19,7 @@ export const comprobanteAspersionController = {
   }),
 
   emitir: asyncHandler(async (req, res) => {
-    const comprobante = await comprobanteAspersionService.emitir(req.params.uuid, req.user?.id, req.user);
+    const comprobante = await comprobanteAspersionService.emitir(req.params.uuid, req.user?.id, req.user, req.body?.firma);
     ApiResponse.send(res, { message: 'Comprobante de aspersión emitido correctamente', data: comprobante });
   }),
 

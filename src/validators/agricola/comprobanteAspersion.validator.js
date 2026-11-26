@@ -8,6 +8,13 @@ export const getComprobanteAspersionSchema = Joi.object({
   query: Joi.object({}),
 });
 
+// Aprobar (emitir): la firma de quien aprueba solo se manda la primera vez (si no tiene firma en su perfil).
+export const emitirComprobanteSchema = Joi.object({
+  body: Joi.object({ firma: Joi.string().max(1500000).allow(null, '') }),
+  params: Joi.object({ uuid: uuidParam }),
+  query: Joi.object({}),
+});
+
 export const listComprobanteAspersionSchema = Joi.object({
   body: Joi.object({}),
   params: Joi.object({}),
