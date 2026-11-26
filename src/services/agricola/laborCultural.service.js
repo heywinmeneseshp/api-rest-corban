@@ -107,6 +107,12 @@ const ensureTable = async () => {
       INDEX idx_visita_uuid (visita_uuid)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
+  // Lote de la foto (fotos por lote); las fotos anteriores quedan sin lote (generales de la visita).
+  try {
+    await sequelize.query(`ALTER TABLE ${TABLE_FOTOS} ADD COLUMN lote_uuid VARCHAR(36) NULL`);
+  } catch (err) {
+    if (err.original?.errno !== 1060) throw err; // 1060 = la columna ya existe
+  }
 
   await sequelize.query(`
     CREATE TABLE IF NOT EXISTS ${TABLE_REVISOR} (
@@ -576,7 +582,7 @@ export const laborCulturalService = {
     const clima = await climaService.getByFincaFecha(primero.finca_uuid, primero.fecha);
 
     const fotos = await sequelize.query(
-      `SELECT uuid, id_drive AS idDrive, url_drive AS urlDrive, nombre_original AS nombreOriginal
+      `SELECT uuid, id_drive AS idDrive, url_drive AS urlDrive, nombre_original AS nombreOriginal, lote_uuid AS loteUuid
        FROM ${TABLE_FOTOS} WHERE visita_uuid = :visitaUuid ORDER BY created_at ASC`,
       { replacements: { visitaUuid }, type: 'SELECT' },
     );
@@ -647,8 +653,16 @@ export const laborCulturalService = {
   // Sube las fotos de una visita a Google Drive y guarda la referencia
   // (id + url de Drive) por cada una — la visita ya tiene que existir
   // (se suben después de "Finalizar", no antes).
-  async agregarFotos(visitaUuid, archivos, actorId) {
+  // `loteUuid` (opcional): las fotos quedan asociadas a ese lote de la visita.
+  async agregarFotos(visitaUuid, archivos, actorId, loteUuid = null) {
     await ensureTable();
+    if (loteUuid) {
+      const [lote] = await sequelize.query(`SELECT 1 AS ok FROM ${TABLE} WHERE visita_uuid = :visitaUuid AND lote_uuid = :loteUuid LIMIT 1`, {
+        replacements: { visitaUuid, loteUuid },
+        type: 'SELECT',
+      });
+      if (!lote) throw ApiError.badRequest('El lote no pertenece a esta visita');
+    }
 
     const [primero] = await sequelize.query(
       `SELECT finca_nombre, semana_codigo, fecha FROM ${TABLE} WHERE visita_uuid = :visitaUuid LIMIT 1`,
@@ -663,8 +677,8 @@ export const laborCulturalService = {
 
     for (const foto of resultado.fotos) {
       await sequelize.query(
-        `INSERT INTO ${TABLE_FOTOS} (uuid, visita_uuid, id_drive, url_drive, nombre_original, usuario_uuid, created_at)
-         VALUES (:uuid, :visitaUuid, :idDrive, :urlDrive, :nombreOriginal, :usuarioUuid, :createdAt)`,
+        `INSERT INTO ${TABLE_FOTOS} (uuid, visita_uuid, id_drive, url_drive, nombre_original, usuario_uuid, created_at, lote_uuid)
+         VALUES (:uuid, :visitaUuid, :idDrive, :urlDrive, :nombreOriginal, :usuarioUuid, :createdAt, :loteUuid)`,
         {
           replacements: {
             uuid: crypto.randomUUID(),
@@ -674,6 +688,7 @@ export const laborCulturalService = {
             nombreOriginal: foto.nombreOriginal || null,
             usuarioUuid: actorId ? String(actorId) : null,
             createdAt: toMysqlDatetime(new Date().toISOString()),
+            loteUuid: loteUuid || null,
           },
           type: 'INSERT',
         },

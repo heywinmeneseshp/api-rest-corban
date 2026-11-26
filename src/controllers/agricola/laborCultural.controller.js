@@ -114,7 +114,8 @@ export const laborCulturalController = {
 
   async agregarFotos(req, res, next) {
     try {
-      const result = await laborCulturalService.agregarFotos(req.params.visitaUuid, req.files, req.user?.id);
+      const loteUuid = typeof req.body?.loteUuid === 'string' && /^[0-9a-f-]{36}$/i.test(req.body.loteUuid) ? req.body.loteUuid : null;
+      const result = await laborCulturalService.agregarFotos(req.params.visitaUuid, req.files, req.user?.id, loteUuid);
       ApiResponse.send(res, {
         statusCode: HTTP_STATUS.CREATED,
         message: 'Fotos de la visita subidas correctamente',
