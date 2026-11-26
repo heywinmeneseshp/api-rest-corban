@@ -239,6 +239,17 @@ async function agregarParte(comprobante, aspersion, datos, actorId, { transactio
   return comprobante;
 }
 
+// Con dron, el KML que se entrega (descarga y KMZ del correo) lleva como «Pilot Name» de cada vuelo el piloto del comprobante,
+// el mismo que sale en su PDF (aunque el registro del dron traiga otro, o lo hayan cambiado en el comprobante). El KML
+// guardado no se modifica.
+function pilotoEnKml(texto, comprobante) {
+  const medio = comprobante.medio || comprobante.aspersion?.medio;
+  const piloto = comprobante.pilotoVisible?.nombre || comprobante.pilotoColaborador?.nombre || comprobante.piloto;
+  if (medio !== 'DRON' || !piloto || !texto) return texto;
+  const xml = String(piloto).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return String(texto).replace(/(<Data name="Pilot Name">\s*<value>)[\s\S]*?(<\/value>)/g, `$1${xml}$2`);
+}
+
 async function cargarOFallar(uuid, user) {
   const comprobante = await comprobanteAspersionRepository.findByUuid(uuid);
   if (!comprobante) throw ApiError.notFound('Comprobante de aspersión no encontrado');
@@ -589,7 +600,7 @@ export const comprobanteAspersionService = {
       order: [['subidoEn', 'ASC'], ['id', 'ASC']],
     });
     if (!k) throw ApiError.notFound('Este comprobante no tiene KML');
-    return { texto: k.kml, nombre: k.nombre || `${comprobante.numero}.kml` };
+    return { texto: pilotoEnKml(k.kml, comprobante), nombre: k.nombre || `${comprobante.numero}.kml` };
   },
 
   // Pilotos (colaboradores activos con cargo «Piloto de Dron») y asistentes (colaboradores activos) para elegir.
