@@ -454,6 +454,40 @@ export const precipitacionDiariaService = {
     return resultado;
   },
 
+  // Último dato que subió cada finca (para ver cuáles van atrasadas): las fincas que deben reportar (configuración activa) y las
+  // que ya reportaron alguna vez, dentro de las fincas del usuario. `diasSinReportar` cuenta desde la última fecha hasta hoy.
+  async ultimosPorFinca(user) {
+    const permitidos = await fincaUuidsPermitidos(user);
+    const filtro = permitidos === null ? '' : 'WHERE finca_uuid IN (:permitidos)';
+    const ultimos = await sequelize.query(
+      `SELECT finca_uuid AS fincaUuid, MAX(fecha) AS ultimaFecha, MAX(created_at) AS ultimaCarga
+         FROM precipitacion_diaria ${filtro} GROUP BY finca_uuid`,
+      { replacements: { permitidos: permitidos?.length ? permitidos : [''] }, type: 'SELECT' },
+    );
+    const configs = await PrecipitacionDiariaConfig.findAll({ where: { activo: true }, attributes: ['fincaUuid'], raw: true });
+    const uuids = new Set([...ultimos.map((u) => u.fincaUuid), ...configs.map((c) => c.fincaUuid)]);
+    const visibles = [...uuids].filter((u) => permitidos === null || permitidos.includes(u));
+    if (!visibles.length) return [];
+    const fincas = await Finca.findAll({ where: { uuid: visibles }, attributes: ['uuid', 'nombre'], raw: true });
+    const obligatorias = new Set(configs.map((c) => c.fincaUuid));
+    const hoy = new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10);
+    const dias = (f) => (f ? Math.round((new Date(`${hoy}T00:00:00Z`) - new Date(`${String(f).slice(0, 10)}T00:00:00Z`)) / 86400000) : null);
+    return fincas
+      .map((f) => {
+        const u = ultimos.find((x) => x.fincaUuid === f.uuid);
+        const ultimaFecha = u?.ultimaFecha ? String(u.ultimaFecha).slice(0, 10) : null;
+        return {
+          fincaUuid: f.uuid,
+          fincaNombre: f.nombre,
+          obligatoria: obligatorias.has(f.uuid),
+          ultimaFecha,
+          ultimaCarga: u?.ultimaCarga || null,
+          diasSinReportar: dias(ultimaFecha),
+        };
+      })
+      .sort((a, b) => (b.diasSinReportar ?? 9999) - (a.diasSinReportar ?? 9999) || a.fincaNombre.localeCompare(b.fincaNombre, 'es'));
+  },
+
   // Aprueba varias de una vez (dato de la finca en ambas tablas), en una sola petición: la app lo usa en «Aprobar todo».
   // Las que fallen (o no sean de las fincas del usuario) se reportan sin cortar las demás.
   async aprobarVarias(uuids, actorId, actorNombre, user = null) {

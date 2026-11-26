@@ -62,6 +62,10 @@ export const precipitacionDiariaController = {
     ApiResponse.send(res, { message: 'Inconsistencias obtenidas correctamente', data: result });
   }),
 
+  ultimosPorFinca: asyncHandler(async (req, res) => {
+    ApiResponse.send(res, { message: 'Último dato por finca', data: await precipitacionDiariaService.ultimosPorFinca(req.user) });
+  }),
+
   aprobarVarias: asyncHandler(async (req, res) => {
     const data = await precipitacionDiariaService.aprobarVarias(req.body.uuids, req.user?.id, req.user?.usuario, req.user);
     ApiResponse.send(res, { message: `${data.aprobadas} precipitaciones aprobadas`, data });

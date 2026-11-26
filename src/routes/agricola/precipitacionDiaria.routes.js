@@ -23,6 +23,8 @@ router.get('/pendientes', auth, precipitacionDiariaController.getPendientes);
 router.post('/', auth, validate(registrarSchema), precipitacionDiariaController.registrar);
 
 router.get('/', auth, permission(PERMISSIONS.PRECIPITACION_DIARIA_VER), precipitacionDiariaController.list);
+// Último dato que subió cada finca (de las del usuario), para ver cuáles van atrasadas.
+router.get('/ultimos-por-finca', auth, permission(PERMISSIONS.PRECIPITACION_DIARIA_VER), precipitacionDiariaController.ultimosPorFinca);
 router.get('/serie', auth, permission(PERMISSIONS.PRECIPITACION_DIARIA_VER), precipitacionDiariaController.serie);
 
 // Solo nombres de quienes ya registraron algo acá (para el filtro "Usuario")
