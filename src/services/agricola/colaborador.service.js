@@ -32,7 +32,8 @@ export const soloModuloSanidad = (user, accion = 'ver') =>
 export const alcanceColaboradores = (user, accion = 'ver', modulo = null, { porPermisos = true } = {}) => {
   const partes = [];
   const ubicaciones = condicionUbicaciones(user);
-  if (ubicaciones) partes.push({ [Op.or]: [ubicaciones, ...(user?.id ? [{ userId: user.id }] : [])] });
+  // Los de sus fincas/lugares, el suyo propio y los que no tienen lugar predeterminado (esos los ve cualquiera).
+  if (ubicaciones) partes.push({ [Op.or]: [ubicaciones, { fincaId: null, lugarId: null }, ...(user?.id ? [{ userId: user.id }] : [])] });
   const moduloEfectivo = porPermisos && soloModuloSanidad(user, accion) ? MODULO_SANIDAD : modulo;
   if (moduloEfectivo) partes.push({ modulo: moduloEfectivo });
   if (!partes.length) return null;
@@ -43,6 +44,8 @@ export const enAlcance = (colaborador, user, accion = 'ver') => {
   const fincaIds = getFincaIdsPermitidas(user);
   const lugarIds = getLugarIdsPermitidas(user);
   if (!fincaIds && !lugarIds) return true;
+  // Sin lugar predeterminado (ni finca ni lugar): lo ve cualquiera.
+  if (!colaborador.fincaId && !colaborador.lugarId) return true;
   return (
     Boolean(fincaIds && colaborador.fincaId && fincaIds.includes(colaborador.fincaId)) ||
     Boolean(lugarIds && colaborador.lugarId && lugarIds.includes(colaborador.lugarId)) ||
