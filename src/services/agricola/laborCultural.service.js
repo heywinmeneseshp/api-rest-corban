@@ -189,19 +189,29 @@ const obtenerDestinatariosRevisores = async (fincaUuid) => {
 
 // Resuelve la config de CC (correos sueltos + roles completos + usuarios
 // puntuales, ver configuracionService.getLaborRevisorCc) a una lista plana
-// de emails reales. A diferencia de obtenerDestinatariosRevisores, el CC
-// NO se filtra por finca — es una lista "siempre en copia" a propósito
-// (ej. un supervisor general, o todo un rol administrativo).
-const resolverCcCompleto = async () => {
+// de emails reales. Los correos sueltos y los usuarios puntuales van siempre;
+// los ROLES en copia se filtran por la finca de la visita, con el mismo
+// criterio que obtenerDestinatariosRevisores (sin fincas asignadas = todas).
+const resolverCcCompleto = async (fincaUuid = null) => {
   const cc = await configuracionService.getLaborRevisorCc();
   const correos = new Set((cc.correos || []).filter(Boolean));
 
   if (cc.rolesUuids?.length) {
     const usuariosPorRol = await User.findAll({
       where: { estado: true },
-      include: [{ model: Role, as: 'roles', where: { uuid: cc.rolesUuids }, through: { attributes: [] } }],
+      include: [
+        { model: Role, as: 'roles', where: { uuid: cc.rolesUuids }, through: { attributes: [] } },
+        { model: Finca, as: 'fincas', through: { attributes: [] }, attributes: ['uuid'], required: false },
+      ],
     });
-    usuariosPorRol.forEach((u) => u.email && correos.add(u.email));
+    usuariosPorRol
+      .filter((u) => {
+        if (!fincaUuid) return true;
+        const esAdmin = (u.roles || []).some((rol) => rol.nombre === ROLES.ADMINISTRADOR);
+        if (esAdmin || !u.fincas || u.fincas.length === 0) return true;
+        return u.fincas.some((f) => f.uuid === fincaUuid);
+      })
+      .forEach((u) => u.email && correos.add(u.email));
   }
 
   if (cc.usuariosUuids?.length) {
@@ -324,7 +334,7 @@ export const laborCulturalService = {
     if (esPrimeraFilaDeVisita && visitaUuid) {
       obtenerDestinatariosRevisores(fincaUuid)
         .then(async (destinatariosRevisores) => {
-          const cc = await resolverCcCompleto();
+          const cc = await resolverCcCompleto(fincaUuid);
           // Quien registró la visita también recibe el aviso, no solo el
           // revisor — así se entera de que su evaluación quedó cargada.
           const destinatarios = [...new Set([...destinatariosRevisores, actor?.email].filter(Boolean))];
@@ -849,7 +859,7 @@ export const laborCulturalService = {
 
     const [destinatariosRevisores, cc, creador] = await Promise.all([
       obtenerDestinatariosRevisores(visita.fincaUuid),
-      resolverCcCompleto(),
+      resolverCcCompleto(visita.fincaUuid),
       visita.usuarioUuid ? User.findOne({ where: { uuid: visita.usuarioUuid }, attributes: ['email'] }) : null,
     ]);
     // Quien registró la visita también recibe el aviso de que ya fue
