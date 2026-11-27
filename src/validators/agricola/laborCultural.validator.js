@@ -48,6 +48,12 @@ export const uuidParamSchema = Joi.object({
   query: Joi.object({}),
 });
 
+export const terceraFirmaSchema = Joi.object({
+  body: Joi.object({ usuarioUuid: Joi.string().uuid().allow(null, '') }),
+  params: Joi.object({}),
+  query: Joi.object({}),
+});
+
 export const revisorCcSchema = Joi.object({
   body: Joi.object({
     correos: Joi.array().items(Joi.string().email()).max(20).default([]),

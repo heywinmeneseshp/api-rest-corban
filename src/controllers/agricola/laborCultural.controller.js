@@ -198,6 +198,23 @@ export const laborCulturalController = {
     }
   },
 
+  async getTerceraFirma(req, res, next) {
+    try {
+      ApiResponse.send(res, { statusCode: HTTP_STATUS.OK, message: 'Tercera firma obtenida', data: await laborCulturalService.getTerceraFirma() });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async setTerceraFirma(req, res, next) {
+    try {
+      const data = await laborCulturalService.setTerceraFirma(req.body.usuarioUuid || null, req.user?.id);
+      ApiResponse.send(res, { statusCode: HTTP_STATUS.OK, message: 'Tercera firma guardada', data });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async getRevisorCc(req, res, next) {
     try {
       const cc = await configuracionService.getLaborRevisorCc();

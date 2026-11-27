@@ -11,6 +11,7 @@ import {
   toggleRolRevisorSchema,
   uuidParamSchema,
   revisorCcSchema,
+  terceraFirmaSchema,
   revisarConCredencialesSchema,
 } from '../../validators/agricola/laborCultural.validator.js';
 
@@ -92,6 +93,9 @@ router.delete(
 
 // Correos en copia (CC) para los avisos de cargue/revisión — reservado al
 // Administrador, igual que el resto de la configuración del revisor.
+// Tercera firma del documento de la visita (esquina derecha): un usuario fijo que configura el Administrador.
+router.get('/tercera-firma', auth, requireAdmin, laborCulturalController.getTerceraFirma);
+router.put('/tercera-firma', auth, requireAdmin, validate(terceraFirmaSchema), laborCulturalController.setTerceraFirma);
 router.get('/revisor-cc', auth, requireAdmin, laborCulturalController.getRevisorCc);
 router.put(
   '/revisor-cc',

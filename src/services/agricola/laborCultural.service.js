@@ -13,6 +13,7 @@ import { authService } from '../seguridad/auth.service.js';
 import { firmaDesdeDataUrl } from '../../utils/firmaDataUrl.js';
 
 import { configuracionService } from '../sistema/configuracion.service.js';
+import { configuracionRepository } from '../../repositories/sistema/configuracion.repository.js';
 import { logger } from '../../utils/logger.js';
 
 const TABLE = 'labores_culturales';
@@ -222,7 +223,34 @@ const resolverCcCompleto = async (fincaUuid = null) => {
   return [...correos];
 };
 
+// Tercera firma del documento de la visita (esquina derecha): usuario configurado por el administrador, con su nombre y cargo
+// actuales. null si no hay ninguno configurado o el usuario ya no existe.
+const CLAVE_TERCERA_FIRMA = 'sanidad_vegetal_visita_tercera_firma';
+async function leerTerceraFirmaUuid() {
+  const config = await configuracionRepository.findByClave(CLAVE_TERCERA_FIRMA);
+  return config?.valor || null;
+}
+async function terceraFirmaVisita() {
+  const uuid = await leerTerceraFirmaUuid();
+  if (!uuid) return null;
+  const u = await User.findOne({ where: { uuid }, attributes: ['uuid', 'nombre', 'apellido', 'cargo'] });
+  return u ? { uuid: u.uuid, nombre: `${u.nombre} ${u.apellido || ''}`.trim(), cargo: u.cargo || null } : null;
+}
+
 export const laborCulturalService = {
+  async getTerceraFirma() {
+    return { usuario: await terceraFirmaVisita() };
+  },
+
+  async setTerceraFirma(usuarioUuid, actorId) {
+    if (usuarioUuid) {
+      const u = await User.findOne({ where: { uuid: usuarioUuid }, attributes: ['id'] });
+      if (!u) throw ApiError.notFound('Usuario no encontrado');
+    }
+    await configuracionRepository.upsert(CLAVE_TERCERA_FIRMA, usuarioUuid || '', actorId);
+    return this.getTerceraFirma();
+  },
+
   // `actorId`: usuario autenticado que registra la visita — se busca su
   // `cargo` (puesto de trabajo, no el rol de permisos) para snapshotearlo
   // en la visita y mostrarlo en el PDF/pantalla en vez de un "Responsable"
@@ -613,6 +641,7 @@ export const laborCulturalService = {
       revisadoPorNombre: primero.revisado_por_nombre,
       revisadoPorCargo: primero.revisado_por_cargo,
       revisadoEn: primero.revisado_en,
+      terceraFirma: await terceraFirmaVisita(),
       clima: clima
         ? { mm: clima.mm, temperatura: clima.temperatura, humedadRelativa: clima.humedad_relativa }
         : null,
