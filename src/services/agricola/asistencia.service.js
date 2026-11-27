@@ -327,14 +327,18 @@ const whereModulo = (modulo) => ({
   colaboradorId: { [Op.in]: sequelize.literal(`(SELECT id FROM colaboradores WHERE modulo = ${sequelize.escape(modulo)})`) },
 });
 
-// Quien solo marca (sin «Ver asistencia») ve únicamente lo suyo: devuelve su ficha (o un id imposible si no tiene), o null si ve
-// todo lo de su alcance. Con los permisos de Sanidad Vegetal ve la de los colaboradores de ese módulo.
+// Sin «Ver asistencia» se ve solo lo propio: sus marcaciones (las de su ficha) y las que se hicieron desde su usuario (p. ej. al
+// marcar a la cuadrilla). Devuelve { id: su ficha o -1, userId }, o null si ve todo lo de su alcance. Con los permisos de Sanidad
+// Vegetal ve la de los colaboradores de ese módulo.
 async function soloPropio(user, modulo = null) {
   if (tienePermiso(user, PERMISSIONS.ASISTENCIA_VER)) return null;
   if (modulo === MODULO_SANIDAD && puedeColaboradoresSanidad(user, 'ver')) return null;
   const c = await Colaborador.findOne({ where: { userId: user?.id ?? -1 }, attributes: ['id'] });
-  return c || { id: -1 };
+  return { id: c?.id ?? -1, userId: user?.id ?? -1 };
 }
+
+// Marcaciones propias: de su ficha o hechas desde su usuario.
+const wherePropio = (propio) => ({ [Op.or]: [{ colaboradorId: propio.id }, { createdBy: propio.userId }] });
 
 const datosLugar = (d) => {
   const out = {};
@@ -821,7 +825,7 @@ export const asistenciaService = {
     const modulo = moduloAsistencia(query, user);
     if (modulo) Object.assign(where, { [Op.and]: [...(where[Op.and] || []), whereModulo(modulo)] });
     const propio = await soloPropio(user, modulo);
-    if (propio) where.colaboradorId = propio.id;
+    if (propio) where[Op.and] = [...(where[Op.and] || []), wherePropio(propio)];
     if (query.desde || query.hasta) {
       where.fechaHora = {
         ...(query.desde ? { [Op.gte]: inicioDiaBogota(query.desde) } : {}),
@@ -955,7 +959,7 @@ export const asistenciaService = {
     const modulo = moduloAsistencia(query, user);
     if (modulo) Object.assign(where, { [Op.and]: [...(where[Op.and] || []), whereModulo(modulo)] });
     const propio = await soloPropio(user, modulo);
-    if (propio) where.colaboradorId = propio.id;
+    if (propio) where[Op.and] = [...(where[Op.and] || []), wherePropio(propio)];
 
     const rows = await AsistenciaMarcacion.findAll({
       where,
@@ -1001,7 +1005,7 @@ export const asistenciaService = {
       const permitidos = new Set(
         (
           await Colaborador.findAll({
-            where: { ...whereColaboradores({ ...query, modulo }, user), ...(propio ? { id: propio.id } : {}) },
+            where: { ...whereColaboradores({ ...query, modulo }, user), ...(propio ? { id: { [Op.in]: [propio.id, ...(await AsistenciaMarcacion.findAll({ where: { createdBy: propio.userId }, attributes: ['colaboradorId'], group: ['colaboradorId'], raw: true })).map((m) => m.colaboradorId)] } } : {}) },
             attributes: ['id'],
             raw: true,
           })
